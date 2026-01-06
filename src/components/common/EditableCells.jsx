@@ -1,6 +1,30 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { LockIcon } from './Icons';
-import { formatValue } from '../../utils/dateUtils';
+
+// -----------------------------------------------------------------------------
+// インライン定義: 外部ファイルの読み込みエラーを回避するため直接定義
+// -----------------------------------------------------------------------------
+
+const LockIcon = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 text-slate-500 pointer-events-none" viewBox="0 0 20 20" fill="currentColor">
+        <path fillRule="evenodd" d="M18 8a6 6 0 01-7.743 5.743L10 14l-1 1-1 1H6v2H2v-4l4.257-4.257A6 6 0 0118 8zm-6-4a4 4 0 100 8 4 4 0 000-8z" clipRule="evenodd" />
+    </svg>
+);
+
+const formatValue = (value) => {
+    if (typeof value === 'number') {
+        return value % 1 === 0 ? Math.floor(value) : value;
+    }
+    if (typeof value === 'string') {
+        return value;
+    }
+    if (value && typeof value === 'object' && 'type' in value) {
+        if ('locked' in value) { // Handle LockedHoliday
+            return value.type;
+        }
+      return `${value.type}(${value.hours})`;
+    }
+    return '';
+};
 
 // -----------------------------------------------------------------------------
 // EditableCell: シフト表のメインセル（時間入力・プルダウン選択）
@@ -15,6 +39,7 @@ export const EditableCell = ({ value, onUpdate, borderClass, disabled = false, i
   const isLocked = typeof value === 'object' && value !== null && 'locked' in value && value.locked;
   const isEffectivelyDisabled = disabled || (isLocked && !isAdmin);
 
+  // フォーカス制御
   useEffect(() => {
     if (mode === 'input' && inputRef.current) {
       inputRef.current.focus();
@@ -22,9 +47,35 @@ export const EditableCell = ({ value, onUpdate, borderClass, disabled = false, i
     }
   }, [mode]);
 
+  // 値更新用ラッパー
+  const handleUpdate = (newValue) => {
+    if (JSON.stringify(newValue) !== JSON.stringify(value)) {
+      onUpdate(newValue);
+    }
+  };
+
+  // 入力値のコミット処理
+  const commitInput = () => {
+    const hours = parseFloat(inputValue);
+    if (isNaN(hours) || hours < 0) {
+        // 無効な値の場合は保存しない
+        return;
+    }
+    if (editingSpecialShift) {
+        handleUpdate({ type: editingSpecialShift, hours });
+    } else {
+        handleUpdate(hours);
+    }
+  };
+
+  // 外側クリックの検知
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (mode !== 'view' && cellRef.current && !cellRef.current.contains(event.target)) {
+        // inputモードなら値を保存する
+        if (mode === 'input') {
+            commitInput();
+        }
         setMode('view');
         setEditingSpecialShift(null);
       }
@@ -33,16 +84,8 @@ export const EditableCell = ({ value, onUpdate, borderClass, disabled = false, i
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
-  }, [mode]);
+  }, [mode, inputValue, editingSpecialShift, value]); // 依存配列に必要な値を含める
 
-  const handleUpdate = (newValue) => {
-    if (JSON.stringify(newValue) !== JSON.stringify(value)) {
-      onUpdate(newValue);
-    }
-    setMode('view');
-    setEditingSpecialShift(null);
-  };
-  
   const handleSelectChange = (e) => {
     const selected = e.target.value;
     const specialShiftOptions = ['遅', '早', '午前有', '午後有', '午前休', '午後休', '午前通', '午後通'];
@@ -63,22 +106,18 @@ export const EditableCell = ({ value, onUpdate, borderClass, disabled = false, i
         setInputValue(String(currentHours));
         setMode('input');
     } else {
+        // ステータス選択などは即座に反映して閉じる
         handleUpdate(selected);
+        setMode('view');
+        setEditingSpecialShift(null);
     }
   };
 
   const handleInputBlur = () => {
-    const hours = parseFloat(inputValue);
-    if (isNaN(hours) || hours < 0) {
-        setMode('view');
-        setEditingSpecialShift(null);
-        return;
-    }
-    if (editingSpecialShift) {
-        handleUpdate({ type: editingSpecialShift, hours });
-    } else {
-        handleUpdate(hours);
-    }
+    // blur時も保存を試みる
+    commitInput();
+    setMode('view');
+    setEditingSpecialShift(null);
   };
 
   const handleKeyDown = (e) => {
@@ -146,7 +185,7 @@ export const EditableCell = ({ value, onUpdate, borderClass, disabled = false, i
             <select
                 onChange={handleSelectChange}
                 autoFocus
-                onBlur={() => setMode('view')}
+                onBlur={() => setMode('view')} // selectのblurは単に閉じる
                 className="w-full h-full bg-transparent text-center outline-none focus:outline-sky-500 focus:-outline-offset-2 text-xs appearance-none"
                 defaultValue=""
             >
