@@ -29,7 +29,7 @@ const formatValue = (value) => {
 // -----------------------------------------------------------------------------
 // EditableCell: シフト表のメインセル（時間入力・プルダウン選択）
 // -----------------------------------------------------------------------------
-export const EditableCell = ({ value, onUpdate, borderClass, disabled = false, isAdmin = false }) => {
+const EditableCell = ({ value, onUpdate, borderClass, disabled = false, isAdmin = false }) => {
   const [mode, setMode] = useState('view');
   const [inputValue, setInputValue] = useState('');
   const [editingSpecialShift, setEditingSpecialShift] = useState(null);
@@ -84,7 +84,7 @@ export const EditableCell = ({ value, onUpdate, borderClass, disabled = false, i
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
-  }, [mode, inputValue, editingSpecialShift, value]); // 依存配列に必要な値を含める
+  }, [mode, inputValue, editingSpecialShift, value]);
 
   const handleSelectChange = (e) => {
     const selected = e.target.value;
@@ -162,7 +162,8 @@ export const EditableCell = ({ value, onUpdate, borderClass, disabled = false, i
       setMode('select');
   }
   
-  const baseClasses = `border-b border-r ${borderClass} text-center text-xs h-9 flex items-center justify-center min-w-0`;
+  // 修正: min-w-0 を追加してGridアイテムが内容物によって拡張されるのを防ぐ
+  const baseClasses = `border-b border-r ${borderClass} text-center text-xs h-9 flex items-center justify-center w-full min-w-0`;
 
   if (mode === 'view') {
     return (
@@ -171,7 +172,7 @@ export const EditableCell = ({ value, onUpdate, borderClass, disabled = false, i
         className={`relative ${baseClasses} transition-colors duration-150 ${getBackgroundColor()} ${isEffectivelyDisabled ? 'cursor-not-allowed text-slate-500' : 'cursor-pointer'}`}
       >
         {isLocked && <div className="absolute top-0.5 right-0.5 pointer-events-none"><LockIcon /></div>}
-        {formatValue(value)}
+        <span className="truncate w-full px-0.5">{formatValue(value)}</span>
       </div>
     );
   }
@@ -226,7 +227,7 @@ export const EditableCell = ({ value, onUpdate, borderClass, disabled = false, i
 // -----------------------------------------------------------------------------
 // EditableStaffInfoCell: スタッフ情報（名前、役職など）編集セル
 // -----------------------------------------------------------------------------
-export const EditableStaffInfoCell = ({ value, onUpdate, className, disabled = false }) => {
+const EditableStaffInfoCell = ({ value, onUpdate, className, disabled = false }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [currentValue, setCurrentValue] = useState(value);
 
@@ -256,7 +257,7 @@ export const EditableStaffInfoCell = ({ value, onUpdate, className, disabled = f
     }
   }
   
-  const wrapperClass = `h-9 text-xs border-b border-r border-slate-300 flex items-center px-2 bg-slate-50 ${className}`;
+  const wrapperClass = `h-9 text-xs border-b border-r border-slate-300 flex items-center px-2 bg-slate-50 overflow-hidden ${className}`;
 
   if (isEditing) {
     return (
@@ -288,7 +289,7 @@ export const EditableStaffInfoCell = ({ value, onUpdate, className, disabled = f
 // -----------------------------------------------------------------------------
 // EditableTaskName: 業務名編集セル
 // -----------------------------------------------------------------------------
-export const EditableTaskName = ({ value, onUpdate, disabled = false }) => {
+const EditableTaskName = ({ value, onUpdate, disabled = false }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [currentValue, setCurrentValue] = useState(value);
   const inputRef = useRef(null);
@@ -352,3 +353,6 @@ export const EditableTaskName = ({ value, onUpdate, disabled = false }) => {
     </div>
   );
 };
+
+// Explicit exports to avoid "undefined" component errors
+export { EditableCell, EditableStaffInfoCell, EditableTaskName };
