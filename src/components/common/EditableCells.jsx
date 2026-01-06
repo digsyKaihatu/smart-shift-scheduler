@@ -162,8 +162,8 @@ const EditableCell = ({ value, onUpdate, borderClass, disabled = false, isAdmin 
       setMode('select');
   }
   
-  // 修正: min-w-0 を追加してGridアイテムが内容物によって拡張されるのを防ぐ
-  const baseClasses = `border-b border-r ${borderClass} text-center text-xs h-9 flex items-center justify-center w-full min-w-0`;
+  // 修正: セル幅を大文字6文字分（約6em）に固定する
+  const baseClasses = `border-b border-r ${borderClass} text-center text-xs h-9 flex items-center justify-center w-[6em] min-w-[6em] max-w-[6em]`;
 
   if (mode === 'view') {
     return (
