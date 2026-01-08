@@ -33,9 +33,7 @@ const HelpGuideModal = ({ onClose }) => {
             </div>
             
             {/* 修正: 不正な構文を削除し、適切な画像タグに置き換え */}
-            <div className="my-2 border border-slate-200 rounded-md overflow-hidden shadow-sm">
-                <img src="/スマシフガイド2.png" alt="シフト入力の例" className="w-full h-auto object-contain bg-slate-100" />
-            </div>
+           
             <p>・「稼働時間入力」を選択すると、数値を直接入力できます。（例: 8, 7.5）</p>
             <p>・「有」「休」「通」などのステータスも選択できます。</p>
             <p>・<span className="font-bold text-green-600">変更は自動的に保存されます。</span>手動で保存ボタンを押す必要はありません。</p>
@@ -43,6 +41,9 @@ const HelpGuideModal = ({ onClose }) => {
           
           <GuideSection title="2. メンバー情報の編集と通知設定">
             <p>・「役職」「社員番号」「稼働名前」の各セルはクリックして直接編集できます。</p>
+            　 <div className="my-2 border border-slate-200 rounded-md overflow-hidden shadow-sm">
+                <img src="/スマシフガイド2.png" alt="シフト入力の例" className="w-full h-auto object-contain bg-slate-100" />
+            </div>
             <p>・<span className="font-bold text-[#D9824D]">「メンバー管理」</span>ボタンからは、上記に加え<span className="font-bold">「Chat User ID」</span>を設定できます。</p>
             <p>・<span className="text-xs text-slate-500">※Chat User IDを設定すると、Google Chatの通知でそのメンバー宛にメンションが飛びます。</span></p>
           </GuideSection>
@@ -51,6 +52,9 @@ const HelpGuideModal = ({ onClose }) => {
             <p>以下のチェックボックス操作により、Google Chatへ通知が送信されます。</p>
             <ul className="list-disc list-inside ml-2 mt-1 space-y-1">
               <li><span className="font-bold text-sky-600">提出☑:</span> メンバーがチェックすると、管理者（通知設定で指定したID）へ通知が飛びます。</li>
+              　 <div className="my-2 border border-slate-200 rounded-md overflow-hidden shadow-sm">
+                <img src="/スマシフガイド3.png" alt="シフト入力の例" className="w-full h-auto object-contain bg-slate-100" />
+            </div>
               <li><span className="font-bold text-red-600">差戻☑ (管理者のみ):</span> 管理者がチェックすると確認画面が出ます。「はい」を押すと、対象メンバーへ<span className="font-bold text-red-600">差戻通知</span>が飛びます。</li>
               <li><span className="font-bold text-green-600">承認☑ (管理者のみ):</span> 管理者がチェックすると確認画面が出ます。「はい」を押すと、対象メンバーへ<span className="font-bold text-green-600">承認通知</span>が飛びます。</li>
             </ul>
@@ -58,20 +62,32 @@ const HelpGuideModal = ({ onClose }) => {
 
           <GuideSection title="4. 基本シフトパターンの設定">
             <p>・「基本シフト設定」のセルをクリックすると、月〜金曜のデフォルトシフトパターンを設定できます。</p>
+            　 <div className="my-2 border border-slate-200 rounded-md overflow-hidden shadow-sm">
+                <img src="/スマシフガイド4.png" alt="シフト入力の例" className="w-full h-auto object-contain bg-slate-100" />
+            </div>
             <p>・設定後、「基本シフトを適用」ボタンを押すと、その月のスケジュールにパターンが自動反映されます。</p>
           </GuideSection>
           
           <GuideSection title="5. シフトパターン一覧">
             <p>・シフト表の下にある「シフトパターン一覧」で、登録されている全パターンを確認できます。</p>
+            　 <div className="my-2 border border-slate-200 rounded-md overflow-hidden shadow-sm">
+                <img src="/スマシフガイド5.png" alt="シフト入力の例" className="w-full h-auto object-contain bg-slate-100" />
+            </div>
             <p>・「+ パターンを追加」ボタンから、新しい勤務時間パターンを自由に追加できます。</p>
           </GuideSection>
 
           <GuideSection title="6. 業務と人員不足の確認">
             <p>・ページ下部の「業務一覧」で、日ごとの各業務の稼働人数を確認できます。</p>
+            　 <div className="my-2 border border-slate-200 rounded-md overflow-hidden shadow-sm">
+                <img src="/スマシフガイド6.png" alt="シフト入力の例" className="w-full h-auto object-contain bg-slate-100" />
+            </div>
             <p>・必要な人員に対して稼働人数が足りていない日は「不足」とハイライト表示されます。</p>
           </GuideSection>
           
           <GuideSection title="7. 各種ボタン機能">
+             <div className="my-2 border border-slate-200 rounded-md overflow-hidden shadow-sm">
+                <img src="/スマシフガイド7.png" alt="シフト入力の例" className="w-full h-auto object-contain bg-slate-100" />
+            </div>
             <div className="space-y-2 mt-2">
               <p>・<span className="font-bold text-slate-700">通知設定:</span> メンバーが提出した際に通知を受け取る管理者のChat User IDを設定します。</p>
               <p>・<span className="font-bold text-[#D9824D]">業務担当を設定:</span> 誰がどの業務を担当できるかを一括で設定します。</p>
