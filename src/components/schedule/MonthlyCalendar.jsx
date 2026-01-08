@@ -181,13 +181,13 @@ const MonthlyCalendar = ({ schedule, staff, tasks, shiftPatterns, initialYear, i
                 onClick={() => setViewMode('active_shifts')}
                 className={`px-4 py-1.5 rounded-md text-xs font-bold transition-all ${viewMode === 'active_shifts' ? 'bg-white text-[#D9824D] shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
             >
-                個人出勤日
+                出勤日
             </button>
             <button
                 onClick={() => setViewMode('holidays')}
                 className={`px-4 py-1.5 rounded-md text-xs font-bold transition-all ${viewMode === 'holidays' ? 'bg-white text-[#D9824D] shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
             >
-                個人休日
+                休暇日
             </button>
         </div>
       </div>
