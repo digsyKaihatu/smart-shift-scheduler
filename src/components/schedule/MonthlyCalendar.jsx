@@ -13,13 +13,12 @@ const ChevronRight = ({ size = 24 }) => (
   </svg>
 );
 
-// 削除アイコン
-const Trash2 = ({ size = 24 }) => (
-  <img 
-    src="/image_498ea9.png" 
-    alt="削除" 
-    style={{ width: size, height: size, objectFit: 'contain' }} 
-  />
+// 削除アイコン (SVG)
+// 上部シフト表と統一したデザイン
+const Trash2 = ({ size = 20 }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 20 20" fill="currentColor">
+    <path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm4 0a1 1 0 012 0v6a1 1 0 11-2 0V8z" clipRule="evenodd" />
+  </svg>
 );
 
 const XIcon = ({ size = 24 }) => (
@@ -214,10 +213,7 @@ const MonthlyCalendar = ({ schedule, staff, tasks, shiftPatterns, initialYear, i
                 })}
             </div>
 
-            {/* データ行（ここは1行で日付ごとに縦に積むか、日付を横にして中身を縦に積むか） */}
-            {/* 要望：「日付を横一列で表示」→ 上記ヘッダーで日付を横に並べた。
-                中身（人名）は、その日付の下にリスト表示する形にする。 */}
-            
+            {/* データ行 */}
             <div className="flex">
                 <div className="sticky left-0 z-30 bg-slate-50 p-2 border-r border-slate-300 font-semibold text-xs text-center w-[100px] flex-shrink-0 flex items-center justify-center border-b border-slate-200">
                     {viewMode === 'active_shifts' ? '出勤者' : '休日者'}
@@ -254,7 +250,7 @@ const MonthlyCalendar = ({ schedule, staff, tasks, shiftPatterns, initialYear, i
                                                         onClick={(e) => handleDelete(e, ev)} 
                                                         className="absolute right-0.5 top-1/2 -translate-y-1/2 p-0.5 text-slate-400 hover:text-red-600 hover:bg-white rounded-full transition-all opacity-0 group-hover:opacity-100"
                                                     >
-                                                        <Trash2 size={10} />
+                                                        <Trash2 size={12} />
                                                     </button>
                                                 )}
                                             </div>
@@ -298,7 +294,7 @@ const MonthlyCalendar = ({ schedule, staff, tasks, shiftPatterns, initialYear, i
                                         <span className="text-xs text-slate-500">{ev.type}</span>
                                     </div>
                                     {isDeletable && (
-                                        <button onClick={(e) => handleDelete(e, ev)} className="text-slate-300 hover:text-red-500 transition-colors ml-2"><Trash2 size={14} /></button>
+                                        <button onClick={(e) => handleDelete(e, ev)} className="text-slate-300 hover:text-red-500 transition-colors ml-2"><Trash2 size={16} /></button>
                                     )}
                                 </div>
                             );
