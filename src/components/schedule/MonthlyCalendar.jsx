@@ -13,12 +13,13 @@ const ChevronRight = ({ size = 24 }) => (
   </svg>
 );
 
-// 削除アイコン (SVG)
-// 上部シフト表と統一したデザイン
-const Trash2 = ({ size = 20 }) => (
-  <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 20 20" fill="currentColor">
-    <path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm4 0a1 1 0 012 0v6a1 1 0 11-2 0V8z" clipRule="evenodd" />
-  </svg>
+// 削除アイコン
+const Trash2 = ({ size = 24 }) => (
+  <img 
+    src="/image_498ea9.png" 
+    alt="削除" 
+    style={{ width: size, height: size, objectFit: 'contain' }} 
+  />
 );
 
 const XIcon = ({ size = 24 }) => (
@@ -157,8 +158,11 @@ const MonthlyCalendar = ({ schedule, staff, tasks, shiftPatterns, initialYear, i
   const getDayOfWeekStr = (date) => ['日', '月', '火', '水', '木', '金', '土'][date.getDay()];
   
   // スタイリング用ヘルパー
+  // 日付セルとヘッダーの幅を完全に固定し、border-collapseのような挙動を模倣するため、borderの付け方を調整
+  const CELL_WIDTH = "100px"; // 固定幅
+
   const getDayHeaderClass = (dayOfWeek, isHoliday) => {
-      let baseClasses = "sticky top-0 z-30 p-2 text-xs font-semibold text-center border-b-2 border-r whitespace-nowrap min-w-[100px]"; // 幅を少し広めに
+      let baseClasses = `sticky top-0 z-30 p-2 text-xs font-semibold text-center border-b border-r whitespace-nowrap min-w-[${CELL_WIDTH}] w-[${CELL_WIDTH}] box-border flex-shrink-0 flex items-center justify-center`; 
       if (dayOfWeek === '土') return `${baseClasses} bg-sky-100 text-sky-800 border-sky-200`;
       if (dayOfWeek === '日' || isHoliday) return `${baseClasses} bg-pink-100 text-pink-800 border-pink-200`;
       return `${baseClasses} bg-slate-100 text-slate-900 border-slate-300`;
@@ -193,21 +197,21 @@ const MonthlyCalendar = ({ schedule, staff, tasks, shiftPatterns, initialYear, i
 
       {/* 横スクロールカレンダー本体 */}
       <div className="overflow-x-auto border border-slate-200 rounded-lg">
-        <div className="min-w-max">
+        {/* min-w-max を削除し、flex コンテナで幅を制御 */}
+        <div className="inline-block min-w-full align-middle">
             {/* ヘッダー行 */}
             <div className="flex border-b border-slate-200">
-                <div className="sticky left-0 z-40 bg-slate-200 p-2 border-r border-slate-300 font-semibold text-xs text-center w-[100px] flex-shrink-0 flex items-center justify-center">
+                <div className="sticky left-0 z-40 bg-slate-200 p-2 border-r border-slate-300 font-semibold text-xs text-center min-w-[100px] w-[100px] flex-shrink-0 flex items-center justify-center box-border">
                     日付
                 </div>
                 {/* 日付列 */}
                 {daysInMonth.map((d) => {
                     const dayOfWeek = ['日', '月', '火', '水', '木', '金', '土'][d.getDay()];
-                    // isHoliday判定は本来 dateUtils から持ってくるべきだが簡易的に土日判定のみ
                     const isWeekend = dayOfWeek === '土' || dayOfWeek === '日';
                     return (
                         <div key={d.toISOString()} className={getDayHeaderClass(dayOfWeek, isWeekend)}>
                             <div>{d.getDate()}</div>
-                            <div>{dayOfWeek}</div>
+                            <div className="ml-1">({dayOfWeek})</div>
                         </div>
                     );
                 })}
@@ -215,7 +219,7 @@ const MonthlyCalendar = ({ schedule, staff, tasks, shiftPatterns, initialYear, i
 
             {/* データ行 */}
             <div className="flex">
-                <div className="sticky left-0 z-30 bg-slate-50 p-2 border-r border-slate-300 font-semibold text-xs text-center w-[100px] flex-shrink-0 flex items-center justify-center border-b border-slate-200">
+                <div className="sticky left-0 z-30 bg-slate-50 p-2 border-r border-slate-300 font-semibold text-xs text-center min-w-[100px] w-[100px] flex-shrink-0 flex items-center justify-center border-b border-slate-200 box-border">
                     {viewMode === 'active_shifts' ? '出勤者' : '休日者'}
                 </div>
                 
@@ -226,7 +230,8 @@ const MonthlyCalendar = ({ schedule, staff, tasks, shiftPatterns, initialYear, i
                     return (
                         <div 
                             key={dateKey} 
-                            className="border-r border-slate-200 min-w-[100px] p-1 valign-top bg-white hover:bg-slate-50 transition-colors border-b border-slate-200"
+                            // 幅をヘッダーと同じクラスで制御するか、同じスタイルを適用してズレを防ぐ
+                            className={`border-r border-slate-200 min-w-[${CELL_WIDTH}] w-[${CELL_WIDTH}] p-1 valign-top bg-white hover:bg-slate-50 transition-colors border-b border-slate-200 flex-shrink-0 box-border`}
                             onClick={() => handleDateClick(d, targetEvents)}
                         >
                             <div className="flex flex-col gap-1 max-h-[300px] overflow-y-auto scrollbar-thin">
@@ -250,7 +255,7 @@ const MonthlyCalendar = ({ schedule, staff, tasks, shiftPatterns, initialYear, i
                                                         onClick={(e) => handleDelete(e, ev)} 
                                                         className="absolute right-0.5 top-1/2 -translate-y-1/2 p-0.5 text-slate-400 hover:text-red-600 hover:bg-white rounded-full transition-all opacity-0 group-hover:opacity-100"
                                                     >
-                                                        <Trash2 size={12} />
+                                                        <Trash2 size={10} />
                                                     </button>
                                                 )}
                                             </div>
@@ -294,7 +299,7 @@ const MonthlyCalendar = ({ schedule, staff, tasks, shiftPatterns, initialYear, i
                                         <span className="text-xs text-slate-500">{ev.type}</span>
                                     </div>
                                     {isDeletable && (
-                                        <button onClick={(e) => handleDelete(e, ev)} className="text-slate-300 hover:text-red-500 transition-colors ml-2"><Trash2 size={16} /></button>
+                                        <button onClick={(e) => handleDelete(e, ev)} className="text-slate-300 hover:text-red-500 transition-colors ml-2"><Trash2 size={14} /></button>
                                     )}
                                 </div>
                             );
