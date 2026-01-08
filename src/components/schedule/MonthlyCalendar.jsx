@@ -61,8 +61,8 @@ const formatDate = (date) => {
 const MonthlyCalendar = ({ schedule, staff, tasks, shiftPatterns, initialYear, initialMonth, onUpdateSchedule, isAdmin, currentUser }) => {
   // 初期表示年月を設定
   const [currentDate, setCurrentDate] = useState(new Date(initialYear, initialMonth - 1, 1));
-  // 表示モードの状態: 'default' (個人出勤日), 'holidays' (個人休日), 'tasks' (業務表示)
-  const [viewMode, setViewMode] = useState('default');
+  // 表示モードの状態: 'all_shifts' (全シフト), 'active_shifts' (個人出勤日:全員の稼働), 'holidays' (個人休日), 'tasks' (業務表示)
+  const [viewMode, setViewMode] = useState('all_shifts');
   // 詳細表示用モーダルの状態
   const [selectedDateDetail, setSelectedDateDetail] = useState(null);
 
@@ -147,21 +147,17 @@ const MonthlyCalendar = ({ schedule, staff, tasks, shiftPatterns, initialYear, i
       if (!window.confirm(`${event.userName}さんの ${event.date} のシフトを削除しますか？`)) return;
       onUpdateSchedule(event.staffId, event.day, '', event.year, event.month);
       
-      // モーダルが開いている場合は、モーダル内のデータも更新する必要があるが、
-      // scheduleが更新されれば再レンダリングされるため、ここでは閉じるかそのままで良い。
-      // ただし、selectedDateDetail は state なので自動更新されない。
-      // シンプルにするため、削除後はモーダルを閉じるか、次回レンダリングで反映させる工夫が必要。
-      // ここでは強制的に閉じることで不整合を防ぐ。
       setSelectedDateDetail(null);
   };
 
   // 日付セルクリック時のハンドラ
-  const handleDateClick = (date, dayEvents, holidayStaff, taskSummary) => {
+  const handleDateClick = (date, dayEvents, holidayStaff, taskSummary, activeShifts) => {
       setSelectedDateDetail({
           date,
           dayEvents,
           holidayStaff,
-          taskSummary
+          taskSummary,
+          activeShifts
       });
   };
 
@@ -195,11 +191,21 @@ const MonthlyCalendar = ({ schedule, staff, tasks, shiftPatterns, initialYear, i
         </div>
 
         {/* 表示モード切り替えボタン */}
-        <div className="flex bg-slate-100 p-1 rounded-lg">
+        <div className="flex bg-slate-100 p-1 rounded-lg flex-wrap justify-center gap-1">
             <button
-                onClick={() => setViewMode('default')}
-                className={`px-4 py-1.5 rounded-md text-xs font-bold transition-all ${
-                    viewMode === 'default' 
+                onClick={() => setViewMode('all_shifts')}
+                className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all ${
+                    viewMode === 'all_shifts' 
+                    ? 'bg-white text-[#D9824D] shadow-sm' 
+                    : 'text-slate-500 hover:text-slate-700'
+                }`}
+            >
+                全シフト
+            </button>
+            <button
+                onClick={() => setViewMode('active_shifts')}
+                className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all ${
+                    viewMode === 'active_shifts' 
                     ? 'bg-white text-[#D9824D] shadow-sm' 
                     : 'text-slate-500 hover:text-slate-700'
                 }`}
@@ -208,7 +214,7 @@ const MonthlyCalendar = ({ schedule, staff, tasks, shiftPatterns, initialYear, i
             </button>
             <button
                 onClick={() => setViewMode('holidays')}
-                className={`px-4 py-1.5 rounded-md text-xs font-bold transition-all ${
+                className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all ${
                     viewMode === 'holidays' 
                     ? 'bg-white text-[#D9824D] shadow-sm' 
                     : 'text-slate-500 hover:text-slate-700'
@@ -218,7 +224,7 @@ const MonthlyCalendar = ({ schedule, staff, tasks, shiftPatterns, initialYear, i
             </button>
             <button
                 onClick={() => setViewMode('tasks')}
-                className={`px-4 py-1.5 rounded-md text-xs font-bold transition-all ${
+                className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all ${
                     viewMode === 'tasks' 
                     ? 'bg-white text-[#D9824D] shadow-sm' 
                     : 'text-slate-500 hover:text-slate-700'
@@ -251,13 +257,16 @@ const MonthlyCalendar = ({ schedule, staff, tasks, shiftPatterns, initialYear, i
             
             // --- モード別データ準備 ---
 
-            // 1. 個人出勤日モード用：自分のイベント
-            const myEvent = currentUser ? dayEvents.find(e => e.staffId === currentUser.id) : null;
+            // 1. 全シフトモード用
+            // dayEvents をそのまま使用
 
-            // 2. 個人休日モード用：休みの人リスト
+            // 2. 個人出勤日モード用: 全員の出勤イベントのみ（休みは除く）
+            const activeShifts = dayEvents.filter(e => !e.isHoliday && e.type !== '欠');
+
+            // 3. 個人休日モード用：休みの人リスト
             const holidayStaff = dayEvents.filter(e => e.isHoliday);
 
-            // 3. 業務表示モード用：業務ごとの担当者リスト
+            // 4. 業務表示モード用：業務ごとの担当者リスト
             // 出勤しているスタッフ（休みではない）
             const workingStaff = dayEvents.filter(e => !e.isHoliday && e.type !== '欠');
             
@@ -273,11 +282,14 @@ const MonthlyCalendar = ({ schedule, staff, tasks, shiftPatterns, initialYear, i
                 };
             }).filter(Boolean) : [];
 
+            // 日付セル内の自分のステータス表示用 (全モード共通)
+            const myStatusEvent = currentUser ? dayEvents.find(e => e.staffId === currentUser.id) : null;
+
             return (
               <div 
                 key={dateKey} 
                 className="bg-white min-h-[150px] p-1.5 flex flex-col gap-1 hover:bg-sky-50 transition-colors cursor-pointer group"
-                onClick={() => handleDateClick(d, dayEvents, holidayStaff, taskSummary)}
+                onClick={() => handleDateClick(d, dayEvents, holidayStaff, taskSummary, activeShifts)}
               >
                 {/* 日付ヘッダー */}
                 <div className="flex justify-between items-start mb-1 border-b border-slate-100 pb-1">
@@ -285,10 +297,10 @@ const MonthlyCalendar = ({ schedule, staff, tasks, shiftPatterns, initialYear, i
                     {d.getDate()}
                   </span>
                   
-                  {/* 個人出勤日モードのみ：自分のステータスを表示 */}
-                  {viewMode === 'default' && myEvent && (
-                      <div className={`px-2 py-0.5 rounded text-[10px] font-bold ${myEvent.isHoliday ? 'bg-slate-200 text-slate-600' : 'bg-green-100 text-green-700 border border-green-200'}`}>
-                          {myEvent.isHoliday ? '休' : myEvent.type}
+                  {/* 自分のステータスを表示 */}
+                  {myStatusEvent && (
+                      <div className={`px-2 py-0.5 rounded text-[10px] font-bold ${myStatusEvent.isHoliday ? 'bg-slate-200 text-slate-600' : 'bg-green-100 text-green-700 border border-green-200'}`}>
+                          {myStatusEvent.isHoliday ? '休' : myStatusEvent.type}
                       </div>
                   )}
                 </div>
@@ -296,8 +308,8 @@ const MonthlyCalendar = ({ schedule, staff, tasks, shiftPatterns, initialYear, i
                 <div className="flex flex-col gap-1 overflow-y-auto max-h-[110px] scrollbar-thin">
                     {/* --- モード別コンテンツ表示 (プレビュー) --- */}
 
-                    {/* 1. 個人出勤日モード: 全員のシフトリスト */}
-                    {viewMode === 'default' && dayEvents.map(ev => {
+                    {/* 1. 全シフトモード: 全員のシフトリスト */}
+                    {viewMode === 'all_shifts' && dayEvents.map(ev => {
                         const colors = getColorForName(ev.userName);
                         return (
                         <div 
@@ -317,7 +329,36 @@ const MonthlyCalendar = ({ schedule, staff, tasks, shiftPatterns, initialYear, i
                         );
                     })}
 
-                    {/* 2. 個人休日モード: 休みスタッフのみ表示 */}
+                    {/* 2. 個人出勤日モード: 全員の出勤のみ表示 (休みは非表示) */}
+                    {viewMode === 'active_shifts' && (
+                        activeShifts.length > 0 ? (
+                            activeShifts.map(ev => {
+                                const colors = getColorForName(ev.userName);
+                                return (
+                                    <div 
+                                        key={ev.id} 
+                                        className="flex justify-between items-center border-l-2 text-[9px] p-1 rounded shadow-sm bg-opacity-50 h-6"
+                                        style={{
+                                            backgroundColor: colors.bg,
+                                            borderColor: colors.border,
+                                            color: colors.text
+                                        }}
+                                    >
+                                        <div className="overflow-hidden pr-1 flex items-center gap-1 w-full">
+                                            <span className="font-bold truncate shrink-0 max-w-[60%]">{ev.userName}</span>
+                                            <span className="truncate opacity-80 text-[8px]">{ev.type}</span>
+                                        </div>
+                                    </div>
+                                );
+                            })
+                        ) : (
+                            <div className="text-[10px] text-slate-400 text-center py-2">
+                                出勤者なし
+                            </div>
+                        )
+                    )}
+
+                    {/* 3. 個人休日モード: 休みスタッフのみ表示 */}
                     {viewMode === 'holidays' && (
                         holidayStaff.length > 0 ? (
                             holidayStaff.map(ev => (
@@ -331,7 +372,7 @@ const MonthlyCalendar = ({ schedule, staff, tasks, shiftPatterns, initialYear, i
                         )
                     )}
 
-                    {/* 3. 業務表示モード: 業務ごとの集計表示 */}
+                    {/* 4. 業務表示モード: 業務ごとの集計表示 */}
                     {viewMode === 'tasks' && (
                         taskSummary.length > 0 ? (
                             taskSummary.map((t, idx) => (
@@ -369,7 +410,7 @@ const MonthlyCalendar = ({ schedule, staff, tasks, shiftPatterns, initialYear, i
                     </h3>
                     <div className="flex items-center gap-4">
                         <span className="px-3 py-1 bg-[#F4B896] text-white text-xs font-bold rounded-full">
-                            {viewMode === 'default' ? '個人出勤日' : viewMode === 'holidays' ? '個人休日' : '業務表示'}
+                            {viewMode === 'all_shifts' ? '全シフト' : viewMode === 'active_shifts' ? '個人出勤日' : viewMode === 'holidays' ? '個人休日' : '業務表示'}
                         </span>
                         <button onClick={() => setSelectedDateDetail(null)} className="text-slate-400 hover:text-slate-600 p-1 hover:bg-slate-200 rounded-full transition-colors">
                             <XIcon size={24} />
@@ -380,8 +421,8 @@ const MonthlyCalendar = ({ schedule, staff, tasks, shiftPatterns, initialYear, i
                 {/* Content */}
                 <div className="p-6 overflow-y-auto bg-slate-50/50 flex-grow">
                     
-                    {/* 1. 個人出勤日モード詳細: 複数列カード表示 */}
-                    {viewMode === 'default' && (
+                    {/* 1. 全シフトモード詳細: 複数列カード表示 */}
+                    {viewMode === 'all_shifts' && (
                         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
                             {selectedDateDetail.dayEvents.map(ev => {
                                 const colors = getColorForName(ev.userName);
@@ -416,7 +457,49 @@ const MonthlyCalendar = ({ schedule, staff, tasks, shiftPatterns, initialYear, i
                         </div>
                     )}
 
-                    {/* 2. 個人休日モード詳細: 複数列リスト表示 */}
+                    {/* 2. 個人出勤日モード詳細: 全員の稼働リスト表示 */}
+                    {viewMode === 'active_shifts' && (
+                        selectedDateDetail.activeShifts.length > 0 ? (
+                            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+                                {selectedDateDetail.activeShifts.map(ev => {
+                                    const colors = getColorForName(ev.userName);
+                                    const isDeletable = canDelete(ev);
+                                    return (
+                                        <div 
+                                            key={ev.id} 
+                                            className="relative flex flex-col p-3 rounded-lg shadow-sm border bg-white hover:shadow-md transition-shadow"
+                                            style={{ borderLeftWidth: '4px', borderLeftColor: colors.border }}
+                                        >
+                                            <div className="flex justify-between items-start mb-1">
+                                                <span className="font-bold text-sm text-slate-800 truncate pr-2">{ev.userName}</span>
+                                                {isDeletable && (
+                                                    <button 
+                                                        onClick={(e) => handleDelete(e, ev)} 
+                                                        className="text-slate-300 hover:text-red-500 transition-colors"
+                                                        title="削除"
+                                                    >
+                                                        <Trash2 size={16} />
+                                                    </button>
+                                                )}
+                                            </div>
+                                            <div 
+                                                className="text-xs font-semibold px-2 py-1 rounded w-fit mt-1"
+                                                style={{ backgroundColor: colors.bg, color: colors.text }}
+                                            >
+                                                {ev.type}
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        ) : (
+                            <div className="flex flex-col items-center justify-center h-40 text-slate-400 font-bold">
+                                <p>本日は出勤者はいません</p>
+                            </div>
+                        )
+                    )}
+
+                    {/* 3. 個人休日モード詳細: 複数列リスト表示 */}
                     {viewMode === 'holidays' && (
                         selectedDateDetail.holidayStaff.length > 0 ? (
                             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
@@ -434,7 +517,7 @@ const MonthlyCalendar = ({ schedule, staff, tasks, shiftPatterns, initialYear, i
                         )
                     )}
 
-                    {/* 3. 業務表示モード詳細: 業務ごとのブロック表示 */}
+                    {/* 4. 業務表示モード詳細: 業務ごとのブロック表示 */}
                     {viewMode === 'tasks' && (
                         selectedDateDetail.taskSummary.length > 0 ? (
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
