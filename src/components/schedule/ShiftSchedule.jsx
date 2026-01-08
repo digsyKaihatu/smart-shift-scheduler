@@ -79,12 +79,13 @@ const LockIcon = () => (
 // Sub-Components (EditableCells, ShiftPatternEditor)
 // -----------------------------------------------------------------------------
 
-const EditableCell = ({ value, onUpdate, borderClass, disabled = false, isAdmin = false }) => {
+const EditableCell = ({ value, onUpdate, borderClass, disabled = false, isAdmin = false, isToday = false }) => {
   const [mode, setMode] = useState('view');
   const [inputValue, setInputValue] = useState('');
   const [editingSpecialShift, setEditingSpecialShift] = useState(null);
   const cellRef = useRef(null);
   const inputRef = useRef(null);
+  const selectRef = useRef(null);
 
   const isLocked = typeof value === 'object' && value !== null && 'locked' in value && value.locked;
   const isEffectivelyDisabled = disabled || (isLocked && !isAdmin);
@@ -93,6 +94,9 @@ const EditableCell = ({ value, onUpdate, borderClass, disabled = false, isAdmin 
     if (mode === 'input' && inputRef.current) {
       inputRef.current.focus();
       inputRef.current.select();
+    }
+    if (mode === 'select' && selectRef.current) {
+        selectRef.current.focus();
     }
   }, [mode]);
 
@@ -169,6 +173,10 @@ const EditableCell = ({ value, onUpdate, borderClass, disabled = false, isAdmin 
 
   const getBackgroundColor = () => {
     const hoverClass = isEffectivelyDisabled ? '' : 'hover:bg-opacity-80';
+    
+    // 今日の場合は特別な背景色をベースにする（他のステータス色がある場合はそちらが優先されるが、未入力時はハイライト）
+    const todayClass = isToday && value === '' ? 'bg-yellow-50' : '';
+
     if (typeof value === 'number' && value > 0) return `bg-green-200 ${hoverClass}`;
     if (typeof value === 'object' && value !== null && 'type' in value) {
         switch (value.type) {
@@ -186,7 +194,8 @@ const EditableCell = ({ value, onUpdate, borderClass, disabled = false, isAdmin 
       case '通': return `bg-blue-200 ${hoverClass}`;
       case '休': return `bg-slate-300 ${hoverClass}`;
       case '欠': return `bg-red-200 ${hoverClass}`;
-      default: return `bg-white ${isEffectivelyDisabled ? '' : 'hover:bg-slate-50'}`;
+      // 値がない場合、今日ならハイライト、そうでなければ白
+      default: return `${todayClass || 'bg-white'} ${isEffectivelyDisabled ? '' : 'hover:bg-slate-50'}`;
     }
   };
   
@@ -195,7 +204,9 @@ const EditableCell = ({ value, onUpdate, borderClass, disabled = false, isAdmin 
       setMode('select');
   }
   
-  const baseClasses = `border-b border-r ${borderClass} text-center text-xs h-9 flex items-center justify-center w-[6em] min-w-[6em] max-w-[6em]`;
+  // 今日の場合は枠線を強調
+  const todayBorderClass = isToday ? 'ring-1 ring-inset ring-yellow-300 z-10' : '';
+  const baseClasses = `border-b border-r ${borderClass} text-center text-xs h-9 flex items-center justify-center w-[6em] min-w-[6em] max-w-[6em] ${todayBorderClass}`;
 
   if (mode === 'view') {
     return (
@@ -211,15 +222,15 @@ const EditableCell = ({ value, onUpdate, borderClass, disabled = false, isAdmin 
     const specialShiftOptions = ['遅', '早', '午前有', '午後有', '午前休', '午後休', '午前通', '午後通'];
     const TIME_INPUT_OPTION = '稼働時間入力';
     return (
-         <div ref={cellRef} className={`${baseClasses} bg-white`}>
+         <div ref={cellRef} className={`${baseClasses} bg-white relative`}>
             <select
+                ref={selectRef}
                 onChange={handleSelectChange}
-                autoFocus
                 onBlur={() => setMode('view')}
-                className="w-full h-full bg-transparent text-center outline-none focus:outline-sky-500 focus:-outline-offset-2 text-xs appearance-none"
+                className="absolute inset-0 w-full h-full opacity-100 bg-transparent text-center text-xs cursor-pointer appearance-none focus:outline-none focus:ring-2 focus:ring-sky-500"
                 defaultValue=""
             >
-                <option value="" disabled>選択...</option>
+                <option value="" disabled hidden>選択...</option>
                 <option value={TIME_INPUT_OPTION}>{TIME_INPUT_OPTION}</option>
                 <optgroup label="ステータス">
                     {statusOptions.map(opt => <option key={opt} value={opt}>{opt}</option>)}
@@ -425,6 +436,7 @@ const ShiftSchedule = ({
     onSetDayAsHolidayForAll 
 }) => {
   const staffInfoWidth = "60px 100px 120px 150px 60px 60px 60px 40px";
+  const scrollContainerRef = useRef(null);
   
   const patternSummary = (staffMember) => {
       return summarizePattern(staffMember.defaultShift.pattern, shiftPatterns);
@@ -439,8 +451,12 @@ const ShiftSchedule = ({
       });
   }, [staff]);
 
-  const getDayHeaderClass = (dayOfWeek, isHoliday) => {
+  const getDayHeaderClass = (dayOfWeek, isHoliday, isToday) => {
       let baseClasses = "sticky top-0 z-10 p-2 text-xs font-semibold text-center border-b-2 border-r whitespace-nowrap";
+      if (isToday) {
+          // 今日のヘッダーハイライト
+          return `${baseClasses} bg-yellow-100 text-yellow-900 border-yellow-300 ring-2 ring-yellow-300 ring-inset`;
+      }
       if (dayOfWeek === '土') {
           return `${baseClasses} bg-sky-100 text-sky-800 border-sky-200`;
       }
@@ -458,8 +474,36 @@ const ShiftSchedule = ({
 
   const stickyHeaderCellClass = "sticky top-0 z-30 bg-slate-200 p-2 border-b-2 border-r border-slate-300 font-semibold text-xs text-center";
 
+  // スクロール処理: マウント時/月変更時に今日の日付へ
+  useEffect(() => {
+    if (!scrollContainerRef.current) return;
+
+    const today = new Date();
+    // 日付フォーマット: D (数値) または D (文字列) 
+    // days配列は { day: 1, ... } なので、今日の日にちを取得
+    const currentDay = today.getDate();
+    
+    // 表示中の年月が今日を含んでいるか
+    const isCurrentMonth = today.getFullYear() === year && (today.getMonth() + 1) === month;
+
+    if (isCurrentMonth) {
+        setTimeout(() => {
+            const todayElement = scrollContainerRef.current.querySelector(`[data-day="${currentDay}"]`);
+            if (todayElement) {
+                todayElement.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+            }
+        }, 100);
+    } else {
+        scrollContainerRef.current.scrollLeft = 0;
+    }
+  }, [year, month]);
+
   return (
-    <div className="overflow-x-auto bg-white rounded-lg shadow-md ring-1 ring-black ring-opacity-5" style={{maxHeight: '70vh'}}>
+    <div 
+        ref={scrollContainerRef}
+        className="overflow-x-auto bg-white rounded-lg shadow-md ring-1 ring-black ring-opacity-5" 
+        style={{maxHeight: '70vh'}}
+    >
       <div className="min-w-max">
         <div className="grid" style={{ gridTemplateColumns: `${staffInfoWidth} repeat(${days.length}, minmax(70px, 1fr))`}}>
           
@@ -475,14 +519,18 @@ const ShiftSchedule = ({
 
           {days.map(({ day, dayOfWeek }) => {
             const isHoliday = holidays.includes(day);
-            const dayHeaderClasses = getDayHeaderClass(dayOfWeek, isHoliday);
+            // 今日判定
+            const today = new Date();
+            const isToday = today.getFullYear() === year && (today.getMonth() + 1) === month && today.getDate() === day;
+            
+            const dayHeaderClasses = getDayHeaderClass(dayOfWeek, isHoliday, isToday);
             const isDayFullyLocked = staff.length > 0 && staff.every(s => {
                 const entry = schedule[s.id]?.[day];
                 return typeof entry === 'object' && entry !== null && 'type' in entry && entry.type === '休' && 'locked' in entry && entry.locked;
             });
             
             return (
-                <div key={day} className={dayHeaderClasses}>
+                <div key={day} className={dayHeaderClasses} data-day={day}>
                   <div>{day}</div>
                   <div>{dayOfWeek}</div>
                   {isAdmin && (
@@ -564,6 +612,10 @@ const ShiftSchedule = ({
 
                 {days.map(({ day, dayOfWeek }) => {
                   const isHoliday = holidays.includes(day);
+                  // 今日判定
+                  const today = new Date();
+                  const isToday = today.getFullYear() === year && (today.getMonth() + 1) === month && today.getDate() === day;
+
                   return (
                       <EditableCell 
                         key={`${staffMember.id}-${day}`}
@@ -572,6 +624,7 @@ const ShiftSchedule = ({
                         borderClass={`${getCellBorderClass(dayOfWeek, isHoliday)}`}
                         disabled={!isEditable}
                         isAdmin={isAdmin}
+                        isToday={isToday}
                       />
                   )
                 })}
