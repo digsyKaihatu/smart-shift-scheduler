@@ -23,6 +23,13 @@ const Trash2 = ({ size = 24 }) => (
   </svg>
 );
 
+const XIcon = ({ size = 24 }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <line x1="18" y1="6" x2="6" y2="18"></line>
+    <line x1="6" y1="6" x2="18" y2="18"></line>
+  </svg>
+);
+
 // 名前から色を生成するヘルパー関数
 const getColorForName = (name) => {
   const colors = [
@@ -56,6 +63,8 @@ const MonthlyCalendar = ({ schedule, staff, tasks, shiftPatterns, initialYear, i
   const [currentDate, setCurrentDate] = useState(new Date(initialYear, initialMonth - 1, 1));
   // 表示モードの状態: 'default' (個人出勤日), 'holidays' (個人休日), 'tasks' (業務表示)
   const [viewMode, setViewMode] = useState('default');
+  // 詳細表示用モーダルの状態
+  const [selectedDateDetail, setSelectedDateDetail] = useState(null);
 
   // 表示月の日付配列を生成
   const daysInMonth = useMemo(() => {
@@ -137,12 +146,31 @@ const MonthlyCalendar = ({ schedule, staff, tasks, shiftPatterns, initialYear, i
       e.stopPropagation();
       if (!window.confirm(`${event.userName}さんの ${event.date} のシフトを削除しますか？`)) return;
       onUpdateSchedule(event.staffId, event.day, '', event.year, event.month);
+      
+      // モーダルが開いている場合は、モーダル内のデータも更新する必要があるが、
+      // scheduleが更新されれば再レンダリングされるため、ここでは閉じるかそのままで良い。
+      // ただし、selectedDateDetail は state なので自動更新されない。
+      // シンプルにするため、削除後はモーダルを閉じるか、次回レンダリングで反映させる工夫が必要。
+      // ここでは強制的に閉じることで不整合を防ぐ。
+      setSelectedDateDetail(null);
+  };
+
+  // 日付セルクリック時のハンドラ
+  const handleDateClick = (date, dayEvents, holidayStaff, taskSummary) => {
+      setSelectedDateDetail({
+          date,
+          dayEvents,
+          holidayStaff,
+          taskSummary
+      });
   };
 
   // 編集権限のチェック
   const canDelete = (event) => {
       return isAdmin || (currentUser && currentUser.id === event.staffId);
   };
+
+  const getDayOfWeekStr = (date) => ['日', '月', '火', '水', '木', '金', '土'][date.getDay()];
 
   return (
     <div className="mt-8">
@@ -246,10 +274,14 @@ const MonthlyCalendar = ({ schedule, staff, tasks, shiftPatterns, initialYear, i
             }).filter(Boolean) : [];
 
             return (
-              <div key={dateKey} className="bg-white min-h-[150px] p-1.5 flex flex-col gap-1 hover:bg-slate-50 transition-colors">
+              <div 
+                key={dateKey} 
+                className="bg-white min-h-[150px] p-1.5 flex flex-col gap-1 hover:bg-sky-50 transition-colors cursor-pointer group"
+                onClick={() => handleDateClick(d, dayEvents, holidayStaff, taskSummary)}
+              >
                 {/* 日付ヘッダー */}
                 <div className="flex justify-between items-start mb-1 border-b border-slate-100 pb-1">
-                  <span className={`text-xs w-6 h-6 flex items-center justify-center rounded-full font-bold ${isToday ? 'bg-[#F4B896] text-white' : 'text-slate-700'}`}>
+                  <span className={`text-xs w-6 h-6 flex items-center justify-center rounded-full font-bold ${isToday ? 'bg-[#F4B896] text-white' : 'text-slate-700 group-hover:bg-sky-200 group-hover:text-sky-800 transition-colors'}`}>
                     {d.getDate()}
                   </span>
                   
@@ -262,36 +294,25 @@ const MonthlyCalendar = ({ schedule, staff, tasks, shiftPatterns, initialYear, i
                 </div>
 
                 <div className="flex flex-col gap-1 overflow-y-auto max-h-[110px] scrollbar-thin">
-                    {/* --- モード別コンテンツ表示 --- */}
+                    {/* --- モード別コンテンツ表示 (プレビュー) --- */}
 
-                    {/* 1. 個人出勤日モード: 全員のシフトリスト（従来通り） */}
+                    {/* 1. 個人出勤日モード: 全員のシフトリスト */}
                     {viewMode === 'default' && dayEvents.map(ev => {
                         const colors = getColorForName(ev.userName);
-                        const isDeletable = canDelete(ev);
                         return (
                         <div 
                             key={ev.id} 
-                            className="group relative flex justify-between items-center border-l-2 text-[9px] p-1 rounded shadow-sm cursor-default bg-opacity-50 h-6"
+                            className="flex justify-between items-center border-l-2 text-[9px] p-1 rounded shadow-sm bg-opacity-50 h-6"
                             style={{
                             backgroundColor: colors.bg,
                             borderColor: colors.border,
                             color: colors.text
                             }}
                         >
-                            <div className="overflow-hidden pr-3 flex items-center gap-1 w-full">
+                            <div className="overflow-hidden pr-1 flex items-center gap-1 w-full">
                                 <span className="font-bold truncate shrink-0 max-w-[60%]">{ev.userName}</span>
                                 <span className="truncate opacity-80 text-[8px]">{ev.type}</span>
                             </div>
-                            
-                            {isDeletable && (
-                                <button 
-                                onClick={(e) => handleDelete(e, ev)} 
-                                className="absolute right-0 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-red-600 hover:bg-white rounded-full transition-all opacity-0 group-hover:opacity-100"
-                                title="削除"
-                                >
-                                <Trash2 size={10} />
-                                </button>
-                            )}
                         </div>
                         );
                     })}
@@ -319,7 +340,7 @@ const MonthlyCalendar = ({ schedule, staff, tasks, shiftPatterns, initialYear, i
                                         <span className="text-[10px] font-bold text-sky-800 truncate">{t.name}</span>
                                         <span className="text-[10px] font-bold text-white bg-sky-400 px-1.5 rounded-full">{t.count}名</span>
                                     </div>
-                                    <div className="text-[9px] text-sky-600 leading-tight">
+                                    <div className="text-[9px] text-sky-600 leading-tight truncate">
                                         {t.members.join(' ')}
                                     </div>
                                 </div>
@@ -334,6 +355,123 @@ const MonthlyCalendar = ({ schedule, staff, tasks, shiftPatterns, initialYear, i
           })}
         </div>
       </div>
+
+      {/* --- 詳細表示モーダル --- */}
+      {selectedDateDetail && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-60 backdrop-blur-sm p-4" onClick={() => setSelectedDateDetail(null)}>
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-5xl max-h-[90vh] flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
+                {/* Header */}
+                <div className="px-6 py-4 border-b flex justify-between items-center bg-slate-50">
+                    <h3 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+                        <span className="text-2xl text-[#D9824D]">{selectedDateDetail.date.getDate()}</span>
+                        <span className="text-sm text-slate-500">{getDayOfWeekStr(selectedDateDetail.date)}曜日</span>
+                        <span className="text-lg ml-2">{selectedDateDetail.date.getFullYear()}年{selectedDateDetail.date.getMonth() + 1}月</span>
+                    </h3>
+                    <div className="flex items-center gap-4">
+                        <span className="px-3 py-1 bg-[#F4B896] text-white text-xs font-bold rounded-full">
+                            {viewMode === 'default' ? '個人出勤日' : viewMode === 'holidays' ? '個人休日' : '業務表示'}
+                        </span>
+                        <button onClick={() => setSelectedDateDetail(null)} className="text-slate-400 hover:text-slate-600 p-1 hover:bg-slate-200 rounded-full transition-colors">
+                            <XIcon size={24} />
+                        </button>
+                    </div>
+                </div>
+                
+                {/* Content */}
+                <div className="p-6 overflow-y-auto bg-slate-50/50 flex-grow">
+                    
+                    {/* 1. 個人出勤日モード詳細: 複数列カード表示 */}
+                    {viewMode === 'default' && (
+                        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+                            {selectedDateDetail.dayEvents.map(ev => {
+                                const colors = getColorForName(ev.userName);
+                                const isDeletable = canDelete(ev);
+                                return (
+                                    <div 
+                                        key={ev.id} 
+                                        className="relative flex flex-col p-3 rounded-lg shadow-sm border bg-white hover:shadow-md transition-shadow"
+                                        style={{ borderLeftWidth: '4px', borderLeftColor: colors.border }}
+                                    >
+                                        <div className="flex justify-between items-start mb-1">
+                                            <span className="font-bold text-sm text-slate-800 truncate pr-2">{ev.userName}</span>
+                                            {isDeletable && (
+                                                <button 
+                                                    onClick={(e) => handleDelete(e, ev)} 
+                                                    className="text-slate-300 hover:text-red-500 transition-colors"
+                                                    title="削除"
+                                                >
+                                                    <Trash2 size={16} />
+                                                </button>
+                                            )}
+                                        </div>
+                                        <div 
+                                            className="text-xs font-semibold px-2 py-1 rounded w-fit mt-1"
+                                            style={{ backgroundColor: colors.bg, color: colors.text }}
+                                        >
+                                            {ev.type}
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
+
+                    {/* 2. 個人休日モード詳細: 複数列リスト表示 */}
+                    {viewMode === 'holidays' && (
+                        selectedDateDetail.holidayStaff.length > 0 ? (
+                            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                                {selectedDateDetail.holidayStaff.map(ev => (
+                                    <div key={ev.id} className="flex items-center justify-between bg-white px-4 py-3 rounded-lg border border-slate-200 shadow-sm">
+                                        <span className="text-sm text-slate-700 font-bold truncate">{ev.userName}</span>
+                                        <span className="text-xs font-semibold text-slate-500 bg-slate-100 px-2 py-1 rounded">{ev.type}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        ) : (
+                            <div className="flex items-center justify-center h-40 text-slate-400 font-bold">
+                                休日者はいません
+                            </div>
+                        )
+                    )}
+
+                    {/* 3. 業務表示モード詳細: 業務ごとのブロック表示 */}
+                    {viewMode === 'tasks' && (
+                        selectedDateDetail.taskSummary.length > 0 ? (
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                {selectedDateDetail.taskSummary.map((t, idx) => (
+                                    <div key={idx} className="bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden flex flex-col">
+                                        <div className="bg-sky-50 px-4 py-3 border-b border-sky-100 flex justify-between items-center">
+                                            <h4 className="font-bold text-sky-800 text-sm">{t.name}</h4>
+                                            <span className="bg-sky-500 text-white text-xs font-bold px-2 py-0.5 rounded-full">{t.count}名</span>
+                                        </div>
+                                        <div className="p-4 flex flex-wrap gap-2">
+                                            {t.members.map((member, mIdx) => (
+                                                <span key={mIdx} className="text-xs font-medium text-slate-600 bg-slate-100 px-2 py-1 rounded border border-slate-200">
+                                                    {member}
+                                                </span>
+                                            ))}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        ) : (
+                            <div className="flex items-center justify-center h-40 text-slate-400 font-bold">
+                                業務稼働はありません
+                            </div>
+                        )
+                    )}
+                </div>
+                <div className="p-4 bg-slate-50 border-t flex justify-end">
+                    <button 
+                        onClick={() => setSelectedDateDetail(null)}
+                        className="px-6 py-2 bg-slate-800 text-white text-sm font-bold rounded hover:bg-slate-700 transition-colors"
+                    >
+                        閉じる
+                    </button>
+                </div>
+            </div>
+        </div>
+      )}
     </div>
   );
 };
