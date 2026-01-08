@@ -211,8 +211,8 @@ const TaskShortageDisplay = ({
     return (
         <div className="bg-white rounded-lg shadow-md ring-1 ring-black ring-opacity-5 p-4">
             <h2 className="text-lg font-bold text-slate-800 mb-3">業務一覧</h2>
-            {/* スクロール制限（overflow-auto, maxHeight）を削除しました */}
-            <div>
+            {/* 横スクロールを有効にするラッパー */}
+            <div className="overflow-x-auto">
                  <div className="min-w-max">
                     <div className="grid" style={{ gridTemplateColumns: `${staffInfoWidth} repeat(${days.length}, minmax(70px, 1fr))`}}>
                         
