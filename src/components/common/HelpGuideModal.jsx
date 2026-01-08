@@ -23,7 +23,19 @@ const HelpGuideModal = ({ onClose }) => {
 
         <main className="p-6 overflow-y-auto space-y-6">
           <GuideSection title="1. シフトの入力・編集">
-            <p>・シフト表の各セルをクリックすると、メニューが表示されます。</p>
+            <div className="flex items-start gap-4">
+                <div className="flex-1">
+                    <p>・シフト表の各セルをクリックすると、メニューが表示されます。</p>
+                </div>
+                <div className="w-1/3 border border-slate-200 rounded-md overflow-hidden shadow-sm flex-shrink-0">
+                    <img src="/スマシフガイド1.png" alt="シフト入力の例" className="w-full h-auto object-contain bg-slate-100" />
+                </div>
+            </div>
+            
+            {/* 修正: 不正な構文を削除し、適切な画像タグに置き換え */}
+            <div className="my-2 border border-slate-200 rounded-md overflow-hidden shadow-sm">
+                <img src="/スマシフガイド2.png" alt="シフト入力の例" className="w-full h-auto object-contain bg-slate-100" />
+            </div>
             <p>・「稼働時間入力」を選択すると、数値を直接入力できます。（例: 8, 7.5）</p>
             <p>・「有」「休」「通」などのステータスも選択できます。</p>
             <p>・<span className="font-bold text-green-600">変更は自動的に保存されます。</span>手動で保存ボタンを押す必要はありません。</p>
