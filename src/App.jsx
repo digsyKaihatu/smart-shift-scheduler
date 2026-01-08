@@ -17,6 +17,7 @@ import HelpGuideModal from './components/common/HelpGuideModal';
 import { ConfirmationModal, ConfirmDeleteModal } from './components/common/Modal';
 import Legend from './components/schedule/Legend';
 import ShiftSchedule from './components/schedule/ShiftSchedule';
+import MonthlyCalendar from './components/schedule/MonthlyCalendar'; // 追加
 import ShiftPatternDisplay from './components/schedule/ShiftPatternDisplay';
 import ShiftApprovalModal from './components/schedule/ShiftApprovalModal';
 import TaskShortageDisplay from './components/tasks/TaskShortageDisplay';
@@ -119,7 +120,6 @@ const MainContent = () => {
   }, [adminConfig]);
 
   // 管理者判定: Firebaseの設定に含まれるメールアドレスかどうか
-  // (手動ログイン機能は削除されました)
   const isAdmin = 
     currentUser?.id === 'admin' || 
     (currentUser?.email && firebaseAdminEmails.includes(currentUser.email));
@@ -164,29 +164,33 @@ const MainContent = () => {
   }, [schedule, year, month, staff, tasks, daysInMonth, initialDataLoaded]);
 
   // --- ハンドラー ---
-  const updateScheduleState = (staffId, day, value) => {
-    setSchedule(prev => {
-      const newMonth = { ...(prev[key] || {}) };
-      const newStaff = { ...(newMonth[staffId] || {}) };
-      newStaff[day] = value;
-      newMonth[staffId] = newStaff;
-      return { ...prev, [key]: newMonth };
-    });
+
+  // 年月を指定して更新する汎用関数
+  const handleUpdateScheduleGeneric = (targetYear, targetMonth, staffId, day, value) => {
+      const targetKey = `${targetYear}-${targetMonth}`;
+      setSchedule(prev => {
+          const newMonth = { ...(prev[targetKey] || {}) };
+          const newStaff = { ...(newMonth[staffId] || {}) };
+          newStaff[day] = value;
+          newMonth[staffId] = newStaff;
+          return { ...prev, [targetKey]: newMonth };
+      });
   };
 
+  // 現在表示中の年月で更新する関数（ShiftSchedule用）
   const handleUpdateSchedule = (staffId, day, value) => {
+    handleUpdateScheduleGeneric(year, month, staffId, day, value);
+
     if (isAdmin && value === '欠') {
       const target = staff.find(s => s.id === staffId);
       setAbsenceNotificationConfirmation({ staffMember: target, day, value });
-    } else {
-      updateScheduleState(staffId, day, value);
     }
   };
 
   const handleAbsenceNotificationResponse = async (send) => {
     if (!absenceNotificationConfirmation) return;
     const { staffMember, day, value } = absenceNotificationConfirmation;
-    updateScheduleState(staffMember.id, day, value);
+    handleUpdateSchedule(staffMember.id, day, value);
     if (send) {
       setIsLoading(true);
       try { await chatService.sendAbsence(staffMember.name); } catch (e) { alert(e.message); }
@@ -492,7 +496,6 @@ const MainContent = () => {
              </div>
              <button onClick={() => setIsHelpOpen(true)} className="px-3 py-1.5 bg-white/20 rounded hover:bg-white/30 text-sm font-bold">ガイド</button>
              <Legend />
-             {/* ログアウトボタンを削除しました */}
           </div>
         </header>
 
@@ -517,6 +520,23 @@ const MainContent = () => {
             onUpdateTaskStaff={handleUpdateSingleTaskStaff} 
           />
 
+          {/* 新規追加: マンスリーカレンダー */}
+          <MonthlyCalendar
+            schedule={schedule}
+            staff={staff}
+            shiftPatterns={shiftPatterns}
+            initialYear={year}
+            initialMonth={month}
+            onUpdateSchedule={(staffId, day, value, targetYear, targetMonth) => {
+                 // カレンダー側から受け取った年月に基づいて更新
+                 const y = targetYear || year;
+                 const m = targetMonth || month;
+                 handleUpdateScheduleGeneric(y, m, staffId, day, value);
+            }}
+            isAdmin={isAdmin}
+            currentUser={currentUser}
+          />
+
           <div className="mt-4 flex flex-wrap gap-4 items-center">
             {isAdmin && (
               <>
@@ -528,8 +548,6 @@ const MainContent = () => {
               </>
             )}
             <button onClick={handleExportCSV} className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700">CSV出力</button>
-            
-            {/* 管理者としてログインボタンは削除されました */}
           </div>
         </main>
 
