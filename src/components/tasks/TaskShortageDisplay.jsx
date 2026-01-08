@@ -1,15 +1,14 @@
 import React from 'react';
-import { DeleteIcon } from '../common/Icons';
-import { EditableTaskName } from '../common/EditableCells';
-import TaskStaffSelector from './TaskStaffSelector';
+import { DeleteIcon } from '../common/Icons.jsx';
+import { EditableTaskName } from '../common/EditableCells.jsx';
+import TaskStaffSelector from './TaskStaffSelector.jsx';
 
 const TaskShortageDisplay = ({
-    currentUser, isAdmin, // ★変更: isAdminを受け取るように修正
+    currentUser, isAdmin, 
     tasks, staff, days, holidays, taskCountsByDay, 
     onUpdateTask, onDeleteTask, onUpdateTaskStaff, onUpdateTaskPersonnel
 }) => {
     const staffInfoWidth = "280px"; 
-    // ★削除: const isAdmin = currentUser.id === 'admin'; 
     
     const getDayHeaderClass = (dayOfWeek, isHoliday) => {
         let baseClasses = "sticky top-0 z-30 p-2 text-xs font-semibold text-center border-b-2 border-r whitespace-nowrap";
@@ -33,7 +32,8 @@ const TaskShortageDisplay = ({
     return (
         <div className="bg-white rounded-lg shadow-md ring-1 ring-black ring-opacity-5 p-4">
             <h2 className="text-lg font-bold text-slate-800 mb-3">業務一覧</h2>
-            <div className="overflow-auto" style={{maxHeight: '50vh'}}>
+            {/* スクロール制限（overflow-auto, maxHeight）を削除しました */}
+            <div>
                  <div className="min-w-max">
                     <div className="grid" style={{ gridTemplateColumns: `${staffInfoWidth} repeat(${days.length}, minmax(70px, 1fr))`}}>
                         
