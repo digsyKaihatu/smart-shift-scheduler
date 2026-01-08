@@ -524,11 +524,11 @@ const MainContent = () => {
           <MonthlyCalendar
             schedule={schedule}
             staff={staff}
+            tasks={tasks}
             shiftPatterns={shiftPatterns}
             initialYear={year}
             initialMonth={month}
             onUpdateSchedule={(staffId, day, value, targetYear, targetMonth) => {
-                 // カレンダー側から受け取った年月に基づいて更新
                  const y = targetYear || year;
                  const m = targetMonth || month;
                  handleUpdateScheduleGeneric(y, m, staffId, day, value);
