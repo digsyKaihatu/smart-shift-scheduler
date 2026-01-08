@@ -76,16 +76,18 @@ const MonthlyCalendar = ({ schedule, staff, tasks, shiftPatterns, initialYear, i
     return days;
   }, [currentDate]);
 
-  // 初期表示時および月変更時に今日の日付へスクロール
+  // 初期表示時および月変更時にスクロール位置を調整
   useEffect(() => {
     if (!scrollContainerRef.current) return;
 
     const today = new Date();
     const todayStr = formatDate(today);
     
+    // 表示中の月に今日が含まれているか確認
     const isCurrentMonth = today.getFullYear() === currentDate.getFullYear() && today.getMonth() === currentDate.getMonth();
 
     if (isCurrentMonth) {
+        // 今日が含まれる場合：今日の日付へスクロール
         // DOMレンダリング待ちのために少し遅延
         setTimeout(() => {
             const todayElement = scrollContainerRef.current.querySelector(`[data-date="${todayStr}"]`);
@@ -94,7 +96,7 @@ const MonthlyCalendar = ({ schedule, staff, tasks, shiftPatterns, initialYear, i
             }
         }, 100);
     } else {
-        // その他の月は先頭へ
+        // 含まれない場合：先頭へスクロール
         scrollContainerRef.current.scrollLeft = 0;
     }
   }, [currentDate]);
@@ -250,7 +252,7 @@ const MonthlyCalendar = ({ schedule, staff, tasks, shiftPatterns, initialYear, i
                     return (
                         <div 
                             key={d.toISOString()} 
-                            data-date={dateKey}
+                            data-date={dateKey} // スクロールターゲット用の属性
                             className={getDayHeaderClass(dayOfWeek, isWeekend, isToday)}
                         >
                             <div>{d.getDate()}</div>
