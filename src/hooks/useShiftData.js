@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { 
   doc, getDoc, setDoc, 
   collection, getDocs, writeBatch, 
@@ -13,6 +13,7 @@ export const useShiftData = () => {
   const [loadingMessage, setLoadingMessage] = useState("データベースに接続しています...");
   const [saveStatus, setSaveStatus] = useState('saved');
   const [initialDataLoaded, setInitialDataLoaded] = useState(false);
+  const [loadError, setLoadError] = useState(null); // エラー状態を追加
 
   // Main State
   const [staff, setStaff] = useState([]);
@@ -24,77 +25,87 @@ export const useShiftData = () => {
   const debouncedSave = useRef(null);
   const isInitialDataSync = useRef(true);
 
-  // 1. Load Data with Aggregation Query
-  useEffect(() => {
-    const loadData = async () => {
-      try {
-        setLoadingMessage("データの存在を確認中...");
+  // データ読み込み処理を関数化して再利用可能にする
+  const loadData = useCallback(async () => {
+    setIsLoading(true);
+    setLoadError(null);
+    try {
+      setLoadingMessage("データの存在を確認中...");
+      
+      // 【修正ポイント】
+      // staffコレクションではなく、patternsコレクションでデータの存在を確認します。
+      // 初期スタッフデータ(initialStaffData)が空の場合、staffコレクションは0件のままとなり、
+      // 毎回「初期化が必要」と判定されてしまう無限ループを防ぐためです。
+      // patternsはinitialShiftPatternsで必ずデータが入るため、判定に適しています。
+      const patternsColl = collection(db, 'patterns');
+      const snapshot = await getCountFromServer(patternsColl);
+      
+      const count = snapshot.data().count;
+      console.log(`Current patterns count: ${count}`);
+
+      if (count > 0) {
+        setLoadingMessage("データを読み込んでいます...");
         
-        // 【集約クエリの使用】
-        // スタッフコレクションのドキュメント数をカウントすることで、初期化が必要か判断します。
-        // これにより、データが存在しない場合に無駄な読み取り（getDocs）を行う通信コストを削減できます。
-        const staffColl = collection(db, 'staff');
-        const snapshot = await getCountFromServer(staffColl);
-        
-        // 修正: countは関数ではなくプロパティです
-        const count = snapshot.data().count;
+        // コレクションからデータを並列で取得
+        const [staffSnap, tasksSnap, patternsSnap, configSnap, schedulesSnap] = await Promise.all([
+          getDocs(collection(db, 'staff')),
+          getDocs(collection(db, 'tasks')),
+          getDocs(collection(db, 'patterns')),
+          getDocs(collection(db, 'config')),
+          getDocs(collection(db, 'schedules'))
+        ]);
 
-        if (count > 0) {
-          setLoadingMessage("データを読み込んでいます...");
-          
-          // コレクションからデータを並列で取得
-          const [staffSnap, tasksSnap, patternsSnap, configSnap, schedulesSnap] = await Promise.all([
-            getDocs(collection(db, 'staff')),
-            getDocs(collection(db, 'tasks')),
-            getDocs(collection(db, 'patterns')),
-            getDocs(collection(db, 'config')),
-            getDocs(collection(db, 'schedules'))
-          ]);
+        // Staff
+        const loadedStaff = staffSnap.docs.map(d => d.data());
+        setStaff(loadedStaff); // 空の場合は空配列のままセット
 
-          // Staff
-          const loadedStaff = staffSnap.docs.map(d => d.data());
-          setStaff(loadedStaff.length > 0 ? loadedStaff : initialStaffData);
+        // Tasks
+        const loadedTasks = tasksSnap.docs.map(d => d.data());
+        setTasks(loadedTasks.length > 0 ? loadedTasks : initialTasks);
 
-          // Tasks
-          const loadedTasks = tasksSnap.docs.map(d => d.data());
-          setTasks(loadedTasks.length > 0 ? loadedTasks : initialTasks);
+        // Patterns
+        const loadedPatterns = patternsSnap.docs.map(d => d.data());
+        setShiftPatterns(loadedPatterns.length > 0 ? loadedPatterns : initialShiftPatterns);
 
-          // Patterns
-          const loadedPatterns = patternsSnap.docs.map(d => d.data());
-          setShiftPatterns(loadedPatterns.length > 0 ? loadedPatterns : initialShiftPatterns);
-
-          // Config
-          if (!configSnap.empty) {
-            setAdminConfig(configSnap.docs[0].data());
-          }
-
-          // Schedules (Docs are stored by "YYYY-MM")
-          const loadedSchedule = {};
-          schedulesSnap.docs.forEach(d => {
-            loadedSchedule[d.id] = d.data();
-          });
-          // データが空なら初期データを生成
-          if (Object.keys(loadedSchedule).length === 0) {
-             setSchedule(generateInitialSchedule(initialStaffData, initialShiftPatterns));
-          } else {
-             setSchedule(loadedSchedule);
-          }
-
-        } else {
-          setLoadingMessage("初回セットアップを実行中...");
-          // 初期データの書き込み
-          await initializeDatabase();
+        // Config
+        if (!configSnap.empty) {
+          setAdminConfig(configSnap.docs[0].data());
         }
-      } catch (error) {
-        console.error("Firebase Load Error:", error);
-        setLoadingMessage(`エラー: ${error.message}`);
-        return;
+
+        // Schedules (Docs are stored by "YYYY-MM")
+        const loadedSchedule = {};
+        schedulesSnap.docs.forEach(d => {
+          loadedSchedule[d.id] = d.data();
+        });
+        
+        // データが空なら初期データを生成
+        if (Object.keys(loadedSchedule).length === 0) {
+           setSchedule(generateInitialSchedule(initialStaffData, initialShiftPatterns));
+        } else {
+           setSchedule(loadedSchedule);
+        }
+
+      } else {
+        setLoadingMessage("初回セットアップを実行中...");
+        console.log("Initializing database with default data...");
+        // 初期データの書き込み
+        await initializeDatabase();
+        console.log("Database initialization complete.");
       }
       setInitialDataLoaded(true);
+    } catch (error) {
+      console.error("Firebase Load Error:", error);
+      setLoadError(error); // エラーを状態に保存
+      setLoadingMessage(`読み込みエラー: ${error.message}`);
+    } finally {
       setIsLoading(false);
-    };
+    }
+  }, []); // 依存配列は空でOK
+
+  // 初回マウント時にロード実行
+  useEffect(() => {
     loadData();
-  }, []);
+  }, [loadData]);
 
   // DB初期化関数 (バッチ分割対応)
   const initializeDatabase = async () => {
@@ -131,7 +142,7 @@ export const useShiftData = () => {
     });
 
     // バッチサイズ制限 (500) を考慮して分割実行
-    const BATCH_SIZE = 450; // 安全マージンをとって450
+    const BATCH_SIZE = 450; 
     for (let i = 0; i < operations.length; i += BATCH_SIZE) {
       const batch = writeBatch(db);
       const chunk = operations.slice(i, i + BATCH_SIZE);
@@ -150,9 +161,9 @@ export const useShiftData = () => {
     setSchedule(initialSched);
   };
 
-  // 2. Auto Save (Batch Update) - こちらも念のため分割対応
+  // 2. Auto Save (Batch Update) - 分割対応
   useEffect(() => {
-    if (!initialDataLoaded) return;
+    if (!initialDataLoaded || loadError) return;
     if (isInitialDataSync.current) {
       isInitialDataSync.current = false;
       return;
@@ -188,7 +199,7 @@ export const useShiftData = () => {
         const configRef = doc(db, 'config', 'main');
         operations.push({ ref: configRef, data: adminConfig });
 
-        // Schedule (Only save loaded months)
+        // Schedule
         Object.entries(schedule).forEach(([key, data]) => {
           const ref = doc(db, 'schedules', key);
           operations.push({ ref, data });
@@ -210,10 +221,10 @@ export const useShiftData = () => {
         console.error("Auto-save failed:", error);
         setSaveStatus('error');
       }
-    }, 2000); // 保存頻度を少し下げて書き込み回数を抑制
+    }, 2000); 
 
     return () => clearTimeout(debouncedSave.current);
-  }, [staff, schedule, tasks, shiftPatterns, adminConfig, initialDataLoaded]);
+  }, [staff, schedule, tasks, shiftPatterns, adminConfig, initialDataLoaded, loadError]);
 
   return {
     staff, setStaff,
@@ -222,6 +233,8 @@ export const useShiftData = () => {
     shiftPatterns, setShiftPatterns,
     adminConfig, setAdminConfig,
     isLoading, loadingMessage, setLoadingMessage, setIsLoading,
-    saveStatus, initialDataLoaded
+    saveStatus, initialDataLoaded,
+    loadError, 
+    retryLoad: loadData 
   };
 };
