@@ -4,8 +4,8 @@ import {
   collection, getDocs, writeBatch, 
   getCountFromServer, query
 } from "firebase/firestore";
-// 認証関連を復活
-import { getAuth, signInAnonymously, onAuthStateChanged } from "firebase/auth";
+// 認証関連を Google ログイン用に変更
+import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "firebase/auth";
 import { db } from '../config/firebase';
 import { initialShiftPatterns, initialStaffData, initialAdminConfig, initialTasks } from '../constants/initialData';
 import { generateInitialSchedule } from '../utils/scheduleUtils';
@@ -35,28 +35,52 @@ export const useShiftData = () => {
     const auth = getAuth();
     setLoadingMessage("認証を確認中...");
     
-    // 既存の認証状態をチェック
+    // 認証状態の監視のみを行う（自動ログインはしない）
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       if (currentUser) {
         console.log("Authenticated as:", currentUser.uid);
         setUser(currentUser);
       } else {
-        console.log("Signing in anonymously...");
-        setLoadingMessage("匿名ログイン試行中...");
-        signInAnonymously(auth)
-          .then((result) => {
-             console.log("Sign-in successful:", result.user.uid);
-             // onAuthStateChangedが発火するのでここはログ出力のみ
-          })
-          .catch((error) => {
-            console.error("Auth Error:", error);
-            setLoadError(error);
-            setLoadingMessage(`認証エラー: ${error.message}`);
-          });
+        console.log("User is signed out.");
+        setUser(null);
+        setLoadingMessage("ログインしてください");
+        setIsLoading(false); // ログイン待ち状態としてロード完了扱いにする（画面制御のため）
       }
     });
     return () => unsubscribe();
   }, []);
+
+  // Google ログイン関数
+  const login = async () => {
+    const auth = getAuth();
+    const provider = new GoogleAuthProvider();
+    try {
+      setLoadingMessage("Googleログイン中...");
+      setIsLoading(true);
+      const result = await signInWithPopup(auth, provider);
+      console.log("Google sign-in successful:", result.user.uid);
+      // onAuthStateChanged が発火して setUser される
+    } catch (error) {
+      console.error("Login Error:", error);
+      setLoadError(error);
+      setLoadingMessage(`ログインエラー: ${error.message}`);
+      setIsLoading(false);
+    }
+  };
+
+  // ログアウト関数
+  const logout = async () => {
+    const auth = getAuth();
+    try {
+      await signOut(auth);
+      setStaff([]);
+      setSchedule({});
+      setInitialDataLoaded(false);
+      console.log("Signed out successfully");
+    } catch (error) {
+      console.error("Logout Error:", error);
+    }
+  };
 
   // 2. Data Loading
   const loadData = useCallback(async () => {
@@ -280,6 +304,9 @@ export const useShiftData = () => {
     isLoading, loadingMessage, setLoadingMessage, setIsLoading,
     saveStatus, initialDataLoaded,
     loadError, 
-    retryLoad: loadData 
+    retryLoad: loadData,
+    login,   // ログイン関数をエクスポート
+    logout,  // ログアウト関数をエクスポート
+    user     // ユーザー情報をエクスポート
   };
 };
