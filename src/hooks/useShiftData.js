@@ -4,6 +4,7 @@ import {
   collection, getDocs, writeBatch, 
   getCountFromServer, query
 } from "firebase/firestore";
+// 認証関連のインポートを削除
 import { db } from '../config/firebase';
 import { initialShiftPatterns, initialStaffData, initialAdminConfig, initialTasks } from '../constants/initialData';
 import { generateInitialSchedule } from '../utils/scheduleUtils';
@@ -13,7 +14,10 @@ export const useShiftData = () => {
   const [loadingMessage, setLoadingMessage] = useState("データベースに接続しています...");
   const [saveStatus, setSaveStatus] = useState('saved');
   const [initialDataLoaded, setInitialDataLoaded] = useState(false);
-  const [loadError, setLoadError] = useState(null); // エラー状態を追加
+  const [loadError, setLoadError] = useState(null);
+  
+  // 認証ユーザー情報は使用しない
+  // const [user, setUser] = useState(null);
 
   // Main State
   const [staff, setStaff] = useState([]);
@@ -25,39 +29,44 @@ export const useShiftData = () => {
   const debouncedSave = useRef(null);
   const isInitialDataSync = useRef(true);
 
-  // データ読み込み処理を関数化して再利用可能にする
+  // 1. Auth Initialization (削除: 認証なしで直接ロード)
+  
+  // 2. Data Loading
   const loadData = useCallback(async () => {
+    // 認証チェックを削除
+    // if (!user) return; 
+
     setIsLoading(true);
     setLoadError(null);
+    
     try {
       setLoadingMessage("データの存在を確認中...");
       
-      // 【修正ポイント】
-      // staffコレクションではなく、patternsコレクションでデータの存在を確認します。
-      // 初期スタッフデータ(initialStaffData)が空の場合、staffコレクションは0件のままとなり、
-      // 毎回「初期化が必要」と判定されてしまう無限ループを防ぐためです。
-      // patternsはinitialShiftPatternsで必ずデータが入るため、判定に適しています。
       const patternsColl = collection(db, 'patterns');
       const snapshot = await getCountFromServer(patternsColl);
-      
       const count = snapshot.data().count;
+      
       console.log(`Current patterns count: ${count}`);
 
       if (count > 0) {
         setLoadingMessage("データを読み込んでいます...");
-        
-        // コレクションからデータを並列で取得
+        console.log("Starting parallel data fetch...");
+
+        const staffPromise = getDocs(collection(db, 'staff'));
+        const tasksPromise = getDocs(collection(db, 'tasks'));
+        const patternsPromise = getDocs(collection(db, 'patterns'));
+        const configPromise = getDocs(collection(db, 'config'));
+        const schedulesPromise = getDocs(collection(db, 'schedules'));
+
         const [staffSnap, tasksSnap, patternsSnap, configSnap, schedulesSnap] = await Promise.all([
-          getDocs(collection(db, 'staff')),
-          getDocs(collection(db, 'tasks')),
-          getDocs(collection(db, 'patterns')),
-          getDocs(collection(db, 'config')),
-          getDocs(collection(db, 'schedules'))
+          staffPromise, tasksPromise, patternsPromise, configPromise, schedulesPromise
         ]);
+
+        console.log("Fetch complete. Processing data...");
 
         // Staff
         const loadedStaff = staffSnap.docs.map(d => d.data());
-        setStaff(loadedStaff); // 空の場合は空配列のままセット
+        setStaff(loadedStaff); 
 
         // Tasks
         const loadedTasks = tasksSnap.docs.map(d => d.data());
@@ -72,13 +81,12 @@ export const useShiftData = () => {
           setAdminConfig(configSnap.docs[0].data());
         }
 
-        // Schedules (Docs are stored by "YYYY-MM")
+        // Schedules
         const loadedSchedule = {};
         schedulesSnap.docs.forEach(d => {
           loadedSchedule[d.id] = d.data();
         });
         
-        // データが空なら初期データを生成
         if (Object.keys(loadedSchedule).length === 0) {
            setSchedule(generateInitialSchedule(initialStaffData, initialShiftPatterns));
         } else {
@@ -87,29 +95,31 @@ export const useShiftData = () => {
 
       } else {
         setLoadingMessage("初回セットアップを実行中...");
-        console.log("Initializing database with default data...");
-        // 初期データの書き込み
+        console.log("Initializing database...");
         await initializeDatabase();
-        console.log("Database initialization complete.");
+        console.log("Database initialized.");
       }
+      
       setInitialDataLoaded(true);
+      setIsLoading(false); // ここで完了とする
+
     } catch (error) {
       console.error("Firebase Load Error:", error);
-      setLoadError(error); // エラーを状態に保存
+      setLoadError(error);
       setLoadingMessage(`読み込みエラー: ${error.message}`);
-    } finally {
-      setIsLoading(false);
+      setIsLoading(false); // エラー時もローディング解除
     }
-  }, []); // 依存配列は空でOK
+  }, []); // user依存を削除
 
-  // 初回マウント時にロード実行
+  // 初回マウント時に即座にロード開始 (user待機なし)
   useEffect(() => {
-    loadData();
-  }, [loadData]);
+    if (!initialDataLoaded) {
+      loadData();
+    }
+  }, [loadData, initialDataLoaded]);
 
-  // DB初期化関数 (バッチ分割対応)
+  // DB初期化関数
   const initializeDatabase = async () => {
-    // 全ての書き込み操作を配列にまとめる
     const operations = [];
 
     // Staff
@@ -141,16 +151,12 @@ export const useShiftData = () => {
       operations.push({ ref, data });
     });
 
-    // バッチサイズ制限 (500) を考慮して分割実行
-    const BATCH_SIZE = 450; 
+    // バッチ分割実行 (450件ずつ)
+    const BATCH_SIZE = 450;
     for (let i = 0; i < operations.length; i += BATCH_SIZE) {
       const batch = writeBatch(db);
       const chunk = operations.slice(i, i + BATCH_SIZE);
-      
-      chunk.forEach(op => {
-        batch.set(op.ref, op.data);
-      });
-
+      chunk.forEach(op => batch.set(op.ref, op.data));
       await batch.commit();
     }
 
@@ -161,9 +167,10 @@ export const useShiftData = () => {
     setSchedule(initialSched);
   };
 
-  // 2. Auto Save (Batch Update) - 分割対応
+  // 3. Auto Save
   useEffect(() => {
-    if (!initialDataLoaded || loadError) return;
+    // userチェックを削除
+    if (!initialDataLoaded || loadError) return; 
     if (isInitialDataSync.current) {
       isInitialDataSync.current = false;
       return;
@@ -205,14 +212,11 @@ export const useShiftData = () => {
           operations.push({ ref, data });
         });
 
-        // バッチ分割実行
         const BATCH_SIZE = 450;
         for (let i = 0; i < operations.length; i += BATCH_SIZE) {
             const batch = writeBatch(db);
             const chunk = operations.slice(i, i + BATCH_SIZE);
-            chunk.forEach(op => {
-                batch.set(op.ref, op.data);
-            });
+            chunk.forEach(op => batch.set(op.ref, op.data));
             await batch.commit();
         }
 
