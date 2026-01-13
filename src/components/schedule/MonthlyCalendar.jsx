@@ -131,13 +131,13 @@ const MonthlyCalendar = ({ schedule, staff, tasks, shiftPatterns, initialYear, i
             let isHoliday = false;
             
             if (typeof value === 'object' && value.type) {
-                displayText = value.type === '休' ? '休' : `${value.type}${value.hours ? `(${value.hours})` : ''}`;
-                if (['休', '欠', '有', '午前休', '午後休'].some(type => value.type.includes(type))) {
+                displayText = value.type === 'シフト休' ? 'シフト休' : `${value.type}${value.hours ? `(${value.hours})` : ''}`;
+                if (['シフト休', '欠勤', '有休', '午前休', '午後休'].some(type => value.type.includes(type))) {
                     isHoliday = true;
                 }
             } else if (typeof value === 'number') {
                 displayText = `${value}h`;
-            } else if (value === '休') {
+            } else if (value === 'シフト休') {
                 isHoliday = true;
             }
 
@@ -163,7 +163,7 @@ const MonthlyCalendar = ({ schedule, staff, tasks, shiftPatterns, initialYear, i
       const dayEvents = events.filter(e => e.date === dateKey);
       
       if (viewMode === 'active_shifts') {
-          return dayEvents.filter(e => !e.isHoliday && e.type !== '欠');
+          return dayEvents.filter(e => !e.isHoliday && e.type !== '欠勤');
       } else if (viewMode === 'holidays') {
           return dayEvents.filter(e => e.isHoliday);
       }
@@ -208,7 +208,7 @@ const MonthlyCalendar = ({ schedule, staff, tasks, shiftPatterns, initialYear, i
 
   const getTaskSummary = (dateKey) => {
       const dayEvents = events.filter(e => e.date === dateKey);
-      const workingStaff = dayEvents.filter(e => !e.isHoliday && e.type !== '欠');
+      const workingStaff = dayEvents.filter(e => !e.isHoliday && e.type !== '欠勤');
       
       return tasks ? tasks.map(task => {
           const assignedMembers = workingStaff.filter(ev => ev.tasks.includes(task.id));
