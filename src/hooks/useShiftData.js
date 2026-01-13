@@ -35,7 +35,9 @@ export const useShiftData = () => {
         // これにより、データが存在しない場合に無駄な読み取り（getDocs）を行う通信コストを削減できます。
         const staffColl = collection(db, 'staff');
         const snapshot = await getCountFromServer(staffColl);
-        const count = snapshot.data().count();
+        
+        // 修正: countは関数ではなくプロパティです
+        const count = snapshot.data().count;
 
         if (count > 0) {
           setLoadingMessage("データを読み込んでいます...");
