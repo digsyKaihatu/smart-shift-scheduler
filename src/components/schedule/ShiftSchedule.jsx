@@ -174,7 +174,7 @@ const EditableCell = ({ value, onUpdate, borderClass, disabled = false, isAdmin 
   const getBackgroundColor = () => {
     const hoverClass = isEffectivelyDisabled ? '' : 'hover:bg-opacity-80';
     
-    // 今日の場合は特別な背景色をベースにする（他のステータス色がある場合はそちらが優先されるが、未入力時はハイライト）
+    // 今日の場合は特別な背景色をベースにする
     const todayClass = isToday && value === '' ? 'bg-yellow-50' : '';
 
     if (typeof value === 'number' && value > 0) return `bg-green-200 ${hoverClass}`;
@@ -479,8 +479,6 @@ const ShiftSchedule = ({
     if (!scrollContainerRef.current) return;
 
     const today = new Date();
-    // 日付フォーマット: D (数値) または D (文字列) 
-    // days配列は { day: 1, ... } なので、今日の日にちを取得
     const currentDay = today.getDate();
     
     // 表示中の年月が今日を含んでいるか
@@ -612,7 +610,6 @@ const ShiftSchedule = ({
 
                 {days.map(({ day, dayOfWeek }) => {
                   const isHoliday = holidays.includes(day);
-                  // 今日判定
                   const today = new Date();
                   const isToday = today.getFullYear() === year && (today.getMonth() + 1) === month && today.getDate() === day;
 
