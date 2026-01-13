@@ -3,14 +3,14 @@ import { createPortal } from 'react-dom';
 
 const ShiftPatternEditor = ({ pattern, patterns, onApply, summary, disabled = false }) => {
   const [isOpen, setIsOpen] = useState(false);
-  // パターンが未設定の場合は「休」×5日で初期化
-  const [editedPattern, setEditedPattern] = useState(pattern || Array(5).fill('休'));
-  const [bulkPatternId, setBulkPatternId] = useState(patterns[0]?.id || '休');
+  // パターンが未設定の場合は「シフト休」×5日で初期化
+  const [editedPattern, setEditedPattern] = useState(pattern || Array(5).fill('シフト休'));
+  const [bulkPatternId, setBulkPatternId] = useState(patterns[0]?.id || 'シフト休');
   const buttonRef = useRef(null);
   const DAY_NAMES = ['月', '火', '水', '木', '金'];
 
   useEffect(() => {
-    setEditedPattern(pattern || Array(5).fill('休'));
+    setEditedPattern(pattern || Array(5).fill('シフト休'));
   }, [pattern]);
 
   const handleOpen = () => {
@@ -58,7 +58,7 @@ const ShiftPatternEditor = ({ pattern, patterns, onApply, summary, disabled = fa
                         onChange={(e) => setBulkPatternId(e.target.value)}
                         className="flex-grow text-xs p-1.5 border border-slate-300 rounded-md"
                     >
-                         <option value="休">休み</option>
+                         <option value="シフト休">シフト休</option>
                          {patterns.map(p => (
                              <option key={p.id} value={p.id}>{`${p.name} (${p.startTime}-${p.endTime}, ${p.workHours}h)`}</option>
                          ))}
@@ -78,7 +78,7 @@ const ShiftPatternEditor = ({ pattern, patterns, onApply, summary, disabled = fa
                                 onChange={(e) => handlePatternChange(index, e.target.value)}
                                 className="col-span-3 text-xs p-1 border border-slate-300 rounded-md"
                             >
-                                <option value="休">休み</option>
+                                <option value="シフト休">シフト休</option>
                                 {patterns.map(p => (
                                     <option key={p.id} value={p.id}>{`${p.name} (${p.startTime}-${p.endTime}, ${p.workHours}h)`}</option>
                                 ))}
