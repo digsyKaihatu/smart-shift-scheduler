@@ -5,8 +5,8 @@ import {
   getCountFromServer, query
 } from "firebase/firestore";
 // 認証関連を Google ログイン用に変更
-import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "firebase/auth";
-import { db } from '../config/firebase';
+import { signInWithPopup, signOut, onAuthStateChanged, GoogleAuthProvider } from "firebase/auth";
+import { db, auth } from '../config/firebase';
 import { initialShiftPatterns, initialStaffData, initialAdminConfig, initialTasks } from '../constants/initialData';
 import { generateInitialSchedule } from '../utils/scheduleUtils';
 
@@ -32,7 +32,6 @@ export const useShiftData = () => {
 
   // 1. Auth Initialization (認証処理)
   useEffect(() => {
-    const auth = getAuth();
     setLoadingMessage("認証を確認中...");
     
     // 認証状態の監視のみを行う（自動ログインはしない）
@@ -52,7 +51,6 @@ export const useShiftData = () => {
 
   // Google ログイン関数
   const login = async () => {
-    const auth = getAuth();
     const provider = new GoogleAuthProvider();
     try {
       setLoadingMessage("Googleログイン中...");
@@ -70,7 +68,6 @@ export const useShiftData = () => {
 
   // ログアウト関数
   const logout = async () => {
-    const auth = getAuth();
     try {
       await signOut(auth);
       setStaff([]);
