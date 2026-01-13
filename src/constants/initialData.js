@@ -7,19 +7,19 @@ export const initialShiftPatterns = [
   { id: 'F', name: 'F', startTime: '9:30', endTime: '16:00', breakHours: 1.0, workHours: 5.5, displayTime: '9:30 - 16:00' },
   { id: 'G', name: 'G', startTime: '9:30', endTime: '15:30', breakHours: 1.0, workHours: 5.0, displayTime: '9:30 - 15:30' },
   { id: 'H', name: 'H', startTime: '9:30', endTime: '13:30', breakHours: 0.0, workHours: 4.0, displayTime: '9:30 - 13:30' },
-  // I〜OはA〜Gと重複するため削除
-  { id: 'P', name: 'P', startTime: '10:00', endTime: '18:30', breakHours: 1.0, workHours: 7.5, displayTime: '10:00 - 18:30' },
-  { id: 'Q', name: 'Q', startTime: '10:00', endTime: '18:00', breakHours: 1.0, workHours: 7.0, displayTime: '10:00 - 18:00' },
-  { id: 'R', name: 'R', startTime: '10:00', endTime: '17:00', breakHours: 1.0, workHours: 6.0, displayTime: '10:00 - 17:00' },
-  { id: 'S', name: 'S', startTime: '10:00', endTime: '16:00', breakHours: 1.0, workHours: 5.0, displayTime: '10:00 - 16:00' },
-  { id: 'T', name: 'T', startTime: '11:00', endTime: '20:00', breakHours: 1.0, workHours: 8.0, displayTime: '11:00 - 20:00' },
-  { id: 'U', name: 'U', startTime: '13:00', endTime: '20:00', breakHours: 1.0, workHours: 6.0, displayTime: '13:00 - 20:00' },
-  { id: 'V', name: 'V', startTime: '12:00', endTime: '20:00', breakHours: 1.0, workHours: 7.0, displayTime: '12:00 - 20:00' },
-  { id: 'W', name: 'W', startTime: '13:30', endTime: '18:00', breakHours: 0.0, workHours: 4.5, displayTime: '13:30 - 18:00' },
-  { id: 'X', name: 'X', startTime: '10:00', endTime: '14:00', breakHours: 0.0, workHours: 4.0, displayTime: '10:00 - 14:00' },
-  { id: 'Y', name: 'Y', startTime: '10:00', endTime: '13:00', breakHours: 0.0, workHours: 3.0, displayTime: '10:00 - 13:00' },
-  { id: 'Z', name: 'Z', startTime: '14:00', endTime: '20:00', breakHours: 1.0, workHours: 5.0, displayTime: '14:00 - 20:00' },
-  { id: '@', name: '@', startTime: '14:30', endTime: '20:00', breakHours: 1.0, workHours: 4.5, displayTime: '14:30 - 20:00' },
+  // 欠番を詰めて再定義 (旧P以降をIから順に割り当て)
+  { id: 'I', name: 'I', startTime: '10:00', endTime: '18:30', breakHours: 1.0, workHours: 7.5, displayTime: '10:00 - 18:30' },
+  { id: 'J', name: 'J', startTime: '10:00', endTime: '18:00', breakHours: 1.0, workHours: 7.0, displayTime: '10:00 - 18:00' },
+  { id: 'K', name: 'K', startTime: '10:00', endTime: '17:00', breakHours: 1.0, workHours: 6.0, displayTime: '10:00 - 17:00' },
+  { id: 'L', name: 'L', startTime: '10:00', endTime: '16:00', breakHours: 1.0, workHours: 5.0, displayTime: '10:00 - 16:00' },
+  { id: 'M', name: 'M', startTime: '11:00', endTime: '20:00', breakHours: 1.0, workHours: 8.0, displayTime: '11:00 - 20:00' },
+  { id: 'N', name: 'N', startTime: '13:00', endTime: '20:00', breakHours: 1.0, workHours: 6.0, displayTime: '13:00 - 20:00' },
+  { id: 'O', name: 'O', startTime: '12:00', endTime: '20:00', breakHours: 1.0, workHours: 7.0, displayTime: '12:00 - 20:00' },
+  { id: 'P', name: 'P', startTime: '13:30', endTime: '18:00', breakHours: 0.0, workHours: 4.5, displayTime: '13:30 - 18:00' },
+  { id: 'Q', name: 'Q', startTime: '10:00', endTime: '14:00', breakHours: 0.0, workHours: 4.0, displayTime: '10:00 - 14:00' },
+  { id: 'R', name: 'R', startTime: '10:00', endTime: '13:00', breakHours: 0.0, workHours: 3.0, displayTime: '10:00 - 13:00' },
+  { id: 'S', name: 'S', startTime: '14:00', endTime: '20:00', breakHours: 1.0, workHours: 5.0, displayTime: '14:00 - 20:00' },
+  { id: 'T', name: 'T', startTime: '14:30', endTime: '20:00', breakHours: 1.0, workHours: 4.5, displayTime: '14:30 - 20:00' },
 ];
 
 export const initialStaffData = [];
