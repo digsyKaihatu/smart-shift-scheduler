@@ -15,8 +15,7 @@ import {
   writeBatch,
   query,
   where,
-  Timestamp,
-  onSnapshot
+  Timestamp 
 } from 'firebase/firestore';
 
 // --- Icons (Replacement for lucide-react to avoid build errors) ---
@@ -147,69 +146,98 @@ export default function ShiftScheduler() {
     return () => unsubscribe();
   }, []);
 
-  // --- Data Loading (Real-time with onSnapshot) ---
-  useEffect(() => {
+  // --- Data Loading (Legacy: getDocs) ---
+  const loadData = useCallback(async () => {
     if (!user) return;
 
-    setLoadingMessage("データを同期中...");
-    const unsubs = [];
-
-    // Patterns
-    const patternsQuery = collection(db, 'artifacts', appId, 'users', user.uid, 'patterns');
-    unsubs.push(onSnapshot(patternsQuery, (snapshot) => {
-        if (snapshot.empty) {
-            setPatterns(DEFAULT_PATTERNS);
-            const batch = writeBatch(db);
-            DEFAULT_PATTERNS.forEach(p => {
-              const docRef = doc(db, 'artifacts', appId, 'users', user.uid, 'patterns', p.id);
-              batch.set(docRef, p);
-            });
-            batch.commit().catch(e => console.error("Defaults save error", e));
-        } else {
-            setPatterns(snapshot.docs.map(d => d.data()));
-        }
-    }, (err) => {
-        console.error("Patterns error:", err);
-        setError("データの同期に失敗しました");
-    }));
-
-    // Staff
-    const staffQuery = collection(db, 'artifacts', appId, 'users', user.uid, 'staff');
-    unsubs.push(onSnapshot(staffQuery, (snapshot) => {
-        setStaff(snapshot.docs.map(d => d.data()));
-    }));
-
-    // Config
-    const configQuery = collection(db, 'artifacts', appId, 'users', user.uid, 'config');
-    unsubs.push(onSnapshot(configQuery, (snapshot) => {
-        if (!snapshot.empty) {
-            setConfig(snapshot.docs[0].data());
-        }
-    }));
-
-    // Schedules
-    const schedulesQuery = collection(db, 'artifacts', appId, 'users', user.uid, 'schedules');
-    unsubs.push(onSnapshot(schedulesQuery, (snapshot) => {
-        const newSchedules = {};
-        snapshot.forEach(doc => {
-            newSchedules[doc.data().date] = doc.data();
+    try {
+      setIsLoading(true);
+      setError(null);
+      
+      console.log('Checking for patterns collection...');
+      setLoadingMessage("シフトパターンを読み込み中...");
+      const patternsRef = collection(db, 'artifacts', appId, 'users', user.uid, 'patterns');
+      const patternsSnap = await getDocs(patternsRef);
+      
+      let loadedPatterns = [];
+      if (patternsSnap.empty) {
+        console.log('No patterns found. Using defaults.');
+        loadedPatterns = DEFAULT_PATTERNS;
+        const batch = writeBatch(db);
+        DEFAULT_PATTERNS.forEach(p => {
+          const docRef = doc(db, 'artifacts', appId, 'users', user.uid, 'patterns', p.id);
+          batch.set(docRef, p);
         });
-        setSchedules(newSchedules);
-        setIsLoading(false);
-    }));
+        await batch.commit();
+      } else {
+        loadedPatterns = patternsSnap.docs.map(d => d.data());
+      }
+      setPatterns(loadedPatterns);
 
-    return () => unsubs.forEach(u => u());
+      console.log('Starting parallel data fetch...');
+      setLoadingMessage("スタッフとスケジュールを読み込み中...");
+      
+      const [staffSnap, configSnap, schedulesSnap] = await Promise.all([
+        getDocs(collection(db, 'artifacts', appId, 'users', user.uid, 'staff')),
+        getDocs(collection(db, 'artifacts', appId, 'users', user.uid, 'config')),
+        getDocs(query(collection(db, 'artifacts', appId, 'users', user.uid, 'schedules'))) 
+      ]);
+
+      console.log('Fetch complete. Processing data...');
+
+      const loadedStaff = staffSnap.docs.map(d => d.data());
+      setStaff(loadedStaff);
+
+      if (!configSnap.empty) {
+        setConfig(configSnap.docs[0].data());
+      }
+
+      const loadedSchedules = {};
+      schedulesSnap.forEach(doc => {
+        const data = doc.data();
+        loadedSchedules[data.date] = data;
+      });
+      setSchedules(loadedSchedules);
+
+      console.log('Data load sequence finished successfully.');
+    } catch (err) {
+      console.error("Data load error:", err);
+      setError("データの読み込み中にエラーが発生しました。");
+    } finally {
+      console.log('Disabling loading state...');
+      setLoadingMessage("");
+      setIsLoading(false);
+    }
   }, [user]);
+
+  useEffect(() => {
+    if (user) {
+      loadData();
+    }
+  }, [user, loadData]);
 
   // --- Actions ---
 
   const handleSaveSchedule = async (date, staffId, patternId) => {
     if (!user) return;
+    
+    // Optimistic Update
+    setSchedules(prev => {
+      const daySchedule = prev[date] || { date, shifts: {} };
+      return {
+        ...prev,
+        [date]: {
+          ...daySchedule,
+          shifts: { ...daySchedule.shifts, [staffId]: patternId }
+        }
+      };
+    });
+
     try {
       const dayRef = doc(db, 'artifacts', appId, 'users', user.uid, 'schedules', date);
-      const currentShifts = schedules[date]?.shifts || {};
-      const newShifts = { ...currentShifts, [staffId]: patternId };
+      const newShifts = { ...schedules[date]?.shifts, [staffId]: patternId };
       await setDoc(dayRef, { date, shifts: newShifts }, { merge: true });
+      
     } catch (err) {
       console.error("Save failed:", err);
     }
@@ -226,6 +254,7 @@ export default function ShiftScheduler() {
     try {
       setIsSaving(true);
       await setDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'staff', newStaff.id), newStaff);
+      setStaff(prev => [...prev, newStaff]);
       setViewMode('table'); 
     } catch (err) {
       console.error(err);
@@ -238,10 +267,13 @@ export default function ShiftScheduler() {
     if (!user) return;
     if (!window.confirm("このスタッフを削除してもよろしいですか？")) return;
     try {
+      setStaff(prev => prev.filter(s => s.id !== id));
+      
       const batch = writeBatch(db);
       const docRef = doc(db, 'artifacts', appId, 'users', user.uid, 'staff', id);
       batch.delete(docRef);
       await batch.commit();
+
     } catch (err) {
       console.error(err);
     }
@@ -277,10 +309,12 @@ export default function ShiftScheduler() {
   if (isLoading) {
     return (
       <div className="flex h-screen w-full flex-col items-center justify-center bg-slate-50">
-        <div className="animate-spin text-blue-600 mb-4">
-          <RefreshCw size={32} />
+        <div className="relative w-24 h-24 mb-8">
+          <div className="absolute top-0 left-0 w-full h-full border-4 border-slate-200 rounded-full"></div>
+          <div className="absolute top-0 left-0 w-full h-full border-4 border-blue-600 rounded-full border-t-transparent animate-spin"></div>
+          <Briefcase className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-blue-600 w-8 h-8" />
         </div>
-        <p className="text-slate-600 font-medium">{loadingMessage}</p>
+        <p className="text-slate-600 font-medium animate-pulse">{loadingMessage}</p>
       </div>
     );
   }
@@ -424,7 +458,7 @@ export default function ShiftScheduler() {
             </h2>
           </div>
           <div>
-             <button onClick={() => window.location.reload()} className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-full transition-colors" title="リロード">
+             <button onClick={loadData} className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-full transition-colors" title="リロード">
                <RefreshCw size={18} />
              </button>
           </div>
