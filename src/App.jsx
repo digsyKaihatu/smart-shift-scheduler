@@ -19,8 +19,8 @@ import {
   onSnapshot
 } from 'firebase/firestore';
 
-// --- Icons (Replaces lucide-react dependencies) ---
-const IconWrapper = ({ children, size = 24, className = "" }) => (
+// --- Icons (Replacement for lucide-react to avoid build errors) ---
+const IconWrapper = ({ children, size = 20, className = "" }) => (
   <svg 
     xmlns="http://www.w3.org/2000/svg" 
     width={size} 
@@ -52,6 +52,7 @@ const Clock = (props) => <IconWrapper {...props}><circle cx="12" cy="12" r="10">
 // --- Firebase Configuration ---
 let firebaseConfig;
 
+// Canvas環境かどうかのチェック
 try {
   if (typeof __firebase_config !== 'undefined') {
     firebaseConfig = JSON.parse(__firebase_config);
@@ -60,17 +61,17 @@ try {
   console.error("Canvas config parsing error:", e);
 }
 
+// デプロイ環境等で設定がない場合のフォールバック（手動設定）
 if (!firebaseConfig) {
     // 【重要】ここにFirebaseコンソールから取得した値を貼り付けてください
-    // 値が "YOUR_..." のままだと認証エラーになります
     console.log("Using manual config.");
     firebaseConfig = {
-      apiKey: "AIzaSyBl5pDlZwKYK_r78UIRA3ALtse0dZZC3iY", 
-      authDomain: "smart-shift-scheduler.firebaseapp.com",
-      projectId: "smart-shift-scheduler",
-      storageBucket: "smart-shift-scheduler.firebasestorage.app",
-      messagingSenderId: "410729738408", 
-      appId: "1:410729738408:web:25a2f142fe7f2d864ed29d"
+      apiKey: "YOUR_API_KEY", 
+      authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
+      projectId: "YOUR_PROJECT_ID",
+      storageBucket: "YOUR_PROJECT_ID.appspot.com",
+      messagingSenderId: "YOUR_SENDER_ID", 
+      appId: "YOUR_APP_ID"
     };
 }
 
@@ -105,19 +106,16 @@ const getDaysInMonth = (year, month) => {
 
 // --- Main Component ---
 export default function ShiftScheduler() {
-  // State: Auth & Loading
   const [user, setUser] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [loadingMessage, setLoadingMessage] = useState("システム起動中...");
   const [error, setError] = useState(null);
 
-  // State: Data
   const [staff, setStaff] = useState([]);
   const [patterns, setPatterns] = useState([]);
   const [schedules, setSchedules] = useState({});
   const [config, setConfig] = useState({ title: 'シフト管理表', startDayOfMonth: 1 });
 
-  // State: UI
   const [currentDate, setCurrentDate] = useState(new Date());
   const [viewMode, setViewMode] = useState('table');
   const [selectedCell, setSelectedCell] = useState(null);
@@ -136,9 +134,8 @@ export default function ShiftScheduler() {
         }
       } catch (err) {
         console.error("Auth failed:", err);
-        // 通常のFirebase設定がない場合のエラーメッセージ
         if (err.code === 'auth/configuration-not-found' || err.code === 'auth/api-key-not-valid-please-pass-a-valid-api-key') {
-           setError("Firebaseの設定が無効です。ソースコード内のfirebaseConfigをご自身のプロジェクト設定に書き換えてください。");
+           setError("Firebaseの設定が無効です。ソースコード内のYOUR_API_KEY等を正しい値に書き換えてください。");
         } else {
            setError("認証に失敗しました。再読み込みしてください。");
         }
@@ -150,20 +147,18 @@ export default function ShiftScheduler() {
     return () => unsubscribe();
   }, []);
 
-  // --- Data Loading (Real-time Listeners) ---
-  // 集約クエリ(getDocs)をやめ、onSnapshotによるリアルタイム同期に戻しました
+  // --- Data Loading (Real-time with onSnapshot) ---
   useEffect(() => {
     if (!user) return;
 
-    setLoadingMessage("データ同期を開始...");
+    setLoadingMessage("データを同期中...");
     const unsubs = [];
 
-    // 1. Patterns
+    // Patterns
     const patternsQuery = collection(db, 'artifacts', appId, 'users', user.uid, 'patterns');
     unsubs.push(onSnapshot(patternsQuery, (snapshot) => {
         if (snapshot.empty) {
             setPatterns(DEFAULT_PATTERNS);
-            // 初回起動時にデフォルトパターンを保存
             const batch = writeBatch(db);
             DEFAULT_PATTERNS.forEach(p => {
               const docRef = doc(db, 'artifacts', appId, 'users', user.uid, 'patterns', p.id);
@@ -174,19 +169,17 @@ export default function ShiftScheduler() {
             setPatterns(snapshot.docs.map(d => d.data()));
         }
     }, (err) => {
-        console.error("Patterns listener error:", err);
-        setError("データ同期エラー: パターン");
+        console.error("Patterns error:", err);
+        setError("データの同期に失敗しました");
     }));
 
-    // 2. Staff
+    // Staff
     const staffQuery = collection(db, 'artifacts', appId, 'users', user.uid, 'staff');
     unsubs.push(onSnapshot(staffQuery, (snapshot) => {
         setStaff(snapshot.docs.map(d => d.data()));
-    }, (err) => {
-        console.error("Staff listener error:", err);
     }));
 
-    // 3. Config
+    // Config
     const configQuery = collection(db, 'artifacts', appId, 'users', user.uid, 'config');
     unsubs.push(onSnapshot(configQuery, (snapshot) => {
         if (!snapshot.empty) {
@@ -194,7 +187,7 @@ export default function ShiftScheduler() {
         }
     }));
 
-    // 4. Schedules (Real-time)
+    // Schedules
     const schedulesQuery = collection(db, 'artifacts', appId, 'users', user.uid, 'schedules');
     unsubs.push(onSnapshot(schedulesQuery, (snapshot) => {
         const newSchedules = {};
@@ -202,11 +195,7 @@ export default function ShiftScheduler() {
             newSchedules[doc.data().date] = doc.data();
         });
         setSchedules(newSchedules);
-        
-        // データの初回ロード完了とみなす
         setIsLoading(false);
-    }, (err) => {
-        console.error("Schedules listener error:", err);
     }));
 
     return () => unsubs.forEach(u => u());
@@ -216,22 +205,13 @@ export default function ShiftScheduler() {
 
   const handleSaveSchedule = async (date, staffId, patternId) => {
     if (!user) return;
-    
-    // onSnapshotを使っているため、楽観的更新(Optimistic Update)は必須ではありませんが、
-    // レスポンス向上として残しても良いです。ここではFirestoreへの書き込みのみ行い、
-    // 反映はonSnapshotに任せることで整合性を保ちます。
-
     try {
       const dayRef = doc(db, 'artifacts', appId, 'users', user.uid, 'schedules', date);
-      // 現在の状態をベースにするが、concurrent updatesを考慮するとtransactionがベスト。
-      // 簡易的にmergeを使用。
       const currentShifts = schedules[date]?.shifts || {};
       const newShifts = { ...currentShifts, [staffId]: patternId };
       await setDoc(dayRef, { date, shifts: newShifts }, { merge: true });
-      
     } catch (err) {
       console.error("Save failed:", err);
-      alert("保存に失敗しました");
     }
   };
 
@@ -246,7 +226,6 @@ export default function ShiftScheduler() {
     try {
       setIsSaving(true);
       await setDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'staff', newStaff.id), newStaff);
-      // setStaffはonSnapshotがやってくれるので不要
       setViewMode('table'); 
     } catch (err) {
       console.error(err);
@@ -257,14 +236,12 @@ export default function ShiftScheduler() {
 
   const handleDeleteStaff = async (id) => {
     if (!user) return;
-    if (!window.confirm("このスタッフを削除してもよろしいですか？過去のシフトデータは残りますが、表示されなくなる可能性があります。")) return;
+    if (!window.confirm("このスタッフを削除してもよろしいですか？")) return;
     try {
-      // setStaffはonSnapshotがやってくれるので不要
       const batch = writeBatch(db);
       const docRef = doc(db, 'artifacts', appId, 'users', user.uid, 'staff', id);
       batch.delete(docRef);
       await batch.commit();
-
     } catch (err) {
       console.error(err);
     }
@@ -277,18 +254,18 @@ export default function ShiftScheduler() {
 
   const getShiftPattern = (id) => patterns.find(p => p.id === id);
 
-  // --- Render Components ---
+  // --- Main Render ---
 
   if (error) {
     return (
-      <div className="flex h-screen w-full items-center justify-center bg-red-50 p-4">
-        <div className="text-center max-w-md bg-white p-8 rounded-xl shadow-lg">
-          <AlertCircle className="w-16 h-16 text-red-500 mx-auto mb-4" />
+      <div className="flex h-screen w-full items-center justify-center bg-red-50 p-6">
+        <div className="text-center max-w-md bg-white p-8 rounded-xl shadow-lg border border-red-100">
+          <AlertCircle className="w-12 h-12 text-red-500 mx-auto mb-4" />
           <h2 className="text-xl font-bold text-gray-800 mb-2">エラーが発生しました</h2>
-          <p className="text-gray-600 mb-6">{error}</p>
+          <p className="text-gray-600 mb-6 text-sm">{error}</p>
           <button 
             onClick={() => window.location.reload()}
-            className="px-6 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition"
+            className="px-6 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition font-medium"
           >
             再読み込み
           </button>
@@ -300,31 +277,27 @@ export default function ShiftScheduler() {
   if (isLoading) {
     return (
       <div className="flex h-screen w-full flex-col items-center justify-center bg-slate-50">
-        <div className="relative w-24 h-24 mb-8">
-          <div className="absolute top-0 left-0 w-full h-full border-4 border-slate-200 rounded-full"></div>
-          <div className="absolute top-0 left-0 w-full h-full border-4 border-blue-600 rounded-full border-t-transparent animate-spin"></div>
-          <Briefcase className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-blue-600 w-8 h-8" />
+        <div className="animate-spin text-blue-600 mb-4">
+          <RefreshCw size={32} />
         </div>
-        <p className="text-slate-600 font-medium animate-pulse">{loadingMessage}</p>
+        <p className="text-slate-600 font-medium">{loadingMessage}</p>
       </div>
     );
   }
 
-  // ★ Empty State Handling (スタッフ0人時の対応) ★
+  // Initial State (No Staff)
   if (staff.length === 0 && viewMode === 'table') {
     return (
       <div className="flex h-screen w-full bg-slate-50 items-center justify-center p-4">
-        <div className="max-w-lg w-full bg-white rounded-xl shadow-xl overflow-hidden">
-          <div className="bg-blue-600 p-6 text-white text-center">
-            <Users className="w-16 h-16 mx-auto mb-4 opacity-90" />
-            <h1 className="text-2xl font-bold">ようこそ！</h1>
-            <p className="opacity-90 mt-2">まずはスタッフを登録して、シフト作成を始めましょう。</p>
+        <div className="max-w-md w-full bg-white rounded-xl shadow-lg overflow-hidden border border-slate-200">
+          <div className="bg-slate-900 p-6 text-white text-center">
+            <Users className="w-12 h-12 mx-auto mb-3 opacity-90" />
+            <h1 className="text-xl font-bold tracking-wide">シフト管理アプリへようこそ</h1>
           </div>
           <div className="p-8">
             <div className="space-y-4">
-              <p className="text-gray-600 text-sm mb-4">
-                まだスタッフが登録されていません。最初のスタッフを追加してください。
-                （例：山田 太郎、佐藤 花子など）
+              <p className="text-gray-600 text-sm mb-4 text-center">
+                まずはスタッフを登録して、シフト作成を始めましょう。
               </p>
               
               <form 
@@ -339,28 +312,28 @@ export default function ShiftScheduler() {
                 <input 
                   type="text" 
                   name="staffName"
-                  placeholder="スタッフ名を入力" 
-                  className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                  placeholder="スタッフ名 (例: 山田 太郎)" 
+                  className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm"
                   autoFocus
                 />
                 <button 
                   type="submit"
                   disabled={isSaving}
-                  className="bg-blue-600 text-white px-6 py-2 rounded-lg font-medium hover:bg-blue-700 transition disabled:opacity-50"
+                  className="bg-blue-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-blue-700 transition disabled:opacity-50 text-sm whitespace-nowrap"
                 >
-                  {isSaving ? '登録中...' : '登録して開始'}
+                  開始
                 </button>
               </form>
             </div>
             
-            <div className="mt-8 pt-6 border-t border-gray-100 flex justify-center">
+            <div className="mt-8 pt-4 border-t border-gray-100 flex justify-center">
                <button 
                  onClick={() => {
                     ["山田 太郎", "鈴木 一郎", "佐藤 花子"].forEach(name => handleAddStaff(name));
                  }}
-                 className="text-sm text-slate-500 hover:text-blue-600 underline"
+                 className="text-xs text-slate-400 hover:text-blue-600 underline"
                >
-                 デモデータ（3名）を一括登録して試す
+                 デモデータ（3名）で試す
                </button>
             </div>
           </div>
@@ -372,16 +345,16 @@ export default function ShiftScheduler() {
   return (
     <div className="flex h-screen w-full bg-slate-100 overflow-hidden font-sans text-slate-800">
       
-      {/* Sidebar Navigation */}
+      {/* Sidebar */}
       <div className={`${sidebarOpen ? 'w-64' : 'w-20'} bg-slate-900 text-slate-300 flex flex-col transition-all duration-300 shadow-xl z-20`}>
-        <div className="p-4 flex items-center justify-between border-b border-slate-800">
+        <div className="p-4 flex items-center justify-between border-b border-slate-800 h-16">
           {sidebarOpen && <span className="font-bold text-white tracking-wider">SHIFT APP</span>}
-          <button onClick={() => setSidebarOpen(!sidebarOpen)} className="p-2 hover:bg-slate-800 rounded-lg">
+          <button onClick={() => setSidebarOpen(!sidebarOpen)} className="p-2 hover:bg-slate-800 rounded-lg transition-colors">
             {sidebarOpen ? <ChevronLeft size={20}/> : <ChevronRight size={20}/>}
           </button>
         </div>
         
-        <nav className="flex-1 py-6 space-y-2 px-3">
+        <nav className="flex-1 py-6 space-y-1 px-3">
           <NavButton 
             active={viewMode === 'table'} 
             onClick={() => setViewMode('table')} 
@@ -414,12 +387,12 @@ export default function ShiftScheduler() {
 
         <div className="p-4 border-t border-slate-800">
           <div className={`flex items-center gap-3 ${!sidebarOpen && 'justify-center'}`}>
-            <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-white font-bold text-xs">
-              {user?.isAnonymous ? 'AN' : 'US'}
+            <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-white font-bold text-xs shadow-sm">
+              {user?.isAnonymous ? 'A' : 'U'}
             </div>
             {sidebarOpen && (
               <div className="text-xs overflow-hidden">
-                <p className="text-white truncate">User ID</p>
+                <p className="text-white truncate font-medium">Guest User</p>
                 <p className="text-slate-500 truncate w-32">{user?.uid}</p>
               </div>
             )}
@@ -427,50 +400,47 @@ export default function ShiftScheduler() {
         </div>
       </div>
 
-      {/* Main Content Area */}
+      {/* Main Content */}
       <main className="flex-1 flex flex-col h-full overflow-hidden relative">
         
         {/* Header */}
-        <header className="bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between shadow-sm z-10">
+        <header className="bg-white border-b border-slate-200 px-6 h-16 flex items-center justify-between shadow-sm z-10">
           <div className="flex items-center gap-4">
-            <h2 className="text-xl font-bold text-slate-800">
+            <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
               {viewMode === 'table' && (
-                <div className="flex items-center gap-4">
-                  <button onClick={() => setCurrentDate(new Date(currentDate.setMonth(currentDate.getMonth() - 1)))} className="p-1 hover:bg-slate-100 rounded">
-                    <ChevronLeft size={24}/>
+                <>
+                  <button onClick={() => setCurrentDate(new Date(currentDate.setMonth(currentDate.getMonth() - 1)))} className="p-1 hover:bg-slate-100 rounded text-slate-500">
+                    <ChevronLeft size={20}/>
                   </button>
-                  <span>{currentDate.getFullYear()}年 {currentDate.getMonth() + 1}月</span>
-                  <button onClick={() => setCurrentDate(new Date(currentDate.setMonth(currentDate.getMonth() + 1)))} className="p-1 hover:bg-slate-100 rounded">
-                    <ChevronRight size={24}/>
+                  <span className="min-w-[8rem] text-center">{currentDate.getFullYear()}年 {currentDate.getMonth() + 1}月</span>
+                  <button onClick={() => setCurrentDate(new Date(currentDate.setMonth(currentDate.getMonth() + 1)))} className="p-1 hover:bg-slate-100 rounded text-slate-500">
+                    <ChevronRight size={20}/>
                   </button>
-                </div>
+                </>
               )}
               {viewMode === 'staff' && 'スタッフ管理'}
               {viewMode === 'patterns' && 'シフトパターン設定'}
               {viewMode === 'settings' && '全体設定'}
             </h2>
           </div>
-          <div className="flex items-center gap-3">
-             <button onClick={() => window.location.reload()} className="p-2 text-slate-500 hover:bg-slate-100 rounded-full" title="データを再読み込み">
-               <RefreshCw size={20} />
+          <div>
+             <button onClick={() => window.location.reload()} className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-full transition-colors" title="リロード">
+               <RefreshCw size={18} />
              </button>
           </div>
         </header>
 
-        {/* Scrollable Content */}
+        {/* Content Body */}
         <div className="flex-1 overflow-auto bg-slate-100 p-6">
           
           {viewMode === 'table' && (
             <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex flex-col h-full max-h-full">
-               {/* Shift Table Implementation 
-                  Using CSS Grid for sticky headers
-               */}
                <div className="overflow-auto flex-1 relative">
                  <table className="w-full border-collapse text-sm">
                    <thead className="bg-slate-50 sticky top-0 z-10 shadow-sm">
                      <tr>
                        <th className="sticky left-0 z-20 bg-slate-50 p-3 border-b border-r border-slate-200 w-40 min-w-[160px] text-left font-semibold text-slate-600">
-                         スタッフ / 日付
+                         スタッフ
                        </th>
                        {currentMonthDays.map((date) => {
                          const isWeekend = date.getDay() === 0 || date.getDay() === 6;
@@ -478,7 +448,7 @@ export default function ShiftScheduler() {
                            <th key={date.toISOString()} className={`p-2 border-b border-slate-200 min-w-[40px] text-center font-medium ${isWeekend ? 'bg-orange-50 text-orange-800' : 'text-slate-600'}`}>
                              <div className="flex flex-col items-center">
                                <span>{date.getDate()}</span>
-                               <span className="text-xs opacity-70">
+                               <span className="text-[10px] opacity-70">
                                  {['日','月','火','水','木','金','土'][date.getDay()]}
                                </span>
                              </div>
@@ -490,7 +460,7 @@ export default function ShiftScheduler() {
                    <tbody>
                      {staff.map((s) => (
                        <tr key={s.id} className="hover:bg-slate-50 transition-colors">
-                         <td className="sticky left-0 z-10 bg-white p-3 border-b border-r border-slate-200 font-medium text-slate-700 truncate shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
+                         <td className="sticky left-0 z-10 bg-white p-3 border-b border-r border-slate-200 font-medium text-slate-700 truncate shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)]">
                            {s.name}
                          </td>
                          {currentMonthDays.map((date) => {
@@ -510,62 +480,61 @@ export default function ShiftScheduler() {
                                <div className="w-full h-full flex items-center justify-center">
                                  {pattern ? (
                                    <div 
-                                     className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shadow-sm"
+                                     className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shadow-sm transition-transform hover:scale-110"
                                      style={{ backgroundColor: pattern.color, color: pattern.textColor }}
                                    >
                                      {pattern.code}
                                    </div>
                                  ) : (
-                                   <div className="w-2 h-2 rounded-full bg-slate-200 opacity-50 group-hover:opacity-100"></div>
+                                   <div className="w-1.5 h-1.5 rounded-full bg-slate-200 opacity-0 group-hover:opacity-50"></div>
                                  )}
                                </div>
                                
-                               {/* Quick Selector Popup */}
+                               {/* Quick Selector */}
                                {isSelected && (
-                                 <div className="absolute top-full left-1/2 transform -translate-x-1/2 mt-2 bg-white p-2 rounded-xl shadow-2xl border border-slate-100 z-50 w-64 grid grid-cols-4 gap-2 animate-in fade-in zoom-in duration-200">
-                                   {patterns.map(p => (
-                                     <button
-                                       key={p.id}
-                                       onClick={(e) => {
-                                         e.stopPropagation();
-                                         handleSaveSchedule(dateKey, s.id, p.id);
-                                         setSelectedCell(null);
-                                       }}
-                                       className="flex flex-col items-center gap-1 p-2 hover:bg-slate-50 rounded-lg transition"
-                                     >
-                                       <div 
-                                         className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shadow-sm"
-                                         style={{ backgroundColor: p.color, color: p.textColor }}
+                                 <>
+                                   <div 
+                                     className="fixed inset-0 z-40 cursor-default" 
+                                     onClick={(e) => {
+                                       e.stopPropagation();
+                                       setSelectedCell(null);
+                                     }}
+                                   />
+                                   <div className="absolute top-full left-1/2 transform -translate-x-1/2 mt-2 bg-white p-3 rounded-xl shadow-2xl border border-slate-100 z-50 w-64 grid grid-cols-4 gap-2 animate-in fade-in zoom-in duration-200">
+                                     {patterns.map(p => (
+                                       <button
+                                         key={p.id}
+                                         onClick={(e) => {
+                                           e.stopPropagation();
+                                           handleSaveSchedule(dateKey, s.id, p.id);
+                                           setSelectedCell(null);
+                                         }}
+                                         className="flex flex-col items-center gap-1 p-2 hover:bg-slate-50 rounded-lg transition"
                                        >
-                                         {p.code}
-                                       </div>
-                                       <span className="text-[10px] text-slate-500 truncate w-full text-center">{p.label}</span>
+                                         <div 
+                                           className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shadow-sm"
+                                           style={{ backgroundColor: p.color, color: p.textColor }}
+                                         >
+                                           {p.code}
+                                         </div>
+                                         <span className="text-[10px] text-slate-500 truncate w-full text-center">{p.label}</span>
+                                       </button>
+                                     ))}
+                                     <button
+                                         onClick={(e) => {
+                                           e.stopPropagation();
+                                           handleSaveSchedule(dateKey, s.id, '');
+                                           setSelectedCell(null);
+                                         }}
+                                         className="flex flex-col items-center gap-1 p-2 hover:bg-red-50 rounded-lg transition group"
+                                       >
+                                         <div className="w-8 h-8 rounded-full border border-slate-200 flex items-center justify-center group-hover:border-red-200">
+                                           <Trash2 size={14} className="text-slate-400 group-hover:text-red-500"/>
+                                         </div>
+                                         <span className="text-[10px] text-slate-400 group-hover:text-red-500">削除</span>
                                      </button>
-                                   ))}
-                                   <button
-                                       onClick={(e) => {
-                                         e.stopPropagation();
-                                         handleSaveSchedule(dateKey, s.id, ''); // Clear
-                                         setSelectedCell(null);
-                                       }}
-                                       className="flex flex-col items-center gap-1 p-2 hover:bg-slate-50 rounded-lg transition text-slate-400 hover:text-red-500"
-                                     >
-                                       <div className="w-8 h-8 rounded-full border border-slate-200 flex items-center justify-center">
-                                         <Trash2 size={14} />
-                                       </div>
-                                       <span className="text-[10px]">削除</span>
-                                   </button>
-                                 </div>
-                               )}
-                               {/* Backdrop for closing selection */}
-                               {isSelected && (
-                                 <div 
-                                   className="fixed inset-0 z-40 bg-transparent" 
-                                   onClick={(e) => {
-                                     e.stopPropagation();
-                                     setSelectedCell(null);
-                                   }}
-                                 />
+                                   </div>
+                                 </>
                                )}
                              </td>
                            );
@@ -573,10 +542,10 @@ export default function ShiftScheduler() {
                        </tr>
                      ))}
                      
-                     {/* Summary Row (Mock) */}
+                     {/* Summary Row */}
                      <tr className="bg-slate-50 font-bold text-xs text-slate-500">
-                       <td className="sticky left-0 z-10 bg-slate-50 p-3 border-r border-slate-200">
-                         出勤人数
+                       <td className="sticky left-0 z-10 bg-slate-50 p-3 border-r border-slate-200 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)]">
+                         計
                        </td>
                        {currentMonthDays.map(date => (
                          <td key={date.toISOString()} className="p-2 text-center border-b border-slate-200">
@@ -624,7 +593,7 @@ export default function ShiftScheduler() {
 
                 <div className="grid gap-4">
                   {staff.length === 0 && (
-                    <div className="text-center py-10 text-slate-400">
+                    <div className="text-center py-10 text-slate-400 border-2 border-dashed border-slate-100 rounded-xl">
                       スタッフが登録されていません。
                     </div>
                   )}
@@ -643,6 +612,7 @@ export default function ShiftScheduler() {
                          <button 
                            onClick={() => handleDeleteStaff(s.id)}
                            className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition"
+                           title="削除"
                          >
                            <Trash2 size={18} />
                          </button>
@@ -655,10 +625,10 @@ export default function ShiftScheduler() {
           )}
 
           {(viewMode === 'patterns' || viewMode === 'settings') && (
-            <div className="max-w-2xl mx-auto bg-white p-10 rounded-xl shadow-sm border border-slate-200 text-center">
-              <Settings className="w-16 h-16 text-slate-300 mx-auto mb-4" />
-              <h3 className="text-xl font-bold text-slate-700 mb-2">準備中</h3>
-              <p className="text-slate-500">この機能は現在開発中です。スタッフ管理とシフト表機能をご利用ください。</p>
+            <div className="max-w-2xl mx-auto bg-white p-12 rounded-xl shadow-sm border border-slate-200 text-center">
+              <Settings className="w-16 h-16 text-slate-200 mx-auto mb-4" />
+              <h3 className="text-xl font-bold text-slate-700 mb-2">Coming Soon</h3>
+              <p className="text-slate-500">この機能は現在開発中です。</p>
             </div>
           )}
 
@@ -668,19 +638,17 @@ export default function ShiftScheduler() {
   );
 }
 
-// --- Components ---
-
 function NavButton({ active, onClick, icon, label, expanded }) {
   return (
     <button 
       onClick={onClick}
       className={`w-full flex items-center gap-3 p-3 rounded-xl transition-all duration-200
-        ${active ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/50' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}
+        ${active ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/20' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}
       `}
       title={!expanded ? label : ''}
     >
       <div className={`${active ? 'text-white' : ''}`}>{icon}</div>
-      {expanded && <span className="font-medium">{label}</span>}
+      {expanded && <span className="font-medium text-sm">{label}</span>}
     </button>
   );
 }
