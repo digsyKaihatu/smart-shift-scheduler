@@ -4,7 +4,8 @@ import {
   collection, getDocs, writeBatch, 
   getCountFromServer, query
 } from "firebase/firestore";
-// 認証関連のインポートを削除
+// 認証関連を復活
+import { getAuth, signInAnonymously, onAuthStateChanged } from "firebase/auth";
 import { db } from '../config/firebase';
 import { initialShiftPatterns, initialStaffData, initialAdminConfig, initialTasks } from '../constants/initialData';
 import { generateInitialSchedule } from '../utils/scheduleUtils';
@@ -16,8 +17,8 @@ export const useShiftData = () => {
   const [initialDataLoaded, setInitialDataLoaded] = useState(false);
   const [loadError, setLoadError] = useState(null);
   
-  // 認証ユーザー情報は使用しない
-  // const [user, setUser] = useState(null);
+  // 認証ユーザー情報
+  const [user, setUser] = useState(null);
 
   // Main State
   const [staff, setStaff] = useState([]);
@@ -29,22 +30,52 @@ export const useShiftData = () => {
   const debouncedSave = useRef(null);
   const isInitialDataSync = useRef(true);
 
-  // 1. Auth Initialization (削除: 認証なしで直接ロード)
-  
+  // 1. Auth Initialization (認証処理)
+  useEffect(() => {
+    const auth = getAuth();
+    setLoadingMessage("認証を確認中...");
+    
+    // 既存の認証状態をチェック
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      if (currentUser) {
+        console.log("Authenticated as:", currentUser.uid);
+        setUser(currentUser);
+      } else {
+        console.log("Signing in anonymously...");
+        setLoadingMessage("匿名ログイン試行中...");
+        signInAnonymously(auth)
+          .then((result) => {
+             console.log("Sign-in successful:", result.user.uid);
+             // onAuthStateChangedが発火するのでここはログ出力のみ
+          })
+          .catch((error) => {
+            console.error("Auth Error:", error);
+            setLoadError(error);
+            setLoadingMessage(`認証エラー: ${error.message}`);
+          });
+      }
+    });
+    return () => unsubscribe();
+  }, []);
+
   // 2. Data Loading
   const loadData = useCallback(async () => {
-    // 認証チェックを削除
-    // if (!user) return; 
+    if (!user) return; // 認証前は実行しない
 
     setIsLoading(true);
     setLoadError(null);
     
     try {
       setLoadingMessage("データの存在を確認中...");
+      console.log("Checking for patterns collection...");
       
       const patternsColl = collection(db, 'patterns');
-      const snapshot = await getCountFromServer(patternsColl);
-      const count = snapshot.data().count;
+      
+      // タイムアウト付きでカウント取得
+      const countPromise = getCountFromServer(patternsColl).then(snap => snap.data().count);
+      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout checking data")), 15000));
+      
+      const count = await Promise.race([countPromise, timeoutPromise]);
       
       console.log(`Current patterns count: ${count}`);
 
@@ -52,6 +83,7 @@ export const useShiftData = () => {
         setLoadingMessage("データを読み込んでいます...");
         console.log("Starting parallel data fetch...");
 
+        // 並列取得
         const staffPromise = getDocs(collection(db, 'staff'));
         const tasksPromise = getDocs(collection(db, 'tasks'));
         const patternsPromise = getDocs(collection(db, 'patterns'));
@@ -109,14 +141,14 @@ export const useShiftData = () => {
       setLoadingMessage(`読み込みエラー: ${error.message}`);
       setIsLoading(false); // エラー時もローディング解除
     }
-  }, []); // user依存を削除
+  }, [user]); // userに依存
 
-  // 初回マウント時に即座にロード開始 (user待機なし)
+  // user認証完了後にロード開始
   useEffect(() => {
-    if (!initialDataLoaded) {
+    if (user && !initialDataLoaded) {
       loadData();
     }
-  }, [loadData, initialDataLoaded]);
+  }, [user, loadData, initialDataLoaded]);
 
   // DB初期化関数
   const initializeDatabase = async () => {
@@ -169,8 +201,8 @@ export const useShiftData = () => {
 
   // 3. Auto Save
   useEffect(() => {
-    // userチェックを削除
-    if (!initialDataLoaded || loadError) return; 
+    // userチェックを追加 (認証済みでないと保存不可)
+    if (!initialDataLoaded || loadError || !user) return; 
     if (isInitialDataSync.current) {
       isInitialDataSync.current = false;
       return;
@@ -228,7 +260,7 @@ export const useShiftData = () => {
     }, 2000); 
 
     return () => clearTimeout(debouncedSave.current);
-  }, [staff, schedule, tasks, shiftPatterns, adminConfig, initialDataLoaded, loadError]);
+  }, [staff, schedule, tasks, shiftPatterns, adminConfig, initialDataLoaded, loadError, user]);
 
   return {
     staff, setStaff,
