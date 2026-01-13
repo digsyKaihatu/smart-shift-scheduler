@@ -15,7 +15,8 @@ import {
   writeBatch,
   query,
   where,
-  Timestamp 
+  Timestamp,
+  onSnapshot
 } from 'firebase/firestore';
 
 // --- Icons (Replaces lucide-react dependencies) ---
@@ -49,28 +50,27 @@ const Briefcase = (props) => <IconWrapper {...props}><rect x="2" y="7" width="20
 const Clock = (props) => <IconWrapper {...props}><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></IconWrapper>;
 
 // --- Firebase Configuration ---
-// Canvas環境とデプロイ環境の両方に対応するための安全な設定読み込み
 let firebaseConfig;
+
 try {
   if (typeof __firebase_config !== 'undefined') {
-    // Canvas環境: 自動注入された設定を使用
     firebaseConfig = JSON.parse(__firebase_config);
-  } else {
-    // デプロイ環境: ここにご自身のFirebase設定を記述してください
-    // ※これが設定されていないとデータベースに接続できません
-    console.warn("Firebase config not found. Using placeholder config.");
-    firebaseConfig = {
-      apiKey: "AIzaSyBl5pDlZwKYK_r78UIRA3ALtse0dZZC3iY",
-      authDomain: "smart-shift-scheduler.firebaseapp.com",
-      projectId: "smart-shift-scheduler",
-      storageBucket: "smart-shift-scheduler.firebasestorage.app",
-      messagingSenderId: "410729738408",
-      appId: "1:410729738408:web:25a2f142fe7f2d864ed29d"
-    };
   }
 } catch (e) {
-  console.error("Firebase config parsing error:", e);
-  firebaseConfig = { apiKey: "dummy" }; // 最低限のエラー回避
+  console.error("Canvas config parsing error:", e);
+}
+
+if (!firebaseConfig) {
+    // ★★★ 以下の値を、Firebaseコンソールの設定値に書き換えてください ★★★
+    console.log("Using manual config.");
+    firebaseConfig = {
+      apiKey: "YOUR_API_KEY", // 例: "AIzaSy..."
+      authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
+      projectId: "YOUR_PROJECT_ID",
+      storageBucket: "YOUR_PROJECT_ID.appspot.com",
+      messagingSenderId: "YOUR_SENDER_ID", // 数字の文字列
+      appId: "YOUR_APP_ID" // 例: "1:1234567890:web:abcdef..."
+    };
 }
 
 const app = initializeApp(firebaseConfig);
@@ -149,110 +149,88 @@ export default function ShiftScheduler() {
     return () => unsubscribe();
   }, []);
 
-  // --- Data Loading ---
-  const loadData = useCallback(async () => {
+  // --- Data Loading (Real-time Listeners) ---
+  // 集約クエリ(getDocs)をやめ、onSnapshotによるリアルタイム同期に戻しました
+  useEffect(() => {
     if (!user) return;
 
-    try {
-      setIsLoading(true);
-      setError(null);
-      
-      console.log('Checking for patterns collection...');
-      setLoadingMessage("シフトパターンを読み込み中...");
-      const patternsRef = collection(db, 'artifacts', appId, 'users', user.uid, 'patterns');
-      const patternsSnap = await getDocs(patternsRef);
-      
-      let loadedPatterns = [];
-      if (patternsSnap.empty) {
-        console.log('No patterns found. Using defaults.');
-        loadedPatterns = DEFAULT_PATTERNS;
-        // Save defaults silently
-        const batch = writeBatch(db);
-        DEFAULT_PATTERNS.forEach(p => {
-          const docRef = doc(db, 'artifacts', appId, 'users', user.uid, 'patterns', p.id);
-          batch.set(docRef, p);
+    setLoadingMessage("データ同期を開始...");
+    const unsubs = [];
+
+    // 1. Patterns
+    const patternsQuery = collection(db, 'artifacts', appId, 'users', user.uid, 'patterns');
+    unsubs.push(onSnapshot(patternsQuery, (snapshot) => {
+        if (snapshot.empty) {
+            setPatterns(DEFAULT_PATTERNS);
+            // 初回起動時にデフォルトパターンを保存
+            const batch = writeBatch(db);
+            DEFAULT_PATTERNS.forEach(p => {
+              const docRef = doc(db, 'artifacts', appId, 'users', user.uid, 'patterns', p.id);
+              batch.set(docRef, p);
+            });
+            batch.commit().catch(e => console.error("Defaults save error", e));
+        } else {
+            setPatterns(snapshot.docs.map(d => d.data()));
+        }
+    }, (err) => {
+        console.error("Patterns listener error:", err);
+        setError("データ同期エラー: パターン");
+    }));
+
+    // 2. Staff
+    const staffQuery = collection(db, 'artifacts', appId, 'users', user.uid, 'staff');
+    unsubs.push(onSnapshot(staffQuery, (snapshot) => {
+        setStaff(snapshot.docs.map(d => d.data()));
+    }, (err) => {
+        console.error("Staff listener error:", err);
+    }));
+
+    // 3. Config
+    const configQuery = collection(db, 'artifacts', appId, 'users', user.uid, 'config');
+    unsubs.push(onSnapshot(configQuery, (snapshot) => {
+        if (!snapshot.empty) {
+            setConfig(snapshot.docs[0].data());
+        }
+    }));
+
+    // 4. Schedules (Real-time)
+    const schedulesQuery = collection(db, 'artifacts', appId, 'users', user.uid, 'schedules');
+    unsubs.push(onSnapshot(schedulesQuery, (snapshot) => {
+        const newSchedules = {};
+        snapshot.forEach(doc => {
+            newSchedules[doc.data().date] = doc.data();
         });
-        await batch.commit();
-      } else {
-        loadedPatterns = patternsSnap.docs.map(d => d.data());
-        console.log(`Current patterns count: ${loadedPatterns.length}`);
-      }
-      setPatterns(loadedPatterns);
+        setSchedules(newSchedules);
+        
+        // データの初回ロード完了とみなす
+        setIsLoading(false);
+    }, (err) => {
+        console.error("Schedules listener error:", err);
+    }));
 
-      console.log('Starting parallel data fetch...');
-      setLoadingMessage("スタッフとスケジュールを読み込み中...");
-      
-      const [staffSnap, configSnap, schedulesSnap] = await Promise.all([
-        getDocs(collection(db, 'artifacts', appId, 'users', user.uid, 'staff')),
-        getDocs(collection(db, 'artifacts', appId, 'users', user.uid, 'config')),
-        getDocs(query(collection(db, 'artifacts', appId, 'users', user.uid, 'schedules'))) 
-      ]);
-
-      console.log('Fetch complete. Processing data...');
-
-      const loadedStaff = staffSnap.docs.map(d => d.data());
-      console.log(`Loaded ${loadedStaff.length} staff members.`);
-      setStaff(loadedStaff);
-
-      if (!configSnap.empty) {
-        setConfig(configSnap.docs[0].data());
-        console.log('Loaded config.');
-      }
-
-      const loadedSchedules = {};
-      schedulesSnap.forEach(doc => {
-        const data = doc.data();
-        loadedSchedules[data.date] = data;
-      });
-      console.log(`Loaded ${Object.keys(loadedSchedules).length} days of schedule.`);
-      setSchedules(loadedSchedules);
-
-      console.log('Data load sequence finished successfully.');
-    } catch (err) {
-      console.error("Data load error:", err);
-      // Firebaseの設定ミスによるエラーかどうかを判定
-      if (err.message.includes("api-key")) {
-         setError("APIキーが無効です。Firebaseの設定を確認してください。");
-      } else {
-         setError("データの読み込み中にエラーが発生しました。");
-      }
-    } finally {
-      console.log('Disabling loading state...');
-      setLoadingMessage("");
-      setIsLoading(false);
-    }
+    return () => unsubs.forEach(u => u());
   }, [user]);
-
-  useEffect(() => {
-    if (user) {
-      loadData();
-    }
-  }, [user, loadData]);
 
   // --- Actions ---
 
   const handleSaveSchedule = async (date, staffId, patternId) => {
     if (!user) return;
     
-    // Optimistic Update
-    setSchedules(prev => {
-      const daySchedule = prev[date] || { date, shifts: {} };
-      return {
-        ...prev,
-        [date]: {
-          ...daySchedule,
-          shifts: { ...daySchedule.shifts, [staffId]: patternId }
-        }
-      };
-    });
+    // onSnapshotを使っているため、楽観的更新(Optimistic Update)は必須ではありませんが、
+    // レスポンス向上として残しても良いです。ここではFirestoreへの書き込みのみ行い、
+    // 反映はonSnapshotに任せることで整合性を保ちます。
 
     try {
       const dayRef = doc(db, 'artifacts', appId, 'users', user.uid, 'schedules', date);
-      const newShifts = { ...schedules[date]?.shifts, [staffId]: patternId };
+      // 現在の状態をベースにするが、concurrent updatesを考慮するとtransactionがベスト。
+      // 簡易的にmergeを使用。
+      const currentShifts = schedules[date]?.shifts || {};
+      const newShifts = { ...currentShifts, [staffId]: patternId };
       await setDoc(dayRef, { date, shifts: newShifts }, { merge: true });
       
     } catch (err) {
       console.error("Save failed:", err);
+      alert("保存に失敗しました");
     }
   };
 
@@ -267,7 +245,7 @@ export default function ShiftScheduler() {
     try {
       setIsSaving(true);
       await setDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'staff', newStaff.id), newStaff);
-      setStaff(prev => [...prev, newStaff]);
+      // setStaffはonSnapshotがやってくれるので不要
       setViewMode('table'); 
     } catch (err) {
       console.error(err);
@@ -280,8 +258,7 @@ export default function ShiftScheduler() {
     if (!user) return;
     if (!window.confirm("このスタッフを削除してもよろしいですか？過去のシフトデータは残りますが、表示されなくなる可能性があります。")) return;
     try {
-      setStaff(prev => prev.filter(s => s.id !== id));
-      
+      // setStaffはonSnapshotがやってくれるので不要
       const batch = writeBatch(db);
       const docRef = doc(db, 'artifacts', appId, 'users', user.uid, 'staff', id);
       batch.delete(docRef);
@@ -328,14 +305,11 @@ export default function ShiftScheduler() {
           <Briefcase className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-blue-600 w-8 h-8" />
         </div>
         <p className="text-slate-600 font-medium animate-pulse">{loadingMessage}</p>
-        <div className="mt-4 text-xs text-slate-400 font-mono">
-           Patterns: {patterns.length > 0 ? 'OK' : '...'} | Staff: {staff.length}
-        </div>
       </div>
     );
   }
 
-  // ★ CRITICAL FIX: Empty State Handling (スタッフ0人時の対応) ★
+  // ★ Empty State Handling (スタッフ0人時の対応) ★
   if (staff.length === 0 && viewMode === 'table') {
     return (
       <div className="flex h-screen w-full bg-slate-50 items-center justify-center p-4">
@@ -476,7 +450,7 @@ export default function ShiftScheduler() {
             </h2>
           </div>
           <div className="flex items-center gap-3">
-             <button onClick={loadData} className="p-2 text-slate-500 hover:bg-slate-100 rounded-full" title="データを再読み込み">
+             <button onClick={() => window.location.reload()} className="p-2 text-slate-500 hover:bg-slate-100 rounded-full" title="データを再読み込み">
                <RefreshCw size={20} />
              </button>
           </div>
