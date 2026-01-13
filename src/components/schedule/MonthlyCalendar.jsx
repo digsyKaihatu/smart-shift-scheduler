@@ -76,7 +76,7 @@ const MonthlyCalendar = ({ schedule, staff, tasks, shiftPatterns, initialYear, i
     return days;
   }, [currentDate]);
 
-  // 初期表示時および月変更時にスクロール位置を調整
+  // 初期表示時および月変更時にスクロール位置を調整（ブラウザの縦スクロールを発生させない安全な方法）
   useEffect(() => {
     if (!scrollContainerRef.current) return;
 
@@ -88,11 +88,23 @@ const MonthlyCalendar = ({ schedule, staff, tasks, shiftPatterns, initialYear, i
 
     if (isCurrentMonth) {
         // 今日が含まれる場合：今日の日付へスクロール
-        // DOMレンダリング待ちのために少し遅延
         setTimeout(() => {
-            const todayElement = scrollContainerRef.current.querySelector(`[data-date="${todayStr}"]`);
+            const container = scrollContainerRef.current;
+            if (!container) return;
+
+            const todayElement = container.querySelector(`[data-date="${todayStr}"]`);
             if (todayElement) {
-                todayElement.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+                // scrollIntoViewは使わず、コンテナのscrollLeftのみを操作する
+                const containerWidth = container.clientWidth;
+                const elementLeft = todayElement.offsetLeft;
+                const elementWidth = todayElement.clientWidth;
+                
+                const scrollTo = elementLeft - (containerWidth / 2) + (elementWidth / 2);
+
+                container.scrollTo({
+                    left: scrollTo,
+                    behavior: 'smooth'
+                });
             }
         }, 100);
     } else {
