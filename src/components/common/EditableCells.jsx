@@ -88,7 +88,7 @@ const EditableCell = ({ value, onUpdate, borderClass, disabled = false, isAdmin 
 
   const handleSelectChange = (e) => {
     const selected = e.target.value;
-    const specialShiftOptions = ['遅', '早', '午前有', '午後有', '午前休', '午後休', '午前通', '午後通'];
+    const specialShiftOptions = ['遅刻', '早退', '午前有休', '午後有休', '午前休', '午後休', '午前通休', '午後通休'];
     const TIME_INPUT_OPTION = '稼働時間入力';
 
     if (specialShiftOptions.includes(selected)) {
@@ -135,24 +135,24 @@ const EditableCell = ({ value, onUpdate, borderClass, disabled = false, isAdmin 
     
     if (typeof value === 'object' && value !== null && 'type' in value) {
         switch (value.type) {
-            case '休': return `bg-slate-300 ${hoverClass}`;
-            case '遅': return `bg-orange-200 ${hoverClass}`;
-            case '早': return `bg-purple-200 ${hoverClass}`;
-            case '午前有':
-            case '午後有': return `bg-yellow-200 ${hoverClass}`;
+            case 'シフト休': return `bg-slate-300 ${hoverClass}`;
+            case '遅刻': return `bg-orange-200 ${hoverClass}`;
+            case '早退': return `bg-purple-200 ${hoverClass}`;
+            case '午前有休':
+            case '午後有休': return `bg-yellow-200 ${hoverClass}`;
             case '午前休': return `bg-slate-300 ${hoverClass}`;
             case '午後休':
-            case '午前通':
-            case '午後通': return `bg-blue-200 ${hoverClass}`;
+            case '午前通休':
+            case '午後通休': return `bg-blue-200 ${hoverClass}`;
             default: break;
         }
     }
 
     switch(value) {
-      case '有': return `bg-yellow-200 ${hoverClass}`;
-      case '通': return `bg-blue-200 ${hoverClass}`;
-      case '休': return `bg-slate-300 ${hoverClass}`;
-      case '欠': return `bg-red-200 ${hoverClass}`;
+      case '有休': return `bg-yellow-200 ${hoverClass}`;
+      case '通休': return `bg-blue-200 ${hoverClass}`;
+      case 'シフト休': return `bg-slate-300 ${hoverClass}`;
+      case '欠勤': return `bg-red-200 ${hoverClass}`;
       default: return `bg-white ${isEffectivelyDisabled ? '' : 'hover:bg-slate-50'}`;
     }
   };
@@ -178,8 +178,8 @@ const EditableCell = ({ value, onUpdate, borderClass, disabled = false, isAdmin 
   }
 
   if (mode === 'select') {
-    const statusOptions = ['有', '休', '通', '欠'];
-    const specialShiftOptions = ['遅', '早', '午前有', '午後有', '午前休', '午後休', '午前通', '午後通'];
+    const statusOptions = ['有休', 'シフト休', '通休', '欠勤'];
+    const specialShiftOptions = ['遅刻', '早退', '午前有休', '午後有休', '午前休', '午後休', '午前通休', '午後通休'];
     const TIME_INPUT_OPTION = '稼働時間入力';
     return (
          <div ref={cellRef} className={`${baseClasses} bg-white`}>
