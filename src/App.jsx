@@ -61,15 +61,16 @@ try {
 }
 
 if (!firebaseConfig) {
-    // ★★★ 以下の値を、Firebaseコンソールの設定値に書き換えてください ★★★
+    // 【重要】ここにFirebaseコンソールから取得した値を貼り付けてください
+    // 値が "YOUR_..." のままだと認証エラーになります
     console.log("Using manual config.");
     firebaseConfig = {
-      apiKey: "YOUR_API_KEY", // 例: "AIzaSy..."
-      authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
-      projectId: "YOUR_PROJECT_ID",
-      storageBucket: "YOUR_PROJECT_ID.appspot.com",
-      messagingSenderId: "YOUR_SENDER_ID", // 数字の文字列
-      appId: "YOUR_APP_ID" // 例: "1:1234567890:web:abcdef..."
+      apiKey: "AIzaSyBl5pDlZwKYK_r78UIRA3ALtse0dZZC3iY", 
+      authDomain: "smart-shift-scheduler.firebaseapp.com",
+      projectId: "smart-shift-scheduler",
+      storageBucket: "smart-shift-scheduler.firebasestorage.app",
+      messagingSenderId: "410729738408", 
+      appId: "1:410729738408:web:25a2f142fe7f2d864ed29d"
     };
 }
 
