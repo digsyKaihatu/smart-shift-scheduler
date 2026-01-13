@@ -5,8 +5,8 @@ import React, { useState } from 'react';
 // -----------------------------------------------------------------------------
 const AddShiftPatternModal = ({ onClose, onSave, existingPatterns }) => {
   const [id, setId] = useState('');
-  const [startTime, setStartTime] = useState('09:00');
-  const [endTime, setEndTime] = useState('18:00');
+  const [startTime, setStartTime] = useState('09:30'); // デフォルトを09:30に変更
+  const [endTime, setEndTime] = useState('18:30'); // デフォルトを18:30に変更
   const [breakHours, setBreakHours] = useState('1.0');
   const [error, setError] = useState('');
 
