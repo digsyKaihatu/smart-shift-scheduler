@@ -98,18 +98,22 @@ export const useShiftData = () => {
 
         // Staff
         const loadedStaff = staffSnap.docs.map(d => d.data());
+        console.log(`Loaded ${loadedStaff.length} staff members.`);
         setStaff(loadedStaff); 
 
         // Tasks
         const loadedTasks = tasksSnap.docs.map(d => d.data());
+        console.log(`Loaded ${loadedTasks.length} tasks.`);
         setTasks(loadedTasks.length > 0 ? loadedTasks : initialTasks);
 
         // Patterns
         const loadedPatterns = patternsSnap.docs.map(d => d.data());
+        console.log(`Loaded ${loadedPatterns.length} patterns.`);
         setShiftPatterns(loadedPatterns.length > 0 ? loadedPatterns : initialShiftPatterns);
 
         // Config
         if (!configSnap.empty) {
+          console.log("Loaded config.");
           setAdminConfig(configSnap.docs[0].data());
         }
 
@@ -118,8 +122,10 @@ export const useShiftData = () => {
         schedulesSnap.docs.forEach(d => {
           loadedSchedule[d.id] = d.data();
         });
+        console.log(`Loaded ${Object.keys(loadedSchedule).length} months of schedule.`);
         
         if (Object.keys(loadedSchedule).length === 0) {
+           console.log("No schedule found, generating initial schedule...");
            setSchedule(generateInitialSchedule(initialStaffData, initialShiftPatterns));
         } else {
            setSchedule(loadedSchedule);
@@ -132,14 +138,17 @@ export const useShiftData = () => {
         console.log("Database initialized.");
       }
       
+      console.log("Data load sequence finished successfully.");
       setInitialDataLoaded(true);
-      setIsLoading(false); // ここで完了とする
 
     } catch (error) {
       console.error("Firebase Load Error:", error);
       setLoadError(error);
       setLoadingMessage(`読み込みエラー: ${error.message}`);
-      setIsLoading(false); // エラー時もローディング解除
+    } finally {
+      // 成功しても失敗しても必ずローディングを解除
+      console.log("Disabling loading state...");
+      setIsLoading(false); 
     }
   }, [user]); // userに依存
 
