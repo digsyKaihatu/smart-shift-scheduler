@@ -96,40 +96,52 @@ export const useShiftData = () => {
     loadData();
   }, []);
 
-  // DB初期化関数
+  // DB初期化関数 (バッチ分割対応)
   const initializeDatabase = async () => {
-    const batch = writeBatch(db);
+    // 全ての書き込み操作を配列にまとめる
+    const operations = [];
 
     // Staff
     initialStaffData.forEach(s => {
       const ref = doc(db, 'staff', s.id);
-      batch.set(ref, s);
+      operations.push({ ref, data: s });
     });
 
     // Tasks
     initialTasks.forEach(t => {
       const ref = doc(db, 'tasks', t.id);
-      batch.set(ref, t);
+      operations.push({ ref, data: t });
     });
 
     // Patterns
     initialShiftPatterns.forEach(p => {
       const ref = doc(db, 'patterns', p.id);
-      batch.set(ref, p);
+      operations.push({ ref, data: p });
     });
 
     // Config
     const configRef = doc(db, 'config', 'main');
-    batch.set(configRef, initialAdminConfig);
+    operations.push({ ref: configRef, data: initialAdminConfig });
 
     // Schedule
     const initialSched = generateInitialSchedule(initialStaffData, initialShiftPatterns);
     Object.entries(initialSched).forEach(([key, data]) => {
       const ref = doc(db, 'schedules', key);
-      batch.set(ref, data);
+      operations.push({ ref, data });
     });
 
-    await batch.commit();
+    // バッチサイズ制限 (500) を考慮して分割実行
+    const BATCH_SIZE = 450; // 安全マージンをとって450
+    for (let i = 0; i < operations.length; i += BATCH_SIZE) {
+      const batch = writeBatch(db);
+      const chunk = operations.slice(i, i + BATCH_SIZE);
+      
+      chunk.forEach(op => {
+        batch.set(op.ref, op.data);
+      });
+
+      await batch.commit();
+    }
 
     setStaff(initialStaffData);
     setTasks(initialTasks);
@@ -138,7 +150,7 @@ export const useShiftData = () => {
     setSchedule(initialSched);
   };
 
-  // 2. Auto Save (Batch Update)
+  // 2. Auto Save (Batch Update) - こちらも念のため分割対応
   useEffect(() => {
     if (!initialDataLoaded) return;
     if (isInitialDataSync.current) {
@@ -152,37 +164,47 @@ export const useShiftData = () => {
     debouncedSave.current = setTimeout(async () => {
       setSaveStatus('saving');
       try {
-        const batch = writeBatch(db);
+        const operations = [];
 
         // Staff
         staff.forEach(s => {
           const ref = doc(db, 'staff', s.id);
-          batch.set(ref, s);
+          operations.push({ ref, data: s });
         });
 
         // Tasks
         tasks.forEach(t => {
           const ref = doc(db, 'tasks', t.id);
-          batch.set(ref, t);
+          operations.push({ ref, data: t });
         });
 
         // Patterns
         shiftPatterns.forEach(p => {
           const ref = doc(db, 'patterns', p.id);
-          batch.set(ref, p);
+          operations.push({ ref, data: p });
         });
 
         // Config
         const configRef = doc(db, 'config', 'main');
-        batch.set(configRef, adminConfig);
+        operations.push({ ref: configRef, data: adminConfig });
 
         // Schedule (Only save loaded months)
         Object.entries(schedule).forEach(([key, data]) => {
           const ref = doc(db, 'schedules', key);
-          batch.set(ref, data);
+          operations.push({ ref, data });
         });
 
-        await batch.commit();
+        // バッチ分割実行
+        const BATCH_SIZE = 450;
+        for (let i = 0; i < operations.length; i += BATCH_SIZE) {
+            const batch = writeBatch(db);
+            const chunk = operations.slice(i, i + BATCH_SIZE);
+            chunk.forEach(op => {
+                batch.set(op.ref, op.data);
+            });
+            await batch.commit();
+        }
+
         setSaveStatus('saved');
       } catch (error) {
         console.error("Auto-save failed:", error);
