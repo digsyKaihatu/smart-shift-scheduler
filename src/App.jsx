@@ -9,8 +9,7 @@ import {
   getAuth, 
   signInWithCustomToken, 
   signInAnonymously, 
-  onAuthStateChanged,
-  User 
+  onAuthStateChanged
 } from 'firebase/auth';
 import { 
   getFirestore, 
@@ -31,39 +30,8 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
 
-// --- Types ---
-interface Staff {
-  id: string;
-  name: string;
-  roles: string[];
-  maxNightShifts?: number;
-  isActive: boolean;
-}
-
-interface ShiftPattern {
-  id: string;
-  label: string;
-  code: string;
-  color: string;
-  textColor: string;
-  timeRange: string;
-  isNightShift: boolean;
-  isOff: boolean;
-}
-
-interface DaySchedule {
-  date: string; // YYYY-MM-DD
-  shifts: { [staffId: string]: string }; // staffId -> patternId
-  note?: string;
-}
-
-interface AppConfig {
-  title: string;
-  startDayOfMonth: number; // 締め日またぎ用（1なら通常月）
-}
-
 // --- Default Data ---
-const DEFAULT_PATTERNS: ShiftPattern[] = [
+const DEFAULT_PATTERNS = [
   { id: 'day', label: '日勤', code: '日', color: '#E3F2FD', textColor: '#1565C0', timeRange: '9:00-18:00', isNightShift: false, isOff: false },
   { id: 'early', label: '早番', code: '早', color: '#FFF3E0', textColor: '#E65100', timeRange: '7:00-16:00', isNightShift: false, isOff: false },
   { id: 'late', label: '遅番', code: '遅', color: '#F3E5F5', textColor: '#7B1FA2', timeRange: '11:00-20:00', isNightShift: false, isOff: false },
@@ -72,13 +40,13 @@ const DEFAULT_PATTERNS: ShiftPattern[] = [
 ];
 
 // --- Helper Functions ---
-const formatDate = (date: Date): string => {
+const formatDate = (date) => {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 };
 
-const getDaysInMonth = (year: number, month: number): Date[] => {
+const getDaysInMonth = (year, month) => {
   const date = new Date(year, month, 1);
-  const days: Date[] = [];
+  const days = [];
   while (date.getMonth() === month) {
     days.push(new Date(date));
     date.setDate(date.getDate() + 1);
@@ -89,21 +57,21 @@ const getDaysInMonth = (year: number, month: number): Date[] => {
 // --- Main Component ---
 export default function ShiftScheduler() {
   // State: Auth & Loading
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [loadingMessage, setLoadingMessage] = useState("システム起動中...");
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState(null);
 
   // State: Data
-  const [staff, setStaff] = useState<Staff[]>([]);
-  const [patterns, setPatterns] = useState<ShiftPattern[]>([]);
-  const [schedules, setSchedules] = useState<{ [date: string]: DaySchedule }>({});
-  const [config, setConfig] = useState<AppConfig>({ title: 'シフト管理表', startDayOfMonth: 1 });
+  const [staff, setStaff] = useState([]);
+  const [patterns, setPatterns] = useState([]);
+  const [schedules, setSchedules] = useState({});
+  const [config, setConfig] = useState({ title: 'シフト管理表', startDayOfMonth: 1 });
 
   // State: UI
   const [currentDate, setCurrentDate] = useState(new Date());
-  const [viewMode, setViewMode] = useState<'table' | 'staff' | 'patterns' | 'settings'>('table');
-  const [selectedCell, setSelectedCell] = useState<{ staffId: string, date: string } | null>(null);
+  const [viewMode, setViewMode] = useState('table');
+  const [selectedCell, setSelectedCell] = useState(null);
   const [isSaving, setIsSaving] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
@@ -141,7 +109,7 @@ export default function ShiftScheduler() {
       const patternsRef = collection(db, 'artifacts', appId, 'users', user.uid, 'patterns');
       const patternsSnap = await getDocs(patternsRef);
       
-      let loadedPatterns: ShiftPattern[] = [];
+      let loadedPatterns = [];
       if (patternsSnap.empty) {
         console.log('No patterns found. Using defaults.');
         loadedPatterns = DEFAULT_PATTERNS;
@@ -153,7 +121,7 @@ export default function ShiftScheduler() {
         });
         await batch.commit();
       } else {
-        loadedPatterns = patternsSnap.docs.map(d => d.data() as ShiftPattern);
+        loadedPatterns = patternsSnap.docs.map(d => d.data());
         console.log(`Current patterns count: ${loadedPatterns.length}`);
       }
       setPatterns(loadedPatterns);
@@ -165,23 +133,22 @@ export default function ShiftScheduler() {
         getDocs(collection(db, 'artifacts', appId, 'users', user.uid, 'staff')),
         getDocs(collection(db, 'artifacts', appId, 'users', user.uid, 'config')),
         getDocs(query(collection(db, 'artifacts', appId, 'users', user.uid, 'schedules'))) 
-        // Note: Fetching all schedules for now. In a real app, date range query is better.
       ]);
 
       console.log('Fetch complete. Processing data...');
 
-      const loadedStaff = staffSnap.docs.map(d => d.data() as Staff);
+      const loadedStaff = staffSnap.docs.map(d => d.data());
       console.log(`Loaded ${loadedStaff.length} staff members.`);
       setStaff(loadedStaff);
 
       if (!configSnap.empty) {
-        setConfig(configSnap.docs[0].data() as AppConfig);
+        setConfig(configSnap.docs[0].data());
         console.log('Loaded config.');
       }
 
-      const loadedSchedules: { [date: string]: DaySchedule } = {};
+      const loadedSchedules = {};
       schedulesSnap.forEach(doc => {
-        const data = doc.data() as DaySchedule;
+        const data = doc.data();
         loadedSchedules[data.date] = data;
       });
       console.log(`Loaded ${Object.keys(loadedSchedules).length} days of schedule.`);
@@ -206,7 +173,7 @@ export default function ShiftScheduler() {
 
   // --- Actions ---
 
-  const handleSaveSchedule = async (date: string, staffId: string, patternId: string) => {
+  const handleSaveSchedule = async (date, staffId, patternId) => {
     if (!user) return;
     
     // Optimistic Update
@@ -222,25 +189,18 @@ export default function ShiftScheduler() {
     });
 
     try {
-      // Debouncing could be added here, but direct save for simplicity
       const dayRef = doc(db, 'artifacts', appId, 'users', user.uid, 'schedules', date);
-      // We need to get the latest state or merge. 
-      // For simplicity, we'll reconstruct the day object from state (risky if rapid concurrent edits, but okay for single user)
-      // Better: Update specific field via dot notation if possible, but Firestore maps are tricky with dynamic keys.
-      // So we will just setMerge.
-      
       const newShifts = { ...schedules[date]?.shifts, [staffId]: patternId };
       await setDoc(dayRef, { date, shifts: newShifts }, { merge: true });
       
     } catch (err) {
       console.error("Save failed:", err);
-      // Revert logic would go here
     }
   };
 
-  const handleAddStaff = async (name: string) => {
+  const handleAddStaff = async (name) => {
     if (!user || !name.trim()) return;
-    const newStaff: Staff = {
+    const newStaff = {
       id: crypto.randomUUID(),
       name: name.trim(),
       roles: [],
@@ -250,7 +210,7 @@ export default function ShiftScheduler() {
       setIsSaving(true);
       await setDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'staff', newStaff.id), newStaff);
       setStaff(prev => [...prev, newStaff]);
-      setViewMode('table'); // Go back to table if this was the first staff
+      setViewMode('table'); 
     } catch (err) {
       console.error(err);
     } finally {
@@ -258,19 +218,12 @@ export default function ShiftScheduler() {
     }
   };
 
-  const handleDeleteStaff = async (id: string) => {
+  const handleDeleteStaff = async (id) => {
     if (!user) return;
     if (!window.confirm("このスタッフを削除してもよろしいですか？過去のシフトデータは残りますが、表示されなくなる可能性があります。")) return;
     try {
-      // In Firestore, we just delete the staff doc. 
-      // Real app might want soft-delete (isActive: false).
-      // Let's do soft delete logic or hard delete? Let's do hard delete for now to match UI state.
-      // await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'staff', id)); 
-      
-      // Update local first
       setStaff(prev => prev.filter(s => s.id !== id));
       
-      // Then remote
       const batch = writeBatch(db);
       const docRef = doc(db, 'artifacts', appId, 'users', user.uid, 'staff', id);
       batch.delete(docRef);
@@ -286,7 +239,7 @@ export default function ShiftScheduler() {
     return getDaysInMonth(currentDate.getFullYear(), currentDate.getMonth());
   }, [currentDate]);
 
-  const getShiftPattern = (id: string) => patterns.find(p => p.id === id);
+  const getShiftPattern = (id) => patterns.find(p => p.id === id);
 
   // --- Render Components ---
 
@@ -318,16 +271,13 @@ export default function ShiftScheduler() {
         </div>
         <p className="text-slate-600 font-medium animate-pulse">{loadingMessage}</p>
         <div className="mt-4 text-xs text-slate-400 font-mono">
-           {/* Debug output to visualize progress */}
            Patterns: {patterns.length > 0 ? 'OK' : '...'} | Staff: {staff.length}
         </div>
       </div>
     );
   }
 
-  // ★ CRITICAL FIX: Empty State Handling ★
-  // スタッフが0人の場合に、いきなりテーブルを描画しようとすると落ちる可能性が高い。
-  // ここでEmpty Stateを挟むことで、レンダリングエラーを回避する。
+  // ★ CRITICAL FIX: Empty State Handling (スタッフ0人時の対応) ★
   if (staff.length === 0 && viewMode === 'table') {
     return (
       <div className="flex h-screen w-full bg-slate-50 items-center justify-center p-4">
@@ -347,8 +297,8 @@ export default function ShiftScheduler() {
               <form 
                 onSubmit={(e) => {
                   e.preventDefault();
-                  const form = e.target as HTMLFormElement;
-                  const input = form.elements.namedItem('staffName') as HTMLInputElement;
+                  const form = e.target;
+                  const input = form.elements.namedItem('staffName');
                   handleAddStaff(input.value);
                 }}
                 className="flex gap-2"
@@ -373,7 +323,6 @@ export default function ShiftScheduler() {
             <div className="mt-8 pt-6 border-t border-gray-100 flex justify-center">
                <button 
                  onClick={() => {
-                    // デモデータ投入ロジック（簡易版）
                     ["山田 太郎", "鈴木 一郎", "佐藤 花子"].forEach(name => handleAddStaff(name));
                  }}
                  className="text-sm text-slate-500 hover:text-blue-600 underline"
@@ -480,9 +429,7 @@ export default function ShiftScheduler() {
           
           {viewMode === 'table' && (
             <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex flex-col h-full max-h-full">
-               {/* Shift Table Implementation 
-                  Using CSS Grid for sticky headers
-               */}
+               {/* Shift Table Implementation */}
                <div className="overflow-auto flex-1 relative">
                  <table className="w-full border-collapse text-sm">
                    <thead className="bg-slate-50 sticky top-0 z-10 shadow-sm">
@@ -620,8 +567,8 @@ export default function ShiftScheduler() {
                    <form 
                      onSubmit={(e) => {
                        e.preventDefault();
-                       const form = e.target as HTMLFormElement;
-                       const input = form.elements.namedItem('newStaffName') as HTMLInputElement;
+                       const form = e.target;
+                       const input = form.elements.namedItem('newStaffName');
                        handleAddStaff(input.value);
                        input.value = '';
                      }}
@@ -688,7 +635,7 @@ export default function ShiftScheduler() {
 
 // --- Components ---
 
-function NavButton({ active, onClick, icon, label, expanded }: { active: boolean, onClick: () => void, icon: React.ReactNode, label: string, expanded: boolean }) {
+function NavButton({ active, onClick, icon, label, expanded }) {
   return (
     <button 
       onClick={onClick}
