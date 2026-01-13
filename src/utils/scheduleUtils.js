@@ -16,14 +16,14 @@ export const generateScheduleForMonth = (year, month, staffData, shiftPatternsDa
             const isHoliday = monthHolidays.includes(day);
 
             if (dayOfWeek === 0 || dayOfWeek === 6 || isHoliday) {
-                scheduleForMonth[staffId][day] = '休';
+                scheduleForMonth[staffId][day] = 'シフト休';
             } else {
                 // It's a weekday
                 const patternIndex = dayOfWeek - 1; // Monday (1) -> 0
                 if (defaultPattern && patternIndex >= 0 && patternIndex < defaultPattern.length) {
                     const patternId = defaultPattern[patternIndex];
-                    if (patternId === '休') {
-                        scheduleForMonth[staffId][day] = '休';
+                    if (patternId === 'シフト休') {
+                        scheduleForMonth[staffId][day] = 'シフト休';
                     } else {
                         const patternDetails = shiftPatternsData.find(p => p.id === patternId);
                         scheduleForMonth[staffId][day] = patternDetails ? patternDetails.workHours : '';
@@ -65,8 +65,8 @@ export const summarizePattern = (pattern, patterns) => {
 
     return order.map(key => {
         const days = groups[key].join('');
-        if (key === '休') {
-            return `${days}:休`;
+        if (key === 'シフト休') {
+            return `${days}:シフト休`;
         }
         const patternDetail = patterns.find(p => p.id === key);
         if (!patternDetail) {
