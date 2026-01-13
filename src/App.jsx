@@ -1,573 +1,704 @@
-import React, { useState, useMemo, useEffect } from 'react';
-import { Routes, Route, useNavigate } from 'react-router-dom';
-import { Security, LoginCallback, useOktaAuth } from '@okta/okta-react';
-import { OktaAuth, toRelativeUrl } from '@okta/okta-auth-js';
-import { oktaConfig } from './config/okta';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { 
+  Calendar, Users, Settings, Save, ChevronLeft, ChevronRight, 
+  Plus, Trash2, Moon, Sun, FileDown, AlertCircle, RefreshCw,
+  Check, X, Briefcase, Clock, Shield
+} from 'lucide-react';
+import { initializeApp } from 'firebase/app';
+import { 
+  getAuth, 
+  signInWithCustomToken, 
+  signInAnonymously, 
+  onAuthStateChanged,
+  User 
+} from 'firebase/auth';
+import { 
+  getFirestore, 
+  collection, 
+  doc, 
+  getDocs, 
+  setDoc, 
+  writeBatch,
+  query,
+  where,
+  Timestamp 
+} from 'firebase/firestore';
 
-// Hooks & Services & Utils
-import { useShiftData } from './hooks/useShiftData';
-import { chatService } from './services/chatService';
-import { downloadScheduleCSV } from './utils/csvExporter';
-import { getJapaneseHolidays, formatValue } from './utils/dateUtils';
-import { generateScheduleForMonth, summarizePattern } from './utils/scheduleUtils';
+// --- Firebase Configuration ---
+const firebaseConfig = JSON.parse(__firebase_config);
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
 
-// Components
-import LoadingScreen from './components/common/LoadingScreen';
-import HelpGuideModal from './components/common/HelpGuideModal';
-import { ConfirmationModal, ConfirmDeleteModal } from './components/common/Modal';
-import Legend from './components/schedule/Legend';
-import ShiftSchedule from './components/schedule/ShiftSchedule';
-import MonthlyCalendar from './components/schedule/MonthlyCalendar'; // 追加
-import ShiftPatternDisplay from './components/schedule/ShiftPatternDisplay';
-import ShiftApprovalModal from './components/schedule/ShiftApprovalModal';
-import TaskShortageDisplay from './components/tasks/TaskShortageDisplay';
-import TaskStaffMappingEditor from './components/tasks/TaskStaffMappingEditor';
-import MemberManagementModal from './components/admin/MemberManagementModal';
-import AdminSettingsModal from './components/admin/AdminSettingsModal';
+// --- Types ---
+interface Staff {
+  id: string;
+  name: string;
+  roles: string[];
+  maxNightShifts?: number;
+  isActive: boolean;
+}
 
-// Oktaインスタンスの初期化
-const oktaAuth = new OktaAuth(oktaConfig);
+interface ShiftPattern {
+  id: string;
+  label: string;
+  code: string;
+  color: string;
+  textColor: string;
+  timeRange: string;
+  isNightShift: boolean;
+  isOff: boolean;
+}
 
-const App = () => {
-  const navigate = useNavigate();
-  const restoreOriginalUri = async (_oktaAuth, originalUri) => {
-    navigate(toRelativeUrl(originalUri || '/', window.location.origin));
-  };
+interface DaySchedule {
+  date: string; // YYYY-MM-DD
+  shifts: { [staffId: string]: string }; // staffId -> patternId
+  note?: string;
+}
 
-  return (
-    <Security oktaAuth={oktaAuth} restoreOriginalUri={restoreOriginalUri}>
-      <Routes>
-        <Route path="/login/callback" element={<LoginCallback />} />
-        <Route path="/*" element={<MainContent />} />
-      </Routes>
-    </Security>
-  );
+interface AppConfig {
+  title: string;
+  startDayOfMonth: number; // 締め日またぎ用（1なら通常月）
+}
+
+// --- Default Data ---
+const DEFAULT_PATTERNS: ShiftPattern[] = [
+  { id: 'day', label: '日勤', code: '日', color: '#E3F2FD', textColor: '#1565C0', timeRange: '9:00-18:00', isNightShift: false, isOff: false },
+  { id: 'early', label: '早番', code: '早', color: '#FFF3E0', textColor: '#E65100', timeRange: '7:00-16:00', isNightShift: false, isOff: false },
+  { id: 'late', label: '遅番', code: '遅', color: '#F3E5F5', textColor: '#7B1FA2', timeRange: '11:00-20:00', isNightShift: false, isOff: false },
+  { id: 'night', label: '夜勤', code: '夜', color: '#E8EAF6', textColor: '#283593', timeRange: '16:30-9:30', isNightShift: true, isOff: false },
+  { id: 'off', label: '公休', code: '公', color: '#FFEBEE', textColor: '#C62828', timeRange: '', isNightShift: false, isOff: true },
+];
+
+// --- Helper Functions ---
+const formatDate = (date: Date): string => {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 };
 
-// メインコンテンツ（認証済みの場合のみ表示）
-const MainContent = () => {
-  const { oktaAuth, authState } = useOktaAuth();
-  
-  // カスタムフック
-  const {
-    staff, setStaff, schedule, setSchedule, tasks, setTasks,
-    shiftPatterns, setShiftPatterns, adminConfig, setAdminConfig,
-    isLoading, loadingMessage, setLoadingMessage, setIsLoading, saveStatus, initialDataLoaded
-  } = useShiftData();
+const getDaysInMonth = (year: number, month: number): Date[] => {
+  const date = new Date(year, month, 1);
+  const days: Date[] = [];
+  while (date.getMonth() === month) {
+    days.push(new Date(date));
+    date.setDate(date.getDate() + 1);
+  }
+  return days;
+};
 
-  const [currentUser, setCurrentUser] = useState(null);
-  
-  // 現在の日時を取得して初期値にする
-  const [year, setYear] = useState(new Date().getFullYear());
-  const [month, setMonth] = useState(new Date().getMonth() + 1);
-  
-  const [taskCountsByDay, setTaskCountsByDay] = useState({});
-  
-  // UI State
-  const [isTaskEditorOpen, setIsTaskEditorOpen] = useState(false);
-  const [isHelpOpen, setIsHelpOpen] = useState(false);
-  const [isMemberManagementOpen, setIsMemberManagementOpen] = useState(false);
-  const [isAdminSettingsOpen, setIsAdminSettingsOpen] = useState(false);
-  
-  // Modals
-  const [confirmDelete, setConfirmDelete] = useState(null);
-  const [approvalModalStaffId, setApprovalModalStaffId] = useState(null);
-  const [submissionConfirmation, setSubmissionConfirmation] = useState(null);
-  const [holidayConfirmation, setHolidayConfirmation] = useState(null);
-  const [absenceNotificationConfirmation, setAbsenceNotificationConfirmation] = useState(null);
-  const [remandConfirmation, setRemandConfirmation] = useState(null);
+// --- Main Component ---
+export default function ShiftScheduler() {
+  // State: Auth & Loading
+  const [user, setUser] = useState<User | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [loadingMessage, setLoadingMessage] = useState("システム起動中...");
+  const [error, setError] = useState<string | null>(null);
 
-  // ユーザー特定ロジック
+  // State: Data
+  const [staff, setStaff] = useState<Staff[]>([]);
+  const [patterns, setPatterns] = useState<ShiftPattern[]>([]);
+  const [schedules, setSchedules] = useState<{ [date: string]: DaySchedule }>({});
+  const [config, setConfig] = useState<AppConfig>({ title: 'シフト管理表', startDayOfMonth: 1 });
+
+  // State: UI
+  const [currentDate, setCurrentDate] = useState(new Date());
+  const [viewMode, setViewMode] = useState<'table' | 'staff' | 'patterns' | 'settings'>('table');
+  const [selectedCell, setSelectedCell] = useState<{ staffId: string, date: string } | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+
+  // --- Auth Initialization ---
   useEffect(() => {
-    const identifyUser = async () => {
-      if (authState?.isAuthenticated) {
-        // Oktaからユーザー情報を取得
-        const userInfo = await oktaAuth.getUser();
-
-        // データベース上の「email」とOktaの「email」で照合する
-        const matchedStaff = staff.find(s => s.email === userInfo.email);
-
-        if (matchedStaff) {
-          // DBにいた場合も、念のためOktaのemail情報を付与してセット
-          setCurrentUser({ ...matchedStaff, email: userInfo.email });
+    const initAuth = async () => {
+      try {
+        setLoadingMessage("認証情報を確認中...");
+        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+          await signInWithCustomToken(auth, __initial_auth_token);
         } else {
-          // DBにいない場合は、Oktaの情報で仮ログイン
-          console.log('User email mismatch:', userInfo.email);
-          setCurrentUser({
-            id: 'okta-user',
-            name: userInfo.name || 'Okta User',
-            email: userInfo.email, // ★重要: ここでemailを保存
-            role: 'OP'
-          });
+          await signInAnonymously(auth);
         }
-      } else {
-        setCurrentUser(null);
+      } catch (err) {
+        console.error("Auth failed:", err);
+        setError("認証に失敗しました。再読み込みしてください。");
+        setIsLoading(false);
       }
     };
+    initAuth();
+    const unsubscribe = onAuthStateChanged(auth, setUser);
+    return () => unsubscribe();
+  }, []);
 
-    if (authState?.isAuthenticated && staff.length > 0) {
-      identifyUser();
-    }
-  }, [authState, oktaAuth, staff]);
+  // --- Data Loading ---
+  const loadData = useCallback(async () => {
+    if (!user) return;
 
-  // --- 計算ロジック ---
-  
-  // Firebaseの設定(adminConfig)から管理者メールリストを作成
-  const firebaseAdminEmails = useMemo(() => {
-    if (!adminConfig?.adminEmails) return [];
-    // カンマ区切りの文字列を配列に変換し、余計な空白を除去
-    return adminConfig.adminEmails.split(',').map(email => email.trim());
-  }, [adminConfig]);
-
-  // 管理者判定: Firebaseの設定に含まれるメールアドレスかどうか
-  const isAdmin = 
-    currentUser?.id === 'admin' || 
-    (currentUser?.email && firebaseAdminEmails.includes(currentUser.email));
-    
-  const key = `${year}-${month}`;
-  const daysInMonth = useMemo(() => new Date(year, month, 0).getDate(), [year, month]);
-  const currentMonthHolidays = useMemo(() => getJapaneseHolidays(year, month), [year, month]);
-  
-  const days = useMemo(() => {
-    return Array.from({ length: daysInMonth }, (_, i) => {
-      const date = new Date(year, month - 1, i + 1);
-      return { day: i + 1, dayOfWeek: ['日', '月', '火', '水', '木', '金', '土'][date.getDay()] };
-    });
-  }, [year, month, daysInMonth]);
-
-  // 初期データ生成
-  useEffect(() => {
-    if (!schedule[key] && initialDataLoaded) {
-      setSchedule(prev => ({ ...prev, [key]: generateScheduleForMonth(year, month, staff, shiftPatterns) }));
-    }
-  }, [year, month, schedule, staff, shiftPatterns, initialDataLoaded]);
-
-  // タスク不足数計算
-  useEffect(() => {
-    if (!initialDataLoaded) return;
-    const currentMonthSchedule = schedule[key] || {};
-    const counts = {};
-    for (let day = 1; day <= daysInMonth; day++) {
-      counts[day] = {};
-      tasks.forEach(t => counts[day][t.id] = 0);
-      staff.forEach(s => {
-        const entry = currentMonthSchedule[s.id]?.[day];
-        const isWorking = (typeof entry === 'number' && entry > 0) || (typeof entry === 'object' && entry?.hours > 0);
-        if (isWorking) {
-          s.possibleTasks.forEach(tId => {
-            if (counts[day][tId] !== undefined) counts[day][tId]++;
-          });
-        }
-      });
-    }
-    setTaskCountsByDay(counts);
-  }, [schedule, year, month, staff, tasks, daysInMonth, initialDataLoaded]);
-
-  // --- ハンドラー ---
-
-  // 年月を指定して更新する汎用関数
-  const handleUpdateScheduleGeneric = (targetYear, targetMonth, staffId, day, value) => {
-      const targetKey = `${targetYear}-${targetMonth}`;
-      setSchedule(prev => {
-          const newMonth = { ...(prev[targetKey] || {}) };
-          const newStaff = { ...(newMonth[staffId] || {}) };
-          newStaff[day] = value;
-          newMonth[staffId] = newStaff;
-          return { ...prev, [targetKey]: newMonth };
-      });
-  };
-
-  // 現在表示中の年月で更新する関数（ShiftSchedule用）
-  const handleUpdateSchedule = (staffId, day, value) => {
-    handleUpdateScheduleGeneric(year, month, staffId, day, value);
-
-    if (isAdmin && value === '欠') {
-      const target = staff.find(s => s.id === staffId);
-      setAbsenceNotificationConfirmation({ staffMember: target, day, value });
-    }
-  };
-
-  const handleAbsenceNotificationResponse = async (send) => {
-    if (!absenceNotificationConfirmation) return;
-    const { staffMember, day, value } = absenceNotificationConfirmation;
-    handleUpdateSchedule(staffMember.id, day, value);
-    if (send) {
+    try {
       setIsLoading(true);
-      try { await chatService.sendAbsence(staffMember.name); } catch (e) { alert(e.message); }
+      setError(null);
+      
+      console.log('Checking for patterns collection...');
+      setLoadingMessage("シフトパターンを読み込み中...");
+      const patternsRef = collection(db, 'artifacts', appId, 'users', user.uid, 'patterns');
+      const patternsSnap = await getDocs(patternsRef);
+      
+      let loadedPatterns: ShiftPattern[] = [];
+      if (patternsSnap.empty) {
+        console.log('No patterns found. Using defaults.');
+        loadedPatterns = DEFAULT_PATTERNS;
+        // Save defaults silently
+        const batch = writeBatch(db);
+        DEFAULT_PATTERNS.forEach(p => {
+          const docRef = doc(db, 'artifacts', appId, 'users', user.uid, 'patterns', p.id);
+          batch.set(docRef, p);
+        });
+        await batch.commit();
+      } else {
+        loadedPatterns = patternsSnap.docs.map(d => d.data() as ShiftPattern);
+        console.log(`Current patterns count: ${loadedPatterns.length}`);
+      }
+      setPatterns(loadedPatterns);
+
+      console.log('Starting parallel data fetch...');
+      setLoadingMessage("スタッフとスケジュールを読み込み中...");
+      
+      const [staffSnap, configSnap, schedulesSnap] = await Promise.all([
+        getDocs(collection(db, 'artifacts', appId, 'users', user.uid, 'staff')),
+        getDocs(collection(db, 'artifacts', appId, 'users', user.uid, 'config')),
+        getDocs(query(collection(db, 'artifacts', appId, 'users', user.uid, 'schedules'))) 
+        // Note: Fetching all schedules for now. In a real app, date range query is better.
+      ]);
+
+      console.log('Fetch complete. Processing data...');
+
+      const loadedStaff = staffSnap.docs.map(d => d.data() as Staff);
+      console.log(`Loaded ${loadedStaff.length} staff members.`);
+      setStaff(loadedStaff);
+
+      if (!configSnap.empty) {
+        setConfig(configSnap.docs[0].data() as AppConfig);
+        console.log('Loaded config.');
+      }
+
+      const loadedSchedules: { [date: string]: DaySchedule } = {};
+      schedulesSnap.forEach(doc => {
+        const data = doc.data() as DaySchedule;
+        loadedSchedules[data.date] = data;
+      });
+      console.log(`Loaded ${Object.keys(loadedSchedules).length} days of schedule.`);
+      setSchedules(loadedSchedules);
+
+      console.log('Data load sequence finished successfully.');
+    } catch (err) {
+      console.error("Data load error:", err);
+      setError("データの読み込み中にエラーが発生しました。");
+    } finally {
+      console.log('Disabling loading state...');
+      setLoadingMessage("");
       setIsLoading(false);
     }
-    setAbsenceNotificationConfirmation(null);
-  };
+  }, [user]);
 
-  const handleToggleShiftSubmitted = (staffId) => {
-    const s = staff.find(x => x.id === staffId);
-    if (s?.shiftSubmitted?.[key]) {
-      setStaff(prev => prev.map(x => x.id === staffId ? { ...x, shiftSubmitted: { ...x.shiftSubmitted, [key]: false } } : x));
-    } else {
-      setSubmissionConfirmation({ staffId, name: s.name });
+  useEffect(() => {
+    if (user) {
+      loadData();
     }
-  };
+  }, [user, loadData]);
 
-  const handleConfirmSubmission = async () => {
-    if (!submissionConfirmation) return;
-    const { staffId, name } = submissionConfirmation;
-    let mentions = '';
-    if (adminConfig?.submissionNotificationIds) {
-        mentions = adminConfig.submissionNotificationIds
-            .split(',')
-            .map(id => id.trim())
-            .filter(id => id !== '')
-            .map(id => `<users/${id}>`)
-            .join(' ');
-    }
-    setIsLoading(true);
-    setLoadingMessage('提出通知を送信中...');
-    try { await chatService.sendSubmission(name, year, month, mentions); } catch (e) { alert('通知送信に失敗しました'); }
-    setIsLoading(false);
-    setStaff(prev => prev.map(x => x.id === staffId ? { ...x, shiftSubmitted: { ...x.shiftSubmitted, [key]: true } } : x));
-    setSubmissionConfirmation(null);
-  };
+  // --- Actions ---
 
-  const handleToggleShiftRemanded = (staffId) => {
-    const s = staff.find(x => x.id === staffId);
-    if (s?.shiftRemanded?.[key]) {
-        setStaff(prev => prev.map(x => x.id === staffId ? { ...x, shiftRemanded: { ...x.shiftRemanded, [key]: false } } : x));
-    } else {
-        setRemandConfirmation({ staffId, name: s.name });
-    }
-  };
-
-  const handleConfirmRemand = async () => {
-    if (!remandConfirmation) return;
-    const { staffId, name } = remandConfirmation;
-    const s = staff.find(x => x.id === staffId);
-    setIsLoading(true);
-    setLoadingMessage('差戻通知を送信中...');
-    try { await chatService.sendRemand(name, s.chatUserId); } catch (e) { alert('通知送信に失敗しました'); }
-    setIsLoading(false);
-    setStaff(prev => prev.map(x => x.id === staffId ? { ...x, shiftRemanded: { ...x.shiftRemanded, [key]: true } } : x));
-    setRemandConfirmation(null);
-  };
-
-  const handleConfirmApproval = async (remarks) => {
-    if (!approvalModalStaffId) return;
-    const s = staff.find(x => x.id === approvalModalStaffId);
-    const irregularities = [];
-    for (let day = 1; day <= daysInMonth; day++) {
-        const date = new Date(year, month - 1, day);
-        const dayOfWeek = date.getDay();
-        const isHoliday = currentMonthHolidays.includes(day);
-        let expected = (dayOfWeek === 0 || dayOfWeek === 6 || isHoliday) ? '休' : '';
-        if (expected === '') {
-             const pIdx = dayOfWeek - 1;
-             const pId = s.defaultShift.pattern[pIdx];
-             if (pId === '休') expected = '休';
-             else {
-                 const p = shiftPatterns.find(x => x.id === pId);
-                 expected = p ? p.workHours : '';
-             }
+  const handleSaveSchedule = async (date: string, staffId: string, patternId: string) => {
+    if (!user) return;
+    
+    // Optimistic Update
+    setSchedules(prev => {
+      const daySchedule = prev[date] || { date, shifts: {} };
+      return {
+        ...prev,
+        [date]: {
+          ...daySchedule,
+          shifts: { ...daySchedule.shifts, [staffId]: patternId }
         }
-        const actual = schedule[key]?.[s.id]?.[day] ?? '';
-        if (JSON.stringify(actual) !== JSON.stringify(expected)) {
-            const wStr = ['日', '月', '火', '水', '木', '金', '土'][dayOfWeek];
-            irregularities.push(`${month}/${day}(${wStr}): ${formatValue(actual) || '未入力'}`);
-        }
-    }
-    setIsLoading(true);
-    setLoadingMessage('承認通知を送信中...');
-    try { await chatService.sendApproval(s, year, month, summarizePattern(s.defaultShift.pattern, shiftPatterns), irregularities.join('\n') || 'なし', remarks); } catch (e) { alert('通知送信に失敗しました'); }
-    setIsLoading(false);
-    setStaff(prev => prev.map(x => x.id === approvalModalStaffId ? { ...x, shiftApproved: { ...x.shiftApproved, [key]: true } } : x));
-    setApprovalModalStaffId(null);
-  };
-
-  const handleToggleShiftApproved = (staffId) => {
-      const s = staff.find(x => x.id === staffId);
-      if (s?.shiftApproved?.[key]) {
-          setStaff(prev => prev.map(x => x.id === staffId ? { ...x, shiftApproved: { ...x.shiftApproved, [key]: false } } : x));
-      } else {
-          setApprovalModalStaffId(staffId);
-      }
-  }
-
-  const handleUpdateStaffInfo = (id, field, val) => setStaff(prev => prev.map(s => s.id === id ? { ...s, [field]: val } : s));
-  const handleDeleteStaff = (id) => setConfirmDelete({ type: 'staff', id, name: staff.find(s => s.id === id)?.name });
-  const handleDeleteTask = (id) => setConfirmDelete({ type: 'task', id, name: tasks.find(t => t.id === id)?.name });
-  const handleExportCSV = () => downloadScheduleCSV({ staff, tasks, schedule, shiftPatterns, taskCountsByDay, days, year, month });
-  
-  // 一括更新用
-  const handleBulkUpdateStaffTasks = (taskStaffMap) => {
-      const staffTaskMap = {};
-      staff.forEach(s => staffTaskMap[s.id] = []);
-      Object.entries(taskStaffMap).forEach(([taskId, staffIds]) => {
-          staffIds.forEach(staffId => {
-              if (staffTaskMap[staffId]) staffTaskMap[staffId].push(taskId);
-          });
-      });
-      setStaff(prevStaff => prevStaff.map(s => ({ ...s, possibleTasks: staffTaskMap[s.id] || [] })));
-      setIsTaskEditorOpen(false);
-  };
-
-  // 個別の業務担当者を更新する関数
-  const handleUpdateSingleTaskStaff = (taskId, newStaffIds) => {
-    setStaff(prevStaff => prevStaff.map(s => {
-      const isAssigned = newStaffIds.includes(s.id);
-      const currentTasks = s.possibleTasks || [];
-      
-      let newTasks;
-      if (isAssigned) {
-        // 担当に追加（まだ含まれていなければ）
-        newTasks = currentTasks.includes(taskId) ? currentTasks : [...currentTasks, taskId];
-      } else {
-        // 担当から外す
-        newTasks = currentTasks.filter(tid => tid !== taskId);
-      }
-      
-      return { ...s, possibleTasks: newTasks };
-    }));
-  };
-  
-  const handleApplySingleStaffPattern = (staffId, newPattern) => {
-    setStaff(prevStaff => prevStaff.map(s => s.id === staffId ? { ...s, defaultShift: { pattern: newPattern } } : s));
-    const key = `${year}-${month}`;
-    const newMonthScheduleForStaff = {};
-    const daysInMonth = new Date(year, month, 0).getDate();
-    const monthHolidays = getJapaneseHolidays(year, month);
-    for (let day = 1; day <= daysInMonth; day++) {
-        const date = new Date(year, month - 1, day);
-        const dayOfWeek = date.getDay(); 
-        const isHoliday = monthHolidays.includes(day);
-        let shiftValue;
-        if (isHoliday || dayOfWeek === 0 || dayOfWeek === 6) {
-            shiftValue = '休';
-        } else {
-            const patternIndex = dayOfWeek - 1; 
-            const patternId = newPattern[patternIndex];
-            if (typeof patternId === 'string' && patternId !== '休') {
-                const pattern = shiftPatterns.find(p => p.id === patternId);
-                shiftValue = pattern ? pattern.workHours : '';
-            } else {
-                shiftValue = patternId; 
-            }
-        }
-        newMonthScheduleForStaff[day] = shiftValue ?? '';
-    }
-    setSchedule(prevSchedule => {
-      const newMonthSchedule = { ...(prevSchedule[key] || {}) };
-      newMonthSchedule[staffId] = newMonthScheduleForStaff;
-      return { ...prevSchedule, [key]: newMonthSchedule };
+      };
     });
-  };
 
-  const executeDelete = () => {
-    if (!confirmDelete) return;
-    if (confirmDelete.type === 'staff') {
-        setStaff(prev => prev.filter(s => s.id !== confirmDelete.id));
-        setSchedule(prev => {
-            const next = { ...prev };
-            Object.keys(next).forEach(k => delete next[k][confirmDelete.id]);
-            return next;
-        });
-    } else {
-        setTasks(prev => prev.filter(t => t.id !== confirmDelete.id));
-        setStaff(prev => prev.map(s => ({ ...s, possibleTasks: s.possibleTasks.filter(tid => tid !== confirmDelete.id) })));
-    }
-    setConfirmDelete(null);
-  };
-
-  const handleAddStaff = () => {
-      const newId = `s${Date.now()}`;
-      setStaff(prev => [...prev, {
-          id: newId, employeeId: 'New', name: '新規メンバー', role: 'OP', pin: '0000', chatUserId: '', possibleTasks: [],
-          defaultShift: { pattern: ['A','A','A','A','A'] }, shiftSubmitted: {}, shiftRemanded: {}, shiftApproved: {}
-      }]);
-      setSchedule(prev => ({ ...prev, [key]: { ...prev[key], [newId]: {} } }));
-  };
-
-  const handleSetDayAsHolidayForAll = (day) => {
-      if(!isAdmin) return;
-      const key = `${year}-${month}`;
-      const currentMonthSchedule = schedule[key] || {};
-      const isAlreadyLockedHoliday = staff.length > 0 && staff.every(staffMember => {
-        const entry = currentMonthSchedule[staffMember.id]?.[day];
-        return typeof entry === 'object' && entry !== null && 'locked' in entry && entry.locked === true;
-      });
-
-      if (isAlreadyLockedHoliday) {
-        setHolidayConfirmation({
-            day, isUnlocking: true,
-            onConfirm: () => {
-                setSchedule(prevSchedule => {
-                    const newSchedule = JSON.parse(JSON.stringify(prevSchedule));
-                    const newMonthSchedule = newSchedule[key] || {};
-                    const monthHolidays = getJapaneseHolidays(year, month);
-                    staff.forEach(staffMember => {
-                        const date = new Date(year, month - 1, day);
-                        const dayOfWeek = date.getDay();
-                        const isHolidayDate = monthHolidays.includes(day);
-                        let restoredValue = '';
-                        if (isHolidayDate || dayOfWeek === 0 || dayOfWeek === 6) {
-                            restoredValue = '休';
-                        } else {
-                            const patternIndex = dayOfWeek - 1;
-                            if (patternIndex >= 0 && patternIndex < 5) {
-                                const patternId = staffMember.defaultShift.pattern[patternIndex];
-                                if (patternId === '休') restoredValue = '休';
-                                else if (patternId) {
-                                    const pattern = shiftPatterns.find(p => p.id === patternId);
-                                    restoredValue = pattern ? pattern.workHours : '';
-                                }
-                            }
-                        }
-                        newMonthSchedule[staffMember.id][day] = restoredValue;
-                    });
-                    newSchedule[key] = newMonthSchedule;
-                    return newSchedule;
-                });
-                setHolidayConfirmation(null);
-            },
-        });
-    } else {
-        setHolidayConfirmation({
-            day, isUnlocking: false,
-            onConfirm: () => {
-                setSchedule(prevSchedule => {
-                    const newSchedule = { ...prevSchedule };
-                    const newMonthSchedule = JSON.parse(JSON.stringify(newSchedule[key] || {}));
-                    staff.forEach(staffMember => {
-                        if (!newMonthSchedule[staffMember.id]) newMonthSchedule[staffMember.id] = {};
-                        newMonthSchedule[staffMember.id][day] = { type: '休', locked: true };
-                    });
-                    newSchedule[key] = newMonthSchedule;
-                    return newSchedule;
-                });
-                setHolidayConfirmation(null);
-            },
-        });
+    try {
+      // Debouncing could be added here, but direct save for simplicity
+      const dayRef = doc(db, 'artifacts', appId, 'users', user.uid, 'schedules', date);
+      // We need to get the latest state or merge. 
+      // For simplicity, we'll reconstruct the day object from state (risky if rapid concurrent edits, but okay for single user)
+      // Better: Update specific field via dot notation if possible, but Firestore maps are tricky with dynamic keys.
+      // So we will just setMerge.
+      
+      const newShifts = { ...schedules[date]?.shifts, [staffId]: patternId };
+      await setDoc(dayRef, { date, shifts: newShifts }, { merge: true });
+      
+    } catch (err) {
+      console.error("Save failed:", err);
+      // Revert logic would go here
     }
   };
 
-  // --- レンダリング ---
-  if (!authState) return <LoadingScreen message="認証状態を確認中..." />;
+  const handleAddStaff = async (name: string) => {
+    if (!user || !name.trim()) return;
+    const newStaff: Staff = {
+      id: crypto.randomUUID(),
+      name: name.trim(),
+      roles: [],
+      isActive: true
+    };
+    try {
+      setIsSaving(true);
+      await setDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'staff', newStaff.id), newStaff);
+      setStaff(prev => [...prev, newStaff]);
+      setViewMode('table'); // Go back to table if this was the first staff
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
-  // 未ログイン時
-  if (!authState.isAuthenticated) {
+  const handleDeleteStaff = async (id: string) => {
+    if (!user) return;
+    if (!window.confirm("このスタッフを削除してもよろしいですか？過去のシフトデータは残りますが、表示されなくなる可能性があります。")) return;
+    try {
+      // In Firestore, we just delete the staff doc. 
+      // Real app might want soft-delete (isActive: false).
+      // Let's do soft delete logic or hard delete? Let's do hard delete for now to match UI state.
+      // await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'staff', id)); 
+      
+      // Update local first
+      setStaff(prev => prev.filter(s => s.id !== id));
+      
+      // Then remote
+      const batch = writeBatch(db);
+      const docRef = doc(db, 'artifacts', appId, 'users', user.uid, 'staff', id);
+      batch.delete(docRef);
+      await batch.commit();
+
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  // --- Rendering Helpers ---
+  const currentMonthDays = useMemo(() => {
+    return getDaysInMonth(currentDate.getFullYear(), currentDate.getMonth());
+  }, [currentDate]);
+
+  const getShiftPattern = (id: string) => patterns.find(p => p.id === id);
+
+  // --- Render Components ---
+
+  if (error) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#FFF9F6] p-4">
-        <div className="w-full max-w-sm bg-white rounded-2xl shadow-xl border border-slate-200 p-8 text-center">
-          <h1 className="text-2xl font-bold text-slate-800 mb-2">Smart Shift Scheduler</h1>
-          <p className="text-sm text-slate-500 mb-6">関係者専用ログイン</p>
+      <div className="flex h-screen w-full items-center justify-center bg-red-50 p-4">
+        <div className="text-center max-w-md bg-white p-8 rounded-xl shadow-lg">
+          <AlertCircle className="w-16 h-16 text-red-500 mx-auto mb-4" />
+          <h2 className="text-xl font-bold text-gray-800 mb-2">エラーが発生しました</h2>
+          <p className="text-gray-600 mb-6">{error}</p>
           <button 
-            onClick={() => oktaAuth.signInWithRedirect()}
-            className="w-full py-2 px-4 bg-[#F4B896] text-white rounded-md shadow hover:bg-[#E8A680] font-semibold transition-colors"
+            onClick={() => window.location.reload()}
+            className="px-6 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition"
           >
-            Oktaでログイン
+            再読み込み
           </button>
         </div>
       </div>
     );
   }
 
-  // ログイン済みだがロード中
-  if (isLoading || !currentUser) return <LoadingScreen message={loadingMessage} />;
+  if (isLoading) {
+    return (
+      <div className="flex h-screen w-full flex-col items-center justify-center bg-slate-50">
+        <div className="relative w-24 h-24 mb-8">
+          <div className="absolute top-0 left-0 w-full h-full border-4 border-slate-200 rounded-full"></div>
+          <div className="absolute top-0 left-0 w-full h-full border-4 border-blue-600 rounded-full border-t-transparent animate-spin"></div>
+          <Briefcase className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-blue-600 w-8 h-8" />
+        </div>
+        <p className="text-slate-600 font-medium animate-pulse">{loadingMessage}</p>
+        <div className="mt-4 text-xs text-slate-400 font-mono">
+           {/* Debug output to visualize progress */}
+           Patterns: {patterns.length > 0 ? 'OK' : '...'} | Staff: {staff.length}
+        </div>
+      </div>
+    );
+  }
 
-  const currentMonthSchedule = schedule[key] || {};
-  const approvalStaff = approvalModalStaffId ? staff.find(s => s.id === approvalModalStaffId) : null;
+  // ★ CRITICAL FIX: Empty State Handling ★
+  // スタッフが0人の場合に、いきなりテーブルを描画しようとすると落ちる可能性が高い。
+  // ここでEmpty Stateを挟むことで、レンダリングエラーを回避する。
+  if (staff.length === 0 && viewMode === 'table') {
+    return (
+      <div className="flex h-screen w-full bg-slate-50 items-center justify-center p-4">
+        <div className="max-w-lg w-full bg-white rounded-xl shadow-xl overflow-hidden">
+          <div className="bg-blue-600 p-6 text-white text-center">
+            <Users className="w-16 h-16 mx-auto mb-4 opacity-90" />
+            <h1 className="text-2xl font-bold">ようこそ！</h1>
+            <p className="opacity-90 mt-2">まずはスタッフを登録して、シフト作成を始めましょう。</p>
+          </div>
+          <div className="p-8">
+            <div className="space-y-4">
+              <p className="text-gray-600 text-sm mb-4">
+                まだスタッフが登録されていません。最初のスタッフを追加してください。
+                （例：山田 太郎、佐藤 花子など）
+              </p>
+              
+              <form 
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  const form = e.target as HTMLFormElement;
+                  const input = form.elements.namedItem('staffName') as HTMLInputElement;
+                  handleAddStaff(input.value);
+                }}
+                className="flex gap-2"
+              >
+                <input 
+                  type="text" 
+                  name="staffName"
+                  placeholder="スタッフ名を入力" 
+                  className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                  autoFocus
+                />
+                <button 
+                  type="submit"
+                  disabled={isSaving}
+                  className="bg-blue-600 text-white px-6 py-2 rounded-lg font-medium hover:bg-blue-700 transition disabled:opacity-50"
+                >
+                  {isSaving ? '登録中...' : '登録して開始'}
+                </button>
+              </form>
+            </div>
+            
+            <div className="mt-8 pt-6 border-t border-gray-100 flex justify-center">
+               <button 
+                 onClick={() => {
+                    // デモデータ投入ロジック（簡易版）
+                    ["山田 太郎", "鈴木 一郎", "佐藤 花子"].forEach(name => handleAddStaff(name));
+                 }}
+                 className="text-sm text-slate-500 hover:text-blue-600 underline"
+               >
+                 デモデータ（3名）を一括登録して試す
+               </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="min-h-screen bg-[#FFF9F6] text-slate-800 p-2 sm:p-4 font-sans">
-      <div className="max-w-screen-2xl mx-auto">
-        {/* Header */}
-        <header className="mb-4 bg-[#F4B896] text-white rounded-md shadow-lg p-3 flex justify-between items-center sticky top-0 z-40">
-          <div className="flex items-center gap-4">
-            <select value={year} onChange={(e) => setYear(Number(e.target.value))} className="bg-transparent border-none rounded p-1 text-2xl font-bold focus:ring-2 focus:ring-white text-black">
-              {Array.from({length: 10}, (_, i) => 2020 + i).map(y => <option key={y} value={y} className="text-black">{y}</option>)}
-            </select>
-            <span className="text-xl">年</span>
-            <select value={month} onChange={(e) => setMonth(Number(e.target.value))} className="bg-transparent border-none rounded p-1 text-2xl font-bold focus:ring-2 focus:ring-white text-black">
-              {Array.from({length: 12}, (_, i) => i + 1).map(m => <option key={m} value={m} className="text-black">{m}</option>)}
-            </select>
-            <span className="text-xl">月</span>
-            <h1 className="text-2xl font-bold tracking-wider">digsyシフト表</h1>
+    <div className="flex h-screen w-full bg-slate-100 overflow-hidden font-sans text-slate-800">
+      
+      {/* Sidebar Navigation */}
+      <div className={`${sidebarOpen ? 'w-64' : 'w-20'} bg-slate-900 text-slate-300 flex flex-col transition-all duration-300 shadow-xl z-20`}>
+        <div className="p-4 flex items-center justify-between border-b border-slate-800">
+          {sidebarOpen && <span className="font-bold text-white tracking-wider">SHIFT APP</span>}
+          <button onClick={() => setSidebarOpen(!sidebarOpen)} className="p-2 hover:bg-slate-800 rounded-lg">
+            {sidebarOpen ? <ChevronLeft size={20}/> : <ChevronRight size={20}/>}
+          </button>
+        </div>
+        
+        <nav className="flex-1 py-6 space-y-2 px-3">
+          <NavButton 
+            active={viewMode === 'table'} 
+            onClick={() => setViewMode('table')} 
+            icon={<Calendar size={20}/>} 
+            label="シフト表" 
+            expanded={sidebarOpen}
+          />
+          <NavButton 
+            active={viewMode === 'staff'} 
+            onClick={() => setViewMode('staff')} 
+            icon={<Users size={20}/>} 
+            label="スタッフ管理" 
+            expanded={sidebarOpen}
+          />
+          <NavButton 
+            active={viewMode === 'patterns'} 
+            onClick={() => setViewMode('patterns')} 
+            icon={<Clock size={20}/>} 
+            label="シフトパターン" 
+            expanded={sidebarOpen}
+          />
+          <NavButton 
+            active={viewMode === 'settings'} 
+            onClick={() => setViewMode('settings')} 
+            icon={<Settings size={20}/>} 
+            label="設定" 
+            expanded={sidebarOpen}
+          />
+        </nav>
+
+        <div className="p-4 border-t border-slate-800">
+          <div className={`flex items-center gap-3 ${!sidebarOpen && 'justify-center'}`}>
+            <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-white font-bold text-xs">
+              {user?.isAnonymous ? 'AN' : 'US'}
+            </div>
+            {sidebarOpen && (
+              <div className="text-xs overflow-hidden">
+                <p className="text-white truncate">User ID</p>
+                <p className="text-slate-500 truncate w-32">{user?.uid}</p>
+              </div>
+            )}
           </div>
+        </div>
+      </div>
+
+      {/* Main Content Area */}
+      <main className="flex-1 flex flex-col h-full overflow-hidden relative">
+        
+        {/* Header */}
+        <header className="bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between shadow-sm z-10">
           <div className="flex items-center gap-4">
-             <div className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-semibold w-36 justify-center ${saveStatus === 'saved' ? 'text-white/80' : saveStatus === 'unsaved' ? 'text-yellow-300' : 'text-white'}`}>
-                <span>{saveStatus === 'saved' ? '自動保存済み' : saveStatus === 'saving' ? '保存中...' : '編集中...'}</span>
-             </div>
-             <button onClick={() => setIsHelpOpen(true)} className="px-3 py-1.5 bg-white/20 rounded hover:bg-white/30 text-sm font-bold">ガイド</button>
-             <Legend />
+            <h2 className="text-xl font-bold text-slate-800">
+              {viewMode === 'table' && (
+                <div className="flex items-center gap-4">
+                  <button onClick={() => setCurrentDate(new Date(currentDate.setMonth(currentDate.getMonth() - 1)))} className="p-1 hover:bg-slate-100 rounded">
+                    <ChevronLeft size={24}/>
+                  </button>
+                  <span>{currentDate.getFullYear()}年 {currentDate.getMonth() + 1}月</span>
+                  <button onClick={() => setCurrentDate(new Date(currentDate.setMonth(currentDate.getMonth() + 1)))} className="p-1 hover:bg-slate-100 rounded">
+                    <ChevronRight size={24}/>
+                  </button>
+                </div>
+              )}
+              {viewMode === 'staff' && 'スタッフ管理'}
+              {viewMode === 'patterns' && 'シフトパターン設定'}
+              {viewMode === 'settings' && '全体設定'}
+            </h2>
+          </div>
+          <div className="flex items-center gap-3">
+             <button onClick={loadData} className="p-2 text-slate-500 hover:bg-slate-100 rounded-full" title="データを再読み込み">
+               <RefreshCw size={20} />
+             </button>
           </div>
         </header>
 
-        <main className="space-y-6">
-          <ShiftSchedule 
-            isAdmin={isAdmin}
-            currentUser={currentUser} schedule={currentMonthSchedule} staff={staff} days={days} holidays={currentMonthHolidays} shiftPatterns={shiftPatterns} year={year} month={month}
-            onUpdateSchedule={handleUpdateSchedule} onDeleteStaff={handleDeleteStaff} onUpdateStaffInfo={handleUpdateStaffInfo}
-            onApplyStaffPattern={handleApplySingleStaffPattern} onToggleShiftSubmitted={handleToggleShiftSubmitted}
-            onToggleShiftApproved={handleToggleShiftApproved} onToggleShiftRemanded={handleToggleShiftRemanded}
-            onSetDayAsHolidayForAll={handleSetDayAsHolidayForAll}
-          />
+        {/* Scrollable Content */}
+        <div className="flex-1 overflow-auto bg-slate-100 p-6">
           
-          <ShiftPatternDisplay patterns={shiftPatterns} onAddPattern={(p) => setShiftPatterns(prev => [...prev, p].sort((a,b)=>a.id.localeCompare(b.id)))} />
-          
-          <TaskShortageDisplay 
-            isAdmin={isAdmin}
-            currentUser={currentUser} tasks={tasks} staff={staff} days={days} holidays={currentMonthHolidays} taskCountsByDay={taskCountsByDay}
-            onUpdateTask={(id, name) => setTasks(prev => prev.map(t => t.id === id ? { ...t, name } : t))}
-            onDeleteTask={handleDeleteTask}
-            onUpdateTaskPersonnel={(id, count) => setTasks(prev => prev.map(t => t.id === id ? { ...t, requiredPersonnel: count } : t))}
-            onUpdateTaskStaff={handleUpdateSingleTaskStaff} 
-          />
+          {viewMode === 'table' && (
+            <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex flex-col h-full max-h-full">
+               {/* Shift Table Implementation 
+                  Using CSS Grid for sticky headers
+               */}
+               <div className="overflow-auto flex-1 relative">
+                 <table className="w-full border-collapse text-sm">
+                   <thead className="bg-slate-50 sticky top-0 z-10 shadow-sm">
+                     <tr>
+                       <th className="sticky left-0 z-20 bg-slate-50 p-3 border-b border-r border-slate-200 w-40 min-w-[160px] text-left font-semibold text-slate-600">
+                         スタッフ / 日付
+                       </th>
+                       {currentMonthDays.map((date) => {
+                         const isWeekend = date.getDay() === 0 || date.getDay() === 6;
+                         return (
+                           <th key={date.toISOString()} className={`p-2 border-b border-slate-200 min-w-[40px] text-center font-medium ${isWeekend ? 'bg-orange-50 text-orange-800' : 'text-slate-600'}`}>
+                             <div className="flex flex-col items-center">
+                               <span>{date.getDate()}</span>
+                               <span className="text-xs opacity-70">
+                                 {['日','月','火','水','木','金','土'][date.getDay()]}
+                               </span>
+                             </div>
+                           </th>
+                         );
+                       })}
+                     </tr>
+                   </thead>
+                   <tbody>
+                     {staff.map((s) => (
+                       <tr key={s.id} className="hover:bg-slate-50 transition-colors">
+                         <td className="sticky left-0 z-10 bg-white p-3 border-b border-r border-slate-200 font-medium text-slate-700 truncate shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
+                           {s.name}
+                         </td>
+                         {currentMonthDays.map((date) => {
+                           const dateKey = formatDate(date);
+                           const shiftId = schedules[dateKey]?.shifts?.[s.id];
+                           const pattern = shiftId ? getShiftPattern(shiftId) : null;
+                           const isSelected = selectedCell?.staffId === s.id && selectedCell?.date === dateKey;
 
-          {/* 新規追加: マンスリーカレンダー */}
-          <MonthlyCalendar
-            schedule={schedule}
-            staff={staff}
-            tasks={tasks}
-            shiftPatterns={shiftPatterns}
-            initialYear={year}
-            initialMonth={month}
-            onUpdateSchedule={(staffId, day, value, targetYear, targetMonth) => {
-                 const y = targetYear || year;
-                 const m = targetMonth || month;
-                 handleUpdateScheduleGeneric(y, m, staffId, day, value);
-            }}
-            isAdmin={isAdmin}
-            currentUser={currentUser}
-          />
+                           return (
+                             <td 
+                               key={dateKey} 
+                               className={`border-b border-slate-200 relative p-0 h-12 cursor-pointer
+                                 ${isSelected ? 'ring-2 ring-blue-500 z-10' : ''}
+                               `}
+                               onClick={() => setSelectedCell({ staffId: s.id, date: dateKey })}
+                             >
+                               <div className="w-full h-full flex items-center justify-center">
+                                 {pattern ? (
+                                   <div 
+                                     className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shadow-sm"
+                                     style={{ backgroundColor: pattern.color, color: pattern.textColor }}
+                                   >
+                                     {pattern.code}
+                                   </div>
+                                 ) : (
+                                   <div className="w-2 h-2 rounded-full bg-slate-200 opacity-50 group-hover:opacity-100"></div>
+                                 )}
+                               </div>
+                               
+                               {/* Quick Selector Popup */}
+                               {isSelected && (
+                                 <div className="absolute top-full left-1/2 transform -translate-x-1/2 mt-2 bg-white p-2 rounded-xl shadow-2xl border border-slate-100 z-50 w-64 grid grid-cols-4 gap-2 animate-in fade-in zoom-in duration-200">
+                                   {patterns.map(p => (
+                                     <button
+                                       key={p.id}
+                                       onClick={(e) => {
+                                         e.stopPropagation();
+                                         handleSaveSchedule(dateKey, s.id, p.id);
+                                         setSelectedCell(null);
+                                       }}
+                                       className="flex flex-col items-center gap-1 p-2 hover:bg-slate-50 rounded-lg transition"
+                                     >
+                                       <div 
+                                         className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shadow-sm"
+                                         style={{ backgroundColor: p.color, color: p.textColor }}
+                                       >
+                                         {p.code}
+                                       </div>
+                                       <span className="text-[10px] text-slate-500 truncate w-full text-center">{p.label}</span>
+                                     </button>
+                                   ))}
+                                   <button
+                                       onClick={(e) => {
+                                         e.stopPropagation();
+                                         handleSaveSchedule(dateKey, s.id, ''); // Clear
+                                         setSelectedCell(null);
+                                       }}
+                                       className="flex flex-col items-center gap-1 p-2 hover:bg-slate-50 rounded-lg transition text-slate-400 hover:text-red-500"
+                                     >
+                                       <div className="w-8 h-8 rounded-full border border-slate-200 flex items-center justify-center">
+                                         <Trash2 size={14} />
+                                       </div>
+                                       <span className="text-[10px]">削除</span>
+                                   </button>
+                                 </div>
+                               )}
+                               {/* Backdrop for closing selection */}
+                               {isSelected && (
+                                 <div 
+                                   className="fixed inset-0 z-40 bg-transparent" 
+                                   onClick={(e) => {
+                                     e.stopPropagation();
+                                     setSelectedCell(null);
+                                   }}
+                                 />
+                               )}
+                             </td>
+                           );
+                         })}
+                       </tr>
+                     ))}
+                     
+                     {/* Summary Row (Mock) */}
+                     <tr className="bg-slate-50 font-bold text-xs text-slate-500">
+                       <td className="sticky left-0 z-10 bg-slate-50 p-3 border-r border-slate-200">
+                         出勤人数
+                       </td>
+                       {currentMonthDays.map(date => (
+                         <td key={date.toISOString()} className="p-2 text-center border-b border-slate-200">
+                           -
+                         </td>
+                       ))}
+                     </tr>
+                   </tbody>
+                 </table>
+               </div>
+            </div>
+          )}
 
-          <div className="mt-4 flex flex-wrap gap-4 items-center">
-            {isAdmin && (
-              <>
-                <button onClick={handleAddStaff} className="px-4 py-2 bg-[#F4B896] text-white rounded hover:bg-[#E8A680]">+ メンバー追加</button>
-                <button onClick={() => setTasks(prev => [...prev, { id: `t${Date.now()}`, name: '新業務', requiredPersonnel: 3 }])} className="px-4 py-2 bg-[#F4B896] text-white rounded hover:bg-[#E8A680]">+ 業務追加</button>
-                <button onClick={() => setIsTaskEditorOpen(true)} className="px-4 py-2 bg-[#F4B896] text-white rounded hover:bg-[#E8A680]">業務担当設定</button>
-                <button onClick={() => setIsMemberManagementOpen(true)} className="px-4 py-2 bg-[#F4B896] text-white rounded hover:bg-[#E8A680]">メンバー管理</button>
-                <button onClick={() => setIsAdminSettingsOpen(true)} className="px-4 py-2 bg-slate-500 text-white rounded hover:bg-slate-600">通知設定</button>
-              </>
-            )}
-            <button onClick={handleExportCSV} className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700">CSV出力</button>
-          </div>
-        </main>
+          {viewMode === 'staff' && (
+            <div className="max-w-4xl mx-auto space-y-6">
+              <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+                <h3 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
+                  <Users size={20} className="text-blue-600"/>
+                  スタッフ一覧
+                </h3>
+                
+                <div className="flex gap-2 mb-6">
+                   <form 
+                     onSubmit={(e) => {
+                       e.preventDefault();
+                       const form = e.target as HTMLFormElement;
+                       const input = form.elements.namedItem('newStaffName') as HTMLInputElement;
+                       handleAddStaff(input.value);
+                       input.value = '';
+                     }}
+                     className="flex-1 flex gap-2"
+                   >
+                     <input 
+                       name="newStaffName"
+                       type="text" 
+                       placeholder="新しいスタッフ名を入力..." 
+                       className="flex-1 px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                     />
+                     <button className="bg-blue-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-blue-700 flex items-center gap-2">
+                       <Plus size={18} />
+                       追加
+                     </button>
+                   </form>
+                </div>
 
-        {/* Modals */}
-        {isAdmin && isMemberManagementOpen && <MemberManagementModal staff={staff} onClose={() => setIsMemberManagementOpen(false)} onSave={(updated) => { setStaff(updated); setIsMemberManagementOpen(false); }} />}
-        {isAdmin && isAdminSettingsOpen && <AdminSettingsModal adminConfig={adminConfig} onClose={() => setIsAdminSettingsOpen(false)} onSave={(cfg) => { setAdminConfig(cfg); setIsAdminSettingsOpen(false); }} />}
-        {isAdmin && isTaskEditorOpen && <TaskStaffMappingEditor staff={staff} tasks={tasks} onClose={() => setIsTaskEditorOpen(false)} onSave={handleBulkUpdateStaffTasks} />}
-        {isHelpOpen && <HelpGuideModal onClose={() => setIsHelpOpen(false)} />}
-        
-        {confirmDelete && <ConfirmDeleteModal itemType={confirmDelete.type === 'staff' ? 'メンバー' : '業務'} itemName={confirmDelete.name} onConfirm={executeDelete} onCancel={() => setConfirmDelete(null)} />}
-        {approvalStaff && <ShiftApprovalModal staffMember={approvalStaff} schedule={currentMonthSchedule[approvalStaff.id]} shiftPatterns={shiftPatterns} holidays={currentMonthHolidays} year={year} month={month} onConfirm={handleConfirmApproval} onClose={() => setApprovalModalStaffId(null)} />}
-        {submissionConfirmation && <ConfirmationModal title="シフトの提出" message="提出しますか？" onConfirm={handleConfirmSubmission} onCancel={() => setSubmissionConfirmation(null)} />}
-        {remandConfirmation && <ConfirmationModal title="差戻の確認" message="本当に差し戻しますか？" onConfirm={handleConfirmRemand} onCancel={() => setRemandConfirmation(null)} />}
-        {holidayConfirmation && <ConfirmationModal title={holidayConfirmation.isUnlocking ? "休日設定解除" : "休日設定"} message="全メンバーに適用しますか？" onConfirm={holidayConfirmation.onConfirm} onCancel={() => setHolidayConfirmation(null)} />}
-        {absenceNotificationConfirmation && <ConfirmationModal title="欠勤の周知" message={`${absenceNotificationConfirmation.staffMember.name}さんの欠勤をチャットで周知しますか？`} onConfirm={() => handleAbsenceNotificationResponse(true)} onCancel={() => handleAbsenceNotificationResponse(false)} />}
+                <div className="grid gap-4">
+                  {staff.length === 0 && (
+                    <div className="text-center py-10 text-slate-400">
+                      スタッフが登録されていません。
+                    </div>
+                  )}
+                  {staff.map(s => (
+                    <div key={s.id} className="flex items-center justify-between p-4 bg-slate-50 rounded-lg border border-slate-100 group hover:border-blue-200 transition">
+                      <div className="flex items-center gap-4">
+                        <div className="w-10 h-10 rounded-full bg-white border border-slate-200 flex items-center justify-center text-slate-600 font-bold">
+                          {s.name.charAt(0)}
+                        </div>
+                        <div>
+                          <p className="font-bold text-slate-800">{s.name}</p>
+                          <p className="text-xs text-slate-500">ID: {s.id.slice(0,8)}...</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 opacity-50 group-hover:opacity-100 transition">
+                         <button 
+                           onClick={() => handleDeleteStaff(s.id)}
+                           className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition"
+                         >
+                           <Trash2 size={18} />
+                         </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
 
-        <footer className="text-center mt-6 text-sm text-slate-500"><p>Powered by Gemini & React</p></footer>
-      </div>
+          {(viewMode === 'patterns' || viewMode === 'settings') && (
+            <div className="max-w-2xl mx-auto bg-white p-10 rounded-xl shadow-sm border border-slate-200 text-center">
+              <Settings className="w-16 h-16 text-slate-300 mx-auto mb-4" />
+              <h3 className="text-xl font-bold text-slate-700 mb-2">準備中</h3>
+              <p className="text-slate-500">この機能は現在開発中です。スタッフ管理とシフト表機能をご利用ください。</p>
+            </div>
+          )}
+
+        </div>
+      </main>
     </div>
   );
-};
+}
 
-export default App;
+// --- Components ---
+
+function NavButton({ active, onClick, icon, label, expanded }: { active: boolean, onClick: () => void, icon: React.ReactNode, label: string, expanded: boolean }) {
+  return (
+    <button 
+      onClick={onClick}
+      className={`w-full flex items-center gap-3 p-3 rounded-xl transition-all duration-200
+        ${active ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/50' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}
+      `}
+      title={!expanded ? label : ''}
+    >
+      <div className={`${active ? 'text-white' : ''}`}>{icon}</div>
+      {expanded && <span className="font-medium">{label}</span>}
+    </button>
+  );
+}
