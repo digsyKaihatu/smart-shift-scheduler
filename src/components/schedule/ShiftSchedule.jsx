@@ -474,21 +474,36 @@ const ShiftSchedule = ({
 
   const stickyHeaderCellClass = "sticky top-0 z-30 bg-slate-200 p-2 border-b-2 border-r border-slate-300 font-semibold text-xs text-center";
 
-  // スクロール処理: マウント時/月変更時に今日の日付へ
+  // スクロール処理: マウント時/月変更時に今日の日付へ（ブラウザの縦スクロールを発生させない安全な方法）
   useEffect(() => {
     if (!scrollContainerRef.current) return;
 
     const today = new Date();
     const currentDay = today.getDate();
-    
     // 表示中の年月が今日を含んでいるか
     const isCurrentMonth = today.getFullYear() === year && (today.getMonth() + 1) === month;
 
     if (isCurrentMonth) {
+        // DOMレンダリングを待つ
         setTimeout(() => {
-            const todayElement = scrollContainerRef.current.querySelector(`[data-day="${currentDay}"]`);
+            const container = scrollContainerRef.current;
+            if (!container) return;
+
+            const todayElement = container.querySelector(`[data-day="${currentDay}"]`);
             if (todayElement) {
-                todayElement.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+                // scrollIntoViewは使わず、コンテナのscrollLeftのみを操作する
+                // これにより画面全体の縦スクロールが発生するのを防ぐ
+                const containerWidth = container.clientWidth;
+                const elementLeft = todayElement.offsetLeft;
+                const elementWidth = todayElement.clientWidth;
+                
+                // 要素を中央に配置するためのスクロール量を計算
+                const scrollTo = elementLeft - (containerWidth / 2) + (elementWidth / 2);
+                
+                container.scrollTo({
+                    left: scrollTo,
+                    behavior: 'smooth'
+                });
             }
         }, 100);
     } else {
