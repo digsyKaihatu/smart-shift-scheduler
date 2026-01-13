@@ -49,7 +49,30 @@ const Briefcase = (props) => <IconWrapper {...props}><rect x="2" y="7" width="20
 const Clock = (props) => <IconWrapper {...props}><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></IconWrapper>;
 
 // --- Firebase Configuration ---
-const firebaseConfig = JSON.parse(__firebase_config);
+// Canvas環境とデプロイ環境の両方に対応するための安全な設定読み込み
+let firebaseConfig;
+try {
+  if (typeof __firebase_config !== 'undefined') {
+    // Canvas環境: 自動注入された設定を使用
+    firebaseConfig = JSON.parse(__firebase_config);
+  } else {
+    // デプロイ環境: ここにご自身のFirebase設定を記述してください
+    // ※これが設定されていないとデータベースに接続できません
+    console.warn("Firebase config not found. Using placeholder config.");
+    firebaseConfig = {
+      apiKey: "AIzaSyBl5pDlZwKYK_r78UIRA3ALtse0dZZC3iY",
+      authDomain: "smart-shift-scheduler.firebaseapp.com",
+      projectId: "smart-shift-scheduler",
+      storageBucket: "smart-shift-scheduler.firebasestorage.app",
+      messagingSenderId: "410729738408",
+      appId: "1:410729738408:web:25a2f142fe7f2d864ed29d"
+    };
+  }
+} catch (e) {
+  console.error("Firebase config parsing error:", e);
+  firebaseConfig = { apiKey: "dummy" }; // 最低限のエラー回避
+}
+
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
@@ -112,7 +135,12 @@ export default function ShiftScheduler() {
         }
       } catch (err) {
         console.error("Auth failed:", err);
-        setError("認証に失敗しました。再読み込みしてください。");
+        // 通常のFirebase設定がない場合のエラーメッセージ
+        if (err.code === 'auth/configuration-not-found' || err.code === 'auth/api-key-not-valid-please-pass-a-valid-api-key') {
+           setError("Firebaseの設定が無効です。ソースコード内のfirebaseConfigをご自身のプロジェクト設定に書き換えてください。");
+        } else {
+           setError("認証に失敗しました。再読み込みしてください。");
+        }
         setIsLoading(false);
       }
     };
@@ -182,7 +210,12 @@ export default function ShiftScheduler() {
       console.log('Data load sequence finished successfully.');
     } catch (err) {
       console.error("Data load error:", err);
-      setError("データの読み込み中にエラーが発生しました。");
+      // Firebaseの設定ミスによるエラーかどうかを判定
+      if (err.message.includes("api-key")) {
+         setError("APIキーが無効です。Firebaseの設定を確認してください。");
+      } else {
+         setError("データの読み込み中にエラーが発生しました。");
+      }
     } finally {
       console.log('Disabling loading state...');
       setLoadingMessage("");
