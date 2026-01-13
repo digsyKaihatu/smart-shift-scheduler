@@ -1,22 +1,20 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { initializeApp } from 'firebase/app';
 import { 
-  getAuth, 
   signInWithCustomToken, 
   signInAnonymously, 
   onAuthStateChanged
 } from 'firebase/auth';
 import { 
-  getFirestore, 
   collection, 
   doc, 
   getDocs, 
   setDoc, 
   writeBatch,
   query,
-  where,
-  Timestamp 
 } from 'firebase/firestore';
+
+// Configからインポート (拡張子を明示的に追加)
+import { db, auth } from './config/firebase.js';
 
 // --- Icons (Replaces lucide-react dependencies) ---
 const IconWrapper = ({ children, size = 24, className = "" }) => (
@@ -48,11 +46,7 @@ const RefreshCw = (props) => <IconWrapper {...props}><polyline points="23 4 23 1
 const Briefcase = (props) => <IconWrapper {...props}><rect x="2" y="7" width="20" height="14" rx="2" ry="2"></rect><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"></path></IconWrapper>;
 const Clock = (props) => <IconWrapper {...props}><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></IconWrapper>;
 
-// --- Firebase Configuration ---
-const firebaseConfig = JSON.parse(__firebase_config);
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const db = getFirestore(app);
+// --- Constants ---
 const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
 
 // --- Default Data ---
@@ -302,7 +296,6 @@ export default function ShiftScheduler() {
     );
   }
 
-  // ★ CRITICAL FIX: Empty State Handling (スタッフ0人時の対応) ★
   if (staff.length === 0 && viewMode === 'table') {
     return (
       <div className="flex h-screen w-full bg-slate-50 items-center justify-center p-4">
@@ -454,9 +447,7 @@ export default function ShiftScheduler() {
           
           {viewMode === 'table' && (
             <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex flex-col h-full max-h-full">
-               {/* Shift Table Implementation 
-                  Using CSS Grid for sticky headers
-               */}
+               {/* Shift Table Implementation */}
                <div className="overflow-auto flex-1 relative">
                  <table className="w-full border-collapse text-sm">
                    <thead className="bg-slate-50 sticky top-0 z-10 shadow-sm">
@@ -549,7 +540,6 @@ export default function ShiftScheduler() {
                                    </button>
                                  </div>
                                )}
-                               {/* Backdrop for closing selection */}
                                {isSelected && (
                                  <div 
                                    className="fixed inset-0 z-40 bg-transparent" 
@@ -565,7 +555,6 @@ export default function ShiftScheduler() {
                        </tr>
                      ))}
                      
-                     {/* Summary Row (Mock) */}
                      <tr className="bg-slate-50 font-bold text-xs text-slate-500">
                        <td className="sticky left-0 z-10 bg-slate-50 p-3 border-r border-slate-200">
                          出勤人数
@@ -659,8 +648,6 @@ export default function ShiftScheduler() {
     </div>
   );
 }
-
-// --- Components ---
 
 function NavButton({ active, onClick, icon, label, expanded }) {
   return (
