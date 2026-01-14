@@ -6,7 +6,7 @@ import { OktaAuth, toRelativeUrl } from '@okta/okta-auth-js';
 
 /**
  * -----------------------------------------------------------------------------
- * 1. 定数・ユーティリティ・マスタデータ
+ * 1. 定数・マスタデータ
  * -----------------------------------------------------------------------------
  */
 
@@ -41,8 +41,17 @@ const initialShiftPatterns = [
   { id: '★', name: '★', startTime: '9:30', endTime: '15:30', breakTime: '1:00', workHours: 5.0 }
 ];
 
+/**
+ * -----------------------------------------------------------------------------
+ * 2. ユーティリティ関数
+ * -----------------------------------------------------------------------------
+ */
+
 const formatValue = (value) => {
-  const mapping = { 'シフト休': '休', '欠勤': '欠', '通休': '通', '有休': '有', '遅刻': '遅', '早退': '早' };
+  const mapping = { 
+    'シフト休': '休', '欠勤': '欠', '通休': '通', '有休': '有', 
+    '遅刻': '遅', '早退': '早' 
+  };
   if (typeof value === 'number') return value % 1 === 0 ? Math.floor(value) : value.toFixed(1);
   if (typeof value === 'string') return mapping[value] || value;
   if (value && typeof value === 'object' && 'type' in value) {
@@ -70,7 +79,7 @@ const summarizePattern = (pattern, patterns, hasBreakArray) => {
 
 /**
  * -----------------------------------------------------------------------------
- * 2. 小規模コンポーネント (Icons, EditableCells, Modals)
+ * 3. サブコンポーネント
  * -----------------------------------------------------------------------------
  */
 
@@ -80,14 +89,7 @@ const DeleteIcon = () => (
   </svg>
 );
 
-const SetHolidayIcon = () => (
-    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-);
-
-const UnlockIcon = () => (
-    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M8 11V7a4 4 0 118 0m-4 8v3m-6 2h12a2 2 0 002-2v-7a2 2 0 00-2-2H5a2 2 0 00-2 2v7a2 2 0 002 2z" /></svg>
-);
-
+// セル編集コンポーネント
 const EditableCell = ({ value, onUpdate, borderClass, disabled = false, isToday = false }) => {
   const [mode, setMode] = useState('view');
   const [inputValue, setInputValue] = useState('');
@@ -126,25 +128,21 @@ const EditableCell = ({ value, onUpdate, borderClass, disabled = false, isToday 
   const getBackgroundColor = () => {
     const hoverClass = disabled ? '' : 'hover:bg-opacity-80';
     const todayClass = isToday && value === '' ? 'bg-yellow-50' : '';
-    if (typeof value === 'number' && value > 0) return `bg-green-200 ${hoverClass}`;
+    if (typeof value === 'number' && value > 0) return `bg-green-100 ${hoverClass}`;
     if (value && typeof value === 'object' && 'type' in value) {
-        switch (value.type) {
-            case 'シフト休': return `bg-slate-300 ${hoverClass}`;
-            case '遅刻': return `bg-orange-200 ${hoverClass}`;
-            case '早退': return `bg-purple-200 ${hoverClass}`;
-            default: return `bg-yellow-200 ${hoverClass}`; // 有休系
-        }
+        if (value.type.includes('有休')) return `bg-yellow-100 ${hoverClass}`;
+        return `bg-slate-200 ${hoverClass}`;
     }
     switch(value) {
-      case '有休': return `bg-yellow-200 ${hoverClass}`;
-      case '通休': return `bg-blue-200 ${hoverClass}`;
-      case 'シフト休': return `bg-slate-300 ${hoverClass}`;
-      case '欠勤': return `bg-red-200 ${hoverClass}`;
+      case '有休': return `bg-yellow-100 ${hoverClass}`;
+      case '通休': return `bg-blue-100 ${hoverClass}`;
+      case 'シフト休': return `bg-slate-200 ${hoverClass}`;
+      case '欠勤': return `bg-red-100 ${hoverClass}`;
       default: return `${todayClass || 'bg-white'} ${disabled ? '' : 'hover:bg-slate-50'}`;
     }
   };
 
-  const cellClasses = `border-b border-r ${borderClass} text-center text-xs h-10 flex items-center justify-center w-[6em] min-w-[6em] flex-shrink-0 transition-colors duration-150`;
+  const cellClasses = `border-b border-r ${borderClass} text-center text-xs h-10 flex items-center justify-center w-[6em] min-w-[6em] flex-shrink-0`;
 
   if (mode === 'view') {
     return (
@@ -154,37 +152,69 @@ const EditableCell = ({ value, onUpdate, borderClass, disabled = false, isToday 
     );
   }
 
-  if (mode === 'select') {
-    return (
-         <div className={`${cellClasses} bg-white relative`}>
-            <select autoFocus onChange={handleSelectChange} onBlur={() => setMode('view')} className="absolute inset-0 w-full h-full bg-transparent text-center text-xs cursor-pointer appearance-none focus:outline-none focus:ring-2 focus:ring-sky-500" defaultValue="">
-                <option value="" disabled hidden>選択...</option>
-                <option value="稼働時間入力">稼働時間入力</option>
-                <optgroup label="ステータス">
-                    <option value="有休">有休</option>
-                    <option value="シフト休">シフト休</option>
-                    <option value="通休">通院休暇</option>
-                    <option value="欠勤">欠勤</option>
-                </optgroup>
-                <optgroup label="時間単位">
-                    {['遅刻', '早退', '午前有休', '午後有休', '午前休', '午後休', '午前通休', '午後通休'].map(opt => (
-                        <option key={opt} value={opt}>{opt.replace('通休', '通院休暇')}</option>
-                    ))}
-                </optgroup>
-                <option value="">(クリア)</option>
-            </select>
-        </div>
-    );
-  }
-
   return (
     <div className={`${cellClasses} bg-white relative`}>
-      {editingSpecialShift && <span className="absolute left-1 top-1/2 -translate-y-1/2 text-[9px] text-slate-600 pointer-events-none">入力:</span>}
-      <input ref={inputRef} type="number" step="0.5" value={inputValue} onChange={(e) => setInputValue(e.target.value)} onBlur={commitInput} onKeyDown={(e) => e.key === 'Enter' && commitInput()} className="absolute inset-0 w-full h-full p-0 m-0 bg-transparent text-center text-xs outline-none" style={{ paddingLeft: editingSpecialShift ? '2.5rem' : '0' }} />
+      <select autoFocus onChange={handleSelectChange} onBlur={() => setMode('view')} className="absolute inset-0 w-full h-full bg-transparent text-center text-xs cursor-pointer appearance-none outline-none focus:ring-2 focus:ring-sky-500" defaultValue="">
+          <option value="" disabled hidden>選択...</option>
+          <option value="稼働時間入力">稼働時間入力</option>
+          <optgroup label="ステータス">
+              <option value="有休">有休</option>
+              <option value="シフト休">シフト休</option>
+              <option value="通休">通院休暇</option>
+              <option value="欠勤">欠勤</option>
+          </optgroup>
+          <optgroup label="時間単位">
+              {['遅刻', '早退', '午前有休', '午後有休', '午前休', '午後休', '午前通休', '午後通休'].map(opt => (
+                  <option key={opt} value={opt}>{opt.replace('通休', '通院休暇')}</option>
+              ))}
+          </optgroup>
+          <option value="">(クリア)</option>
+      </select>
     </div>
   );
 };
 
+// スタッフ情報編集セル（定義漏れ修正）
+const EditableStaffInfoCell = ({ value, onUpdate, className, disabled = false }) => {
+  const [isEditing, setIsEditing] = useState(false);
+  const [currentValue, setCurrentValue] = useState(value);
+
+  useEffect(() => setCurrentValue(value), [value]);
+
+  const handleBlur = () => { 
+    if (currentValue.trim() !== value) onUpdate(currentValue.trim()); 
+    setIsEditing(false); 
+  };
+
+  const wrapperClass = `h-10 text-[11px] border-b border-r border-slate-300 flex items-center px-1.5 overflow-hidden ${className}`;
+
+  if (isEditing) {
+    return (
+      <div className={`${wrapperClass} bg-white`}>
+        <input 
+          type="text" 
+          value={currentValue} 
+          onChange={(e) => setCurrentValue(e.target.value)} 
+          onBlur={handleBlur} 
+          onKeyDown={(e) => e.key === 'Enter' && handleBlur()} 
+          autoFocus 
+          className="w-full h-full bg-transparent outline-none" 
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div 
+      onClick={() => !disabled && setIsEditing(true)} 
+      className={`${wrapperClass} bg-white transition-colors ${disabled ? 'cursor-not-allowed text-slate-500' : 'cursor-pointer hover:bg-slate-50'}`}
+    >
+      <div className="font-semibold truncate w-full">{value}</div>
+    </div>
+  );
+};
+
+// 基本シフトパターン編集モーダル
 const ShiftPatternEditor = ({ pattern, hasBreakArray, patterns, onApply, summary, disabled = false }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [editedPattern, setEditedPattern] = useState(pattern || Array(5).fill('シフト休'));
@@ -232,7 +262,7 @@ const ShiftPatternEditor = ({ pattern, hasBreakArray, patterns, onApply, summary
                             </select>
                         </div>
                         <div className="col-span-3 flex items-center gap-1 justify-end">
-                            <input type="checkbox" id={`break-${index}`} checked={editedHasBreak[index]} onChange={() => { const nb = [...editedHasBreak]; nb[index] = !nb[index]; setEditedHasBreak(nb); }} disabled={editedPattern[index] === 'シフト休'} className="h-3.5 w-3.5 text-[#D9824D] rounded" />
+                            <input type="checkbox" id={`break-${index}`} checked={editedHasBreak[index]} onChange={() => { const nb = [...editedHasBreak]; nb[index] = !nb[index]; setEditedHasBreak(nb); }} disabled={editedPattern[index] === 'シフト休'} className="h-3.5 w-3.5 text-sky-600 rounded" />
                             <label htmlFor={`break-${index}`} className="text-[10px] whitespace-nowrap cursor-pointer">休憩</label>
                         </div>
                     </div>
@@ -240,76 +270,38 @@ const ShiftPatternEditor = ({ pattern, hasBreakArray, patterns, onApply, summary
             </div>
             <div className="flex justify-end gap-2 mt-5 pt-4 border-t border-slate-100">
                 <button onClick={() => setIsOpen(false)} className="text-xs px-4 py-2 bg-slate-100 rounded font-bold">キャンセル</button>
-                <button onClick={() => { onApply(editedPattern, editedHasBreak); setIsOpen(false); }} className="text-xs px-4 py-2 bg-[#F4B896] text-white rounded font-bold shadow-sm hover:bg-[#E8A680]">基本シフトを適用</button>
+                <button onClick={() => { onApply(editedPattern, editedHasBreak); setIsOpen(false); }} className="text-xs px-4 py-2 bg-[#F4B896] text-white rounded font-bold shadow-sm hover:bg-[#E8A680]">適用</button>
             </div>
         </div>
     </div>, document.body
   ) : null;
 
-  return (<div className="h-full"><button onClick={() => !disabled && setIsOpen(true)} className={`w-full h-full flex items-center justify-start text-left p-1 rounded transition-colors ${disabled ? 'cursor-not-allowed' : 'hover:bg-slate-200'}`} disabled={disabled}><div className="text-[10px] leading-tight font-semibold whitespace-pre-wrap text-slate-700">{summary}</div></button>{editorPopup}</div>);
-};
-
-/**
- * -----------------------------------------------------------------------------
- * 3. 業務一覧セクション (TaskShortageDisplay)
- * -----------------------------------------------------------------------------
- */
-
-const TaskShortageDisplay = ({ tasks, staff, days, taskCountsByDay }) => {
   return (
-    <div className="bg-white rounded-lg shadow-md ring-1 ring-black ring-opacity-5 p-4 overflow-hidden">
-      <h2 className="text-lg font-bold text-slate-800 mb-3">業務一覧</h2>
-      <div className="overflow-x-auto flex border border-slate-200 rounded-md">
-        {/* 固定列 */}
-        <div className="flex-shrink-0 z-20 bg-slate-100 border-r-2 border-slate-300">
-           <div className="w-[180px] h-10 border-b border-slate-300 flex items-center px-3 font-bold text-xs bg-slate-200">業務名 / 定員</div>
-           {tasks.map(t => (
-             <div key={t.id} className="w-[180px] h-[80px] border-b border-slate-300 bg-white p-2 flex flex-col justify-center">
-               <div className="font-bold text-sm text-slate-700 truncate">{t.name}</div>
-               <div className="text-[10px] text-slate-500">必要: {t.requiredPersonnel}名</div>
-             </div>
-           ))}
-        </div>
-        {/* スクロールエリア */}
-        <div className="flex-grow overflow-x-auto">
-          <div className="flex">
-            {days.map(({ day, dayOfWeek }) => (
-              <div key={day} className="min-w-[60px] flex-shrink-0">
-                <div className="h-10 border-b border-r border-slate-300 bg-slate-100 flex flex-col items-center justify-center">
-                  <span className="text-[10px] opacity-60 leading-none">{dayOfWeek}</span>
-                  <span className="text-xs font-bold">{day}</span>
-                </div>
-                {tasks.map(t => {
-                   const count = taskCountsByDay?.[day]?.[t.id] || 0;
-                   const isShort = count < t.requiredPersonnel && !['土','日'].includes(dayOfWeek);
-                   return (
-                     <div key={`${t.id}-${day}`} className={`h-[80px] border-b border-r border-slate-300 flex items-center justify-center font-bold text-xs ${isShort ? 'bg-red-50 text-red-600' : 'bg-white text-slate-700'}`}>
-                        {count}人
-                     </div>
-                   );
-                })}
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
+    <div className="h-full">
+      <button onClick={() => !disabled && setIsOpen(true)} className={`w-full h-full flex items-center justify-start text-left p-1 rounded transition-colors ${disabled ? 'cursor-not-allowed' : 'hover:bg-slate-100'}`} disabled={disabled}>
+        <div className="text-[10px] leading-tight font-semibold whitespace-pre-wrap text-slate-700">{summary}</div>
+      </button>
+      {editorPopup}
     </div>
   );
 };
 
 /**
  * -----------------------------------------------------------------------------
- * 4. メインシフト表 (ShiftSchedule)
+ * 4. メインコンポーネント (ShiftSchedule & TaskShortageDisplay)
  * -----------------------------------------------------------------------------
  */
 
-const ShiftSchedule = ({ currentUser, isAdmin, schedule, staff, days, holidays, shiftPatterns, year, month, onUpdateSchedule, onDeleteStaff, onUpdateStaffInfo, onApplyStaffPattern, onToggleShiftSubmitted, onToggleShiftApproved, onToggleShiftRemanded }) => {
+const ShiftSchedule = ({ currentUser, isAdmin, schedule, staff, days, shiftPatterns, year, month, onUpdateSchedule, onDeleteStaff, onUpdateStaffInfo, onApplyStaffPattern, onToggleShiftSubmitted, onToggleShiftApproved, onToggleShiftRemanded }) => {
   const scrollContainerRef = useRef(null);
   const sortedStaff = useMemo(() => [...staff].sort((a, b) => String(a.employeeId || '').localeCompare(String(b.employeeId || ''), undefined, { numeric: true })), [staff]);
 
+  // 固定幅の定義（役職〜削除ボタンの計8列）
   const widths = { role: 55, empId: 85, name: 115, setting: 165, submit: 65, remand: 65, approve: 65, del: 40 };
   const pos = {
-    role: 0, empId: widths.role, name: widths.role + widths.empId,
+    role: 0,
+    empId: widths.role,
+    name: widths.role + widths.empId,
     setting: widths.role + widths.empId + widths.name,
     submit: widths.role + widths.empId + widths.name + widths.setting,
     remand: widths.role + widths.empId + widths.name + widths.setting + widths.submit,
@@ -327,7 +319,7 @@ const ShiftSchedule = ({ currentUser, isAdmin, schedule, staff, days, holidays, 
     <div className="bg-white rounded-lg shadow-md ring-1 ring-black ring-opacity-5 overflow-hidden border border-slate-200">
       <div ref={scrollContainerRef} className="overflow-auto bg-white" style={{maxHeight: '75vh'}}>
         <div className="grid relative" style={{ gridTemplateColumns }}>
-          {/* 固定ヘッダー */}
+          {/* 左側固定ヘッダー */}
           <div className={stickyFixedHeaderBase} style={{ left: pos.role }}>役職</div>
           <div className={stickyFixedHeaderBase} style={{ left: pos.empId }}>社員番号</div>
           <div className={stickyFixedHeaderBase} style={{ left: pos.name }}>稼働名前</div>
@@ -336,26 +328,38 @@ const ShiftSchedule = ({ currentUser, isAdmin, schedule, staff, days, holidays, 
           <div className={stickyFixedHeaderBase} style={{ left: pos.remand }}>差戻☑</div>
           <div className={stickyFixedHeaderBase} style={{ left: pos.approve }}>承認☑</div>
           <div className={`${stickyFixedHeaderBase} border-r-2 shadow-[2px_0_4px_rgba(0,0,0,0.1)]`} style={{ left: pos.del }}>削除</div>
+          
+          {/* 日付ヘッダー */}
           {days.map(({ day, dayOfWeek }) => (
-            <div key={day} className={`${stickyHeaderBase} whitespace-nowrap`} data-day={day}>
+            <div key={day} className={`${stickyHeaderBase} whitespace-nowrap ${new Date().getDate() === day && (new Date().getMonth()+1) === month ? 'bg-yellow-50' : ''}`} data-day={day}>
               <div className="text-[9px] opacity-70 mb-1">{dayOfWeek}</div><div className="text-sm font-bold">{day}</div>
             </div>
           ))}
-          {/* データ行 */}
+
+          {/* スタッフデータ行 */}
           {sortedStaff.map(s => {
             const isEditable = isAdmin || currentUser?.id === s.id;
             return (
               <React.Fragment key={s.id}>
-                <div className={`${stickyFixedColBase} bg-white`} style={{ left: pos.role }}><EditableStaffInfoCell value={s.role} onUpdate={v => onUpdateStaffInfo(s.id, 'role', v)} disabled={!isEditable} className="w-full h-full" /></div>
-                <div className={`${stickyFixedColBase} bg-white`} style={{ left: pos.empId }}><EditableStaffInfoCell value={s.employeeId} onUpdate={v => onUpdateStaffInfo(s.id, 'employeeId', v)} disabled={!isEditable} className="w-full h-full" /></div>
-                <div className={`${stickyFixedColBase} bg-white`} style={{ left: pos.name }}><EditableStaffInfoCell value={s.name} onUpdate={v => onUpdateStaffInfo(s.id, 'name', v)} disabled={!isEditable} className="w-full h-full" /></div>
-                <div className={`${stickyFixedColBase} bg-white px-1`} style={{ left: pos.setting }}><ShiftPatternEditor pattern={s.defaultShift.pattern} hasBreakArray={s.defaultShift.hasBreakArray} patterns={shiftPatterns} onApply={(p, hb) => onApplyStaffPattern(s.id, p, hb)} summary={summarizePattern(s.defaultShift.pattern, shiftPatterns, s.defaultShift.hasBreakArray)} disabled={!isEditable} /></div>
-                <div className={`${stickyFixedColBase} bg-white justify-center`} style={{ left: pos.submit }}><input type="checkbox" checked={s.shiftSubmitted?.[`${year}-${month}`] || false} onChange={() => onToggleShiftSubmitted(s.id)} className="h-4 w-4 text-sky-600 rounded" disabled={!isEditable} /></div>
-                <div className={`${stickyFixedColBase} bg-white justify-center`} style={{ left: pos.remand }}><input type="checkbox" checked={s.shiftRemanded?.[`${year}-${month}`] || false} onChange={() => onToggleShiftRemanded(s.id)} className="h-4 w-4 text-red-600 rounded" disabled={!isAdmin} /></div>
-                <div className={`${stickyFixedColBase} bg-white justify-center`} style={{ left: pos.approve }}><input type="checkbox" checked={s.shiftApproved?.[`${year}-${month}`] || false} onChange={() => onToggleShiftApproved(s.id)} className="h-4 w-4 text-green-600 rounded" disabled={!isAdmin} /></div>
+                <div className={`${stickyFixedColBase} bg-white`} style={{ left: pos.role }}><EditableStaffInfoCell value={s.role} onUpdate={v => onUpdateStaffInfo(s.id, 'role', v)} disabled={!isEditable} /></div>
+                <div className={`${stickyFixedColBase} bg-white`} style={{ left: pos.empId }}><EditableStaffInfoCell value={s.employeeId} onUpdate={v => onUpdateStaffInfo(s.id, 'employeeId', v)} disabled={!isEditable} /></div>
+                <div className={`${stickyFixedColBase} bg-white`} style={{ left: pos.name }}><EditableStaffInfoCell value={s.name} onUpdate={v => onUpdateStaffInfo(s.id, 'name', v)} disabled={!isEditable} /></div>
+                <div className={`${stickyFixedColBase} bg-white px-1`} style={{ left: pos.setting }}>
+                    <ShiftPatternEditor 
+                        pattern={s.defaultShift.pattern} 
+                        hasBreakArray={s.defaultShift.hasBreakArray} 
+                        patterns={shiftPatterns} 
+                        onApply={(p, hb) => onApplyStaffPattern(s.id, p, hb)} 
+                        summary={summarizePattern(s.defaultShift.pattern, shiftPatterns, s.defaultShift.hasBreakArray)} 
+                        disabled={!isEditable} 
+                    />
+                </div>
+                <div className={`${stickyFixedColBase} bg-white justify-center`} style={{ left: pos.submit }}><input type="checkbox" checked={s.shiftSubmitted?.[`${year}-${month}`] || false} onChange={() => onToggleShiftSubmitted(s.id)} className="h-4 w-4 rounded" disabled={!isEditable} /></div>
+                <div className={`${stickyFixedColBase} bg-white justify-center`} style={{ left: pos.remand }}><input type="checkbox" checked={s.shiftRemanded?.[`${year}-${month}`] || false} onChange={() => onToggleShiftRemanded(s.id)} className="h-4 w-4 rounded" disabled={!isAdmin} /></div>
+                <div className={`${stickyFixedColBase} bg-white justify-center`} style={{ left: pos.approve }}><input type="checkbox" checked={s.shiftApproved?.[`${year}-${month}`] || false} onChange={() => onToggleShiftApproved(s.id)} className="h-4 w-4 rounded" disabled={!isAdmin} /></div>
                 <div className={`${stickyFixedColBase} bg-white justify-center border-r-2 shadow-[2px_0_4px_rgba(0,0,0,0.1)]`} style={{ left: pos.del }}>{isAdmin && <button onClick={() => onDeleteStaff(s.id)}><DeleteIcon /></button>}</div>
                 {days.map(({ day }) => (
-                  <EditableCell key={day} value={schedule[s.id]?.[day] ?? ''} onUpdate={v => onUpdateSchedule(s.id, day, v)} disabled={!isEditable} borderClass="border-slate-300" isToday={new Date().getDate() === day && (new Date().getMonth()+1) === month} />
+                  <EditableCell key={day} value={schedule[s.id]?.[day] ?? ''} onUpdate={v => onUpdateSchedule(s.id, day, v)} disabled={!isEditable} borderClass="border-slate-200" isToday={new Date().getDate() === day && (new Date().getMonth()+1) === month} />
                 ))}
               </React.Fragment>
             )
@@ -366,6 +370,44 @@ const ShiftSchedule = ({ currentUser, isAdmin, schedule, staff, days, holidays, 
   );
 };
 
+const TaskShortageDisplay = ({ tasks, staff, days, taskCountsByDay }) => (
+    <div className="bg-white rounded-lg shadow-md ring-1 ring-black ring-opacity-5 p-4 overflow-hidden mt-6">
+      <h2 className="text-lg font-bold text-slate-800 mb-3">業務一覧</h2>
+      <div className="overflow-x-auto flex border border-slate-200 rounded-md">
+        <div className="flex-shrink-0 z-20 bg-slate-50 border-r-2 border-slate-300">
+           <div className="w-[180px] h-10 border-b border-slate-300 flex items-center px-3 font-bold text-xs bg-slate-100">業務名 / 定員</div>
+           {tasks.map(t => (
+             <div key={t.id} className="w-[180px] h-12 border-b border-slate-300 bg-white p-2 flex flex-col justify-center">
+               <div className="font-bold text-xs text-slate-700 truncate">{t.name}</div>
+               <div className="text-[10px] text-slate-500">定員: {t.requiredPersonnel}名</div>
+             </div>
+           ))}
+        </div>
+        <div className="flex-grow overflow-x-auto">
+          <div className="flex">
+            {days.map(({ day, dayOfWeek }) => (
+              <div key={day} className="min-w-[60px] flex-shrink-0">
+                <div className="h-10 border-b border-r border-slate-200 bg-slate-50 flex flex-col items-center justify-center">
+                  <span className="text-[9px] opacity-60 leading-none">{dayOfWeek}</span>
+                  <span className="text-xs font-bold">{day}</span>
+                </div>
+                {tasks.map(t => {
+                   const count = taskCountsByDay?.[day]?.[t.id] || 0;
+                   const isShort = count < t.requiredPersonnel && !['土','日'].includes(dayOfWeek);
+                   return (
+                     <div key={`${t.id}-${day}`} className={`h-12 border-b border-r border-slate-100 flex items-center justify-center font-bold text-xs ${isShort ? 'bg-red-50 text-red-600' : 'bg-white text-slate-700'}`}>
+                        {count}
+                     </div>
+                   );
+                })}
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+);
+
 /**
  * -----------------------------------------------------------------------------
  * 5. メインアプリケーションロジック
@@ -375,13 +417,10 @@ const ShiftSchedule = ({ currentUser, isAdmin, schedule, staff, days, holidays, 
 const MainContent = () => {
   const { oktaAuth, authState } = useOktaAuth();
   
-  // プレビュー用の状態管理（実際は Firestore などから取得）
   const [staff, setStaff] = useState([
-    { id: '1', employeeId: '001', name: '管理者', role: '管理者', defaultShift: { pattern: ['I','I','I','I','I'], hasBreakArray: [true,true,true,true,true] }, possibleTasks: ['t1'], shiftSubmitted: {}, shiftRemanded: {}, shiftApproved: {} }
+    { id: '1', employeeId: '001', name: 'デモ管理者', role: '管理者', email: 'admin@example.com', defaultShift: { pattern: ['I','I','I','I','I'], hasBreakArray: [true,true,true,true,true] }, possibleTasks: ['t1'], shiftSubmitted: {}, shiftRemanded: {}, shiftApproved: {} }
   ]);
-  const [tasks, setTasks] = useState([
-    { id: 't1', name: '主要業務', requiredPersonnel: 1 }
-  ]);
+  const [tasks, setTasks] = useState([{ id: 't1', name: '主要業務', requiredPersonnel: 1 }]);
   const [schedule, setSchedule] = useState({});
   const [year, setYear] = useState(new Date().getFullYear());
   const [month, setMonth] = useState(new Date().getMonth() + 1);
@@ -400,7 +439,9 @@ const MainContent = () => {
       tasks.forEach(t => counts[day][t.id] = 0);
       staff.forEach(s => {
         const val = schedule[key]?.[s.id]?.[day];
-        if ((typeof val === 'number' && val > 0) || (val?.hours > 0)) {
+        if (typeof val === 'number' && val > 0) {
+          s.possibleTasks.forEach(tId => counts[day][tId] = (counts[day][tId] || 0) + 1);
+        } else if (val?.hours > 0) {
           s.possibleTasks.forEach(tId => counts[day][tId] = (counts[day][tId] || 0) + 1);
         }
       });
@@ -440,7 +481,7 @@ const MainContent = () => {
     setSchedule(prev => ({ ...prev, [key]: { ...(prev[key] || {}), [staffId]: newMonthScheduleForStaff } }));
   };
 
-  if (!authState) return <div>認証中...</div>;
+  if (!authState) return <div className="p-10 text-center">認証確認中...</div>;
   if (!authState.isAuthenticated) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#FFF9F6]">
@@ -454,11 +495,11 @@ const MainContent = () => {
       <div className="max-w-screen-2xl mx-auto space-y-6">
         <header className="mb-4 bg-[#F4B896] text-white rounded-md shadow-lg p-3 flex justify-between items-center sticky top-0 z-40">
           <div className="flex items-center gap-4">
-            <select value={year} onChange={(e) => setYear(Number(e.target.value))} className="bg-transparent border-none font-bold text-black text-2xl">
+            <select value={year} onChange={(e) => setYear(Number(e.target.value))} className="bg-transparent border-none font-bold text-black text-2xl outline-none">
               {Array.from({length: 5}, (_, i) => 2024 + i).map(y => <option key={y} value={y}>{y}</option>)}
             </select>
             <span className="text-xl">年</span>
-            <select value={month} onChange={(e) => setMonth(Number(e.target.value))} className="bg-transparent border-none font-bold text-black text-2xl">
+            <select value={month} onChange={(e) => setMonth(Number(e.target.value))} className="bg-transparent border-none font-bold text-black text-2xl outline-none">
               {Array.from({length: 12}, (_, i) => i + 1).map(m => <option key={m} value={m}>{m}</option>)}
             </select>
             <span className="text-xl">月</span>
@@ -467,7 +508,7 @@ const MainContent = () => {
         </header>
 
         <ShiftSchedule 
-          currentUser={staff[0]} isAdmin={true} schedule={schedule[key] || {}} staff={staff} days={days} holidays={[]} shiftPatterns={initialShiftPatterns} year={year} month={month}
+          currentUser={staff[0]} isAdmin={true} schedule={schedule[key] || {}} staff={staff} days={days} shiftPatterns={initialShiftPatterns} year={year} month={month}
           onUpdateSchedule={handleUpdateSchedule} onDeleteStaff={()=>{}} 
           onUpdateStaffInfo={(id,f,v)=>setStaff(prev=>prev.map(s=>s.id===id?{...s,[f]:v}:s))}
           onApplyStaffPattern={handleApplyStaffPattern}
@@ -477,6 +518,8 @@ const MainContent = () => {
         />
 
         <TaskShortageDisplay tasks={tasks} staff={staff} days={days} taskCountsByDay={taskCountsByDay} />
+        
+        <footer className="text-center mt-10 text-xs text-slate-400">Powered by Gemini & React</footer>
       </div>
     </div>
   );
@@ -488,7 +531,6 @@ const App = () => {
     navigate(toRelativeUrl(originalUri || '/', window.location.origin));
   };
 
-  // Oktaの設定は環境に合わせて調整してください
   const oktaAuth = new OktaAuth({
     issuer: 'https://dev-000000.okta.com/oauth2/default',
     clientId: '0oa00000000000000000',
