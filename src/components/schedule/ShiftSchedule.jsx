@@ -42,11 +42,9 @@ const formatValue = (value) => {
     
     if (value && typeof value === 'object' && 'type' in value) {
         let displayType = value.type;
-        // マッピングがあれば置換、なければ部分一致で置換を試みる
         if (mapping[value.type]) {
             displayType = mapping[value.type];
         } else {
-            // "午前有休" -> "午前有" などの置換
             Object.entries(mapping).forEach(([full, short]) => {
                 displayType = displayType.replace(full, short);
             });
@@ -221,7 +219,10 @@ const ShiftPatternEditor = ({ pattern, hasBreak, patterns, onApply, summary, dis
   const [isOpen, setIsOpen] = useState(false);
   const [editedPattern, setEditedPattern] = useState(pattern || Array(5).fill('シフト休'));
   const [editedHasBreak, setEditedHasBreak] = useState(hasBreak || false);
+  
+  // 9:00スタートのパターンを除外するフィルタリング
   const filteredPatterns = patterns.filter(p => p.startTime !== '09:00' && p.startTime !== '9:00');
+  
   const [bulkPatternId, setBulkPatternId] = useState(filteredPatterns[0]?.id || 'シフト休');
   useEffect(() => { setEditedPattern(pattern || Array(5).fill('シフト休')); setEditedHasBreak(hasBreak || false); }, [pattern, hasBreak]);
   const handleCancel = () => { setEditedPattern(pattern); setEditedHasBreak(hasBreak); setIsOpen(false); };
