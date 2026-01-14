@@ -91,8 +91,7 @@ const EditableCell = ({ value, onUpdate, borderClass, disabled = false, isAdmin 
 
   const handleSelectChange = (e) => {
     const selected = e.target.value;
-    const specialShiftOptions = ['遅刻', '早退', '午前有休', '午後有休', '午前休', '午後休', '午前通休', '午後通休'];
-    if (specialShiftOptions.includes(selected)) {
+    if (['遅刻', '早退', '午前有休', '午後有休', '午前休', '午後休', '午前通休', '午後通休'].includes(selected)) {
         setEditingSpecialShift(selected);
         setInputValue(String((typeof value === 'object' && value?.type === selected) ? value.hours : 4.0));
         setMode('input');
@@ -130,7 +129,7 @@ const EditableCell = ({ value, onUpdate, borderClass, disabled = false, isAdmin 
     }
   };
   
-  const baseClasses = `border-b border-r ${borderClass} text-center text-xs h-9 flex items-center justify-center w-[6em] min-w-[6em] max-w-[6em] ${isToday ? 'ring-1 ring-inset ring-yellow-300 z-[1]' : ''}`;
+  const baseClasses = `border-b border-r ${borderClass} text-center text-xs h-9 flex items-center justify-center w-[6em] min-w-[6em] max-w-[6em]`;
 
   if (mode === 'view') {
     return (
@@ -233,11 +232,10 @@ const ShiftPatternEditor = ({ pattern, hasBreak, patterns, onApply, summary, dis
 };
 
 const ShiftSchedule = ({ currentUser, isAdmin, schedule, staff, days, holidays, shiftPatterns, year, month, onUpdateSchedule, onDeleteStaff, onUpdateStaffInfo, onApplyStaffPattern, onToggleShiftSubmitted, onToggleShiftApproved, onToggleShiftRemanded, onSetDayAsHolidayForAll }) => {
-  const staffInfoWidth = "60px 100px 120px 150px 60px 60px 60px 40px";
   const scrollContainerRef = useRef(null);
   const sortedStaff = useMemo(() => [...staff].sort((a, b) => String(a.employeeId || '').localeCompare(String(b.employeeId || ''), undefined, { numeric: true })), [staff]);
   
-  // 今日の日付へ中央スクロールするロジック
+  // 今日の日付へ中央スクロール
   useEffect(() => {
     if (!scrollContainerRef.current) return;
     const today = new Date();
@@ -247,68 +245,85 @@ const ShiftSchedule = ({ currentUser, isAdmin, schedule, staff, days, holidays, 
             const target = container?.querySelector(`[data-day="${today.getDate()}"]`);
             if (container && target) {
                 const containerWidth = container.clientWidth;
-                const targetLeft = target.offsetLeft;
-                const targetWidth = target.clientWidth;
-                const scrollLeft = targetLeft - (containerWidth / 2) + (targetWidth / 2);
+                const scrollLeft = target.offsetLeft - (containerWidth / 2) + (target.clientWidth / 2);
                 container.scrollTo({ left: scrollLeft, behavior: 'smooth' });
             }
-        }, 150);
+        }, 200);
     } else { scrollContainerRef.current.scrollLeft = 0; }
   }, [year, month]);
 
+  // 固定列の幅とleft位置の定義
+  const colWidths = [60, 100, 120, 150, 60, 60, 60, 40];
+  const colLefts = colWidths.reduce((acc, w, i) => { acc.push(i === 0 ? 0 : acc[i-1] + colWidths[i-1]); return acc; }, []);
+  const staffInfoGridWidth = colWidths.map(w => `${w}px`).join(' ');
+
   const headerCellClass = "sticky top-0 z-30 bg-slate-200 p-2 border-b-2 border-r border-slate-300 font-semibold text-xs text-center";
   const dataCellClass = "bg-white border-b border-r border-slate-300 flex items-center h-9";
+  const stickyColHeaderClass = "sticky top-0 z-40 bg-slate-200 p-2 border-b-2 border-r border-slate-300 font-semibold text-xs text-center";
 
   return (
-    <div className="bg-white rounded-lg shadow-md ring-1 ring-black ring-opacity-5 overflow-y-auto overflow-x-hidden" style={{maxHeight: '70vh'}}>
-      <div className="flex">
-        {/* --- 左側：固定エリア --- */}
-        <div className="flex-shrink-0 z-20 bg-white border-r-2 border-slate-300 shadow-xl">
-          <div className="grid" style={{ gridTemplateColumns: staffInfoWidth }}>
-            <div className={headerCellClass}>役職</div>
-            <div className={headerCellClass}>社員番号</div>
-            <div className={headerCellClass}>稼働名前</div>
-            <div className={headerCellClass}>基本シフト設定</div>
-            <div className={headerCellClass}>提出☑</div>
-            <div className={headerCellClass}>差戻☑</div>
-            <div className={headerCellClass}>承認☑</div>
-            <div className={headerCellClass}>削除</div>
+    <div className="bg-white rounded-lg shadow-md ring-1 ring-black ring-opacity-5 overflow-hidden">
+      {/* 外部コンテナで overflow-auto と maxHeight を設定。
+          これにより、水平スクロールバーは常にこの枠の最下部に表示されます。
+      */}
+      <div 
+        ref={scrollContainerRef} 
+        className="overflow-auto bg-white" 
+        style={{ maxHeight: '70vh' }}
+      >
+        <div className="grid relative" style={{ gridTemplateColumns: `${staffInfoGridWidth} repeat(${days.length}, minmax(70px, 1fr))` }}>
+          
+          {/* --- ヘッダー行 (スティッキー) --- */}
+          <div className={`${stickyColHeaderClass} left-[${colLefts[0]}px]`}>役職</div>
+          <div className={`${stickyColHeaderClass} left-[${colLefts[1]}px]`}>社員番号</div>
+          <div className={`${stickyColHeaderClass} left-[${colLefts[2]}px]`}>稼働名前</div>
+          <div className={`${stickyColHeaderClass} left-[${colLefts[3]}px]`}>基本シフト設定</div>
+          <div className={`${stickyColHeaderClass} left-[${colLefts[4]}px]`}>提出☑</div>
+          <div className={`${stickyColHeaderClass} left-[${colLefts[5]}px]`}>差戻☑</div>
+          <div className={`${stickyColHeaderClass} left-[${colLefts[6]}px]`}>承認☑</div>
+          <div className={`${stickyColHeaderClass} left-[${colLefts[7]}px] border-r-2 shadow-[2px_0_5px_rgba(0,0,0,0.1)]`}>削除</div>
 
-            {sortedStaff.map(s => {
-              const isEditable = isAdmin || currentUser.id === s.id;
-              return (
-                <React.Fragment key={s.id}>
-                  <EditableStaffInfoCell value={s.role} onUpdate={v => onUpdateStaffInfo(s.id, 'role', v)} disabled={!isEditable} />
-                  <EditableStaffInfoCell value={s.employeeId} onUpdate={v => onUpdateStaffInfo(s.id, 'employeeId', v)} disabled={!isEditable} />
-                  <EditableStaffInfoCell value={s.name} onUpdate={v => onUpdateStaffInfo(s.id, 'name', v)} disabled={!isEditable} />
-                  <div className={`${dataCellClass} text-xs px-1`}><ShiftPatternEditor pattern={s.defaultShift.pattern} hasBreak={s.defaultShift.hasBreak} patterns={shiftPatterns} onApply={(p, hb) => onApplyStaffPattern(s.id, p, hb)} summary={summarizePattern(s.defaultShift.pattern, shiftPatterns, s.defaultShift.hasBreak)} disabled={!isEditable} /></div>
-                  <div className={`${dataCellClass} justify-center`}><input type="checkbox" checked={s.shiftSubmitted?.[`${year}-${month}`] || false} onChange={() => onToggleShiftSubmitted(s.id)} className="h-5 w-5 rounded border-slate-400 text-sky-600 focus:ring-sky-500 cursor-pointer disabled:cursor-not-allowed" disabled={!isEditable} /></div>
-                  <div className={`${dataCellClass} justify-center`}><input type="checkbox" checked={s.shiftRemanded?.[`${year}-${month}`] || false} onChange={() => onToggleShiftRemanded(s.id)} className="h-5 w-5 rounded border-slate-400 text-red-600 focus:ring-red-500 cursor-pointer disabled:cursor-not-allowed" disabled={!isAdmin} /></div>
-                  <div className={`${dataCellClass} justify-center`}><input type="checkbox" checked={s.shiftApproved?.[`${year}-${month}`] || false} onChange={() => onToggleShiftApproved(s.id)} className="h-5 w-5 rounded border-slate-400 text-green-600 focus:ring-green-500 cursor-pointer disabled:cursor-not-allowed" disabled={!isAdmin} /></div>
-                  <div className={`${dataCellClass} justify-center`}>{isAdmin && <button onMouseDown={() => onDeleteStaff(s.id)} className="group p-1 rounded-full hover:bg-red-100 flex items-center justify-center" style={{ width: '28px', height: '28px' }}><DeleteIcon /></button>}</div>
-                </React.Fragment>
-              );
-            })}
-          </div>
-        </div>
+          {days.map(({ day, dayOfWeek }) => {
+            const isH = holidays.includes(day); 
+            const isT = new Date().getFullYear() === year && (new Date().getMonth() + 1) === month && new Date().getDate() === day;
+            return (
+                <div key={day} className={`${headerCellClass} whitespace-nowrap ${isT ? 'bg-yellow-100 text-yellow-900 border-yellow-300 ring-2 ring-yellow-300 ring-inset' : dayOfWeek === '土' ? 'bg-sky-100 text-sky-800 border-sky-200' : (dayOfWeek === '日' || isH) ? 'bg-pink-100 text-pink-800 border-pink-200' : 'bg-slate-100 text-slate-900 border-slate-300'}`} data-day={day}>
+                  <div>{day}</div><div>{dayOfWeek}</div>
+                  {isAdmin && <button onClick={() => onSetDayAsHolidayForAll(day)} className="group absolute bottom-1 right-1 p-0.5 bg-white/50 rounded-full hover:bg-sky-100">{staff.every(s => typeof (schedule[s.id]?.[day]) === 'object' && (schedule[s.id]?.[day])?.locked) ? <UnlockIcon /> : <SetHolidayIcon />}</button>}
+                </div>
+            )
+          })}
 
-        {/* --- 右側：スクロールエリア --- */}
-        <div ref={scrollContainerRef} className="overflow-x-auto flex-grow bg-white">
-          <div className="grid" style={{ gridTemplateColumns: `repeat(${days.length}, minmax(70px, 1fr))` }}>
-            {days.map(({ day, dayOfWeek }) => {
-              const isH = holidays.includes(day); 
-              const isT = new Date().getFullYear() === year && (new Date().getMonth() + 1) === month && new Date().getDate() === day;
-              return (
-                  <div key={day} className={`sticky top-0 z-10 p-2 text-xs font-semibold text-center border-b-2 border-r whitespace-nowrap ${isT ? 'bg-yellow-100 text-yellow-900 border-yellow-300 ring-2 ring-yellow-300 ring-inset' : dayOfWeek === '土' ? 'bg-sky-100 text-sky-800 border-sky-200' : (dayOfWeek === '日' || isH) ? 'bg-pink-100 text-pink-800 border-pink-200' : 'bg-slate-100 text-slate-900 border-slate-300'}`} data-day={day}>
-                    <div>{day}</div><div>{dayOfWeek}</div>
-                    {isAdmin && <button onClick={() => onSetDayAsHolidayForAll(day)} className="group absolute bottom-1 right-1 p-0.5 bg-white/50 rounded-full hover:bg-sky-100">{staff.every(s => typeof (schedule[s.id]?.[day]) === 'object' && (schedule[s.id]?.[day])?.locked) ? <UnlockIcon /> : <SetHolidayIcon />}</button>}
-                  </div>
-              )
-            })}
-            {sortedStaff.map(s => days.map(({ day, dayOfWeek }) => (
-                <EditableCell key={`${s.id}-${day}`} value={holidays.includes(day) ? 'シフト休' : (schedule[s.id]?.[day] ?? '')} onUpdate={v => onUpdateSchedule(s.id, day, v)} borderClass={`${dayOfWeek === '土' ? 'border-sky-200' : (dayOfWeek === '日' || holidays.includes(day)) ? 'border-pink-200' : 'border-slate-300'}`} disabled={!isAdmin && currentUser.id !== s.id} isAdmin={isAdmin} isToday={new Date().getFullYear() === year && (new Date().getMonth() + 1) === month && new Date().getDate() === day} />
-            )))}
-          </div>
+          {/* --- データ行 --- */}
+          {sortedStaff.map(s => {
+            const isEditable = isAdmin || currentUser.id === s.id;
+            return (
+              <React.Fragment key={s.id}>
+                {/* 固定列データ (sticky left) */}
+                <div className={`sticky left-[${colLefts[0]}px] z-20`}><EditableStaffInfoCell value={s.role} onUpdate={v => onUpdateStaffInfo(s.id, 'role', v)} disabled={!isEditable} /></div>
+                <div className={`sticky left-[${colLefts[1]}px] z-20`}><EditableStaffInfoCell value={s.employeeId} onUpdate={v => onUpdateStaffInfo(s.id, 'employeeId', v)} disabled={!isEditable} /></div>
+                <div className={`sticky left-[${colLefts[2]}px] z-20`}><EditableStaffInfoCell value={s.name} onUpdate={v => onUpdateStaffInfo(s.id, 'name', v)} disabled={!isEditable} /></div>
+                <div className={`sticky left-[${colLefts[3]}px] z-20 ${dataCellClass} text-xs px-1`}><ShiftPatternEditor pattern={s.defaultShift.pattern} hasBreak={s.defaultShift.hasBreak} patterns={shiftPatterns} onApply={(p, hb) => onApplyStaffPattern(s.id, p, hb)} summary={summarizePattern(s.defaultShift.pattern, shiftPatterns, s.defaultShift.hasBreak)} disabled={!isEditable} /></div>
+                <div className={`sticky left-[${colLefts[4]}px] z-20 ${dataCellClass} justify-center`}><input type="checkbox" checked={s.shiftSubmitted?.[`${year}-${month}`] || false} onChange={() => onToggleShiftSubmitted(s.id)} className="h-5 w-5 rounded border-slate-400 text-sky-600 focus:ring-sky-500 cursor-pointer disabled:cursor-not-allowed" disabled={!isEditable} /></div>
+                <div className={`sticky left-[${colLefts[5]}px] z-20 ${dataCellClass} justify-center`}><input type="checkbox" checked={s.shiftRemanded?.[`${year}-${month}`] || false} onChange={() => onToggleShiftRemanded(s.id)} className="h-5 w-5 rounded border-slate-400 text-red-600 focus:ring-red-500 cursor-pointer disabled:cursor-not-allowed" disabled={!isAdmin} /></div>
+                <div className={`sticky left-[${colLefts[6]}px] z-20 ${dataCellClass} justify-center`}><input type="checkbox" checked={s.shiftApproved?.[`${year}-${month}`] || false} onChange={() => onToggleShiftApproved(s.id)} className="h-5 w-5 rounded border-slate-400 text-green-600 focus:ring-green-500 cursor-pointer disabled:cursor-not-allowed" disabled={!isAdmin} /></div>
+                <div className={`sticky left-[${colLefts[7]}px] z-20 ${dataCellClass} justify-center border-r-2 shadow-[2px_0_5px_rgba(0,0,0,0.1)]`}>{isAdmin && <button onMouseDown={() => onDeleteStaff(s.id)} className="group p-1 rounded-full hover:bg-red-100 flex items-center justify-center" style={{ width: '28px', height: '28px' }}><DeleteIcon /></button>}</div>
+
+                {/* スクロールする日付セル */}
+                {days.map(({ day, dayOfWeek }) => (
+                    <EditableCell 
+                      key={`${s.id}-${day}`} 
+                      value={holidays.includes(day) ? 'シフト休' : (schedule[s.id]?.[day] ?? '')} 
+                      onUpdate={v => onUpdateSchedule(s.id, day, v)} 
+                      borderClass={`${dayOfWeek === '土' ? 'border-sky-200' : (dayOfWeek === '日' || holidays.includes(day)) ? 'border-pink-200' : 'border-slate-300'}`} 
+                      disabled={!isAdmin && currentUser.id !== s.id} 
+                      isAdmin={isAdmin} 
+                      isToday={new Date().getFullYear() === year && (new Date().getMonth() + 1) === month && new Date().getDate() === day} 
+                    />
+                ))}
+              </React.Fragment>
+            );
+          })}
         </div>
       </div>
     </div>
