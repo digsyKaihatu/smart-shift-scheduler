@@ -7,19 +7,26 @@ import { getFirestore, doc, setDoc, collection, onSnapshot } from 'firebase/fire
 
 /**
  * -----------------------------------------------------------------------------
- * 1. CONFIGURATION & INITIALIZATION (Mandatory Rules)
+ * 1. FIREBASE INITIALIZATION (Rule 1, 3 Compliance)
  * -----------------------------------------------------------------------------
  */
 
-// 環境変数の取得 (Rule 1 & 3 に基づく)
+// 環境変数からFirebase設定を取得
+const firebaseConfig = typeof __firebase_config !== 'undefined' 
+  ? JSON.parse(__firebase_config) 
+  : { apiKey: "", authDomain: "", projectId: "", storageBucket: "", messagingSenderId: "", appId: "" };
+
 const appId = typeof __app_id !== 'undefined' ? __app_id : 'smart-shift-scheduler';
-const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
 const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
 
-// Firebaseの初期化 (apiKeyエラーを回避するため直接configを渡す)
+// Firebaseサービスを初期化 (エラー回避のため、コンポーネント外で定義)
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
+
+// -----------------------------------------------------------------------------
+// Constants
+// -----------------------------------------------------------------------------
 
 const SHIFT_PATTERNS = [
   { id: 'A', name: 'A', startTime: '9:00', endTime: '18:00', breakTime: '1:00', workHours: 8.0 },
@@ -35,7 +42,7 @@ const SHIFT_PATTERNS = [
  * -----------------------------------------------------------------------------
  */
 
-// 表記の短縮変換 (閲覧モード用)
+// セル表示の短縮化
 const formatCellValue = (value) => {
   if (!value) return '';
   const mapping = { 'シフト休': '休', '欠勤': '欠', '通休': '通', '有休': '有', '遅刻': '遅', '早退': '早' };
@@ -51,24 +58,17 @@ const formatCellValue = (value) => {
   return '';
 };
 
-// パターンサマリー生成
-const summarizePattern = (pattern, patterns, hasBreakArray) => {
+// パターンの要約 (月火水...形式)
+const summarizePattern = (pattern, hasBreakArray) => {
   if (!pattern || pattern.length !== 5) return '未設定';
   const DAY_NAMES = ['月', '火', '水', '木', '金'];
-  const lines = pattern.map((pId, index) => {
-    const isBreak = Array.isArray(hasBreakArray) ? hasBreakArray[index] : true;
-    const breakLabel = isBreak ? "" : "×"; 
-    if (pId === 'シフト休') return `${DAY_NAMES[index]}:休`;
-    const p = patterns.find(x => x.id === pId);
-    if (!p) return `${DAY_NAMES[index]}:?`;
-    return `${DAY_NAMES[index]}:${p.name}${breakLabel}`;
-  });
-  return `${lines.slice(0, 3).join(' ')}\n${lines.slice(3).join(' ')}`;
+  const lines = pattern.map((pId, i) => `${DAY_NAMES[i]}:${pId === 'シフト休' ? '休' : pId}${hasBreakArray?.[i] ? '' : '×'}`);
+  return `${lines.slice(0,3).join(' ')}\n${lines.slice(3).join(' ')}`;
 };
 
 /**
  * -----------------------------------------------------------------------------
- * 3. UI COMPONENTS (Memoized)
+ * 3. COMPONENTS
  * -----------------------------------------------------------------------------
  */
 
@@ -80,7 +80,6 @@ const DeleteIcon = () => (
 
 const Cell = memo(({ value, onUpdate, borderClass, disabled, isToday }) => {
   const [isEditing, setIsEditing] = useState(false);
-
   const bg = useMemo(() => {
     if (typeof value === 'number' && value > 0) return 'bg-green-50 text-green-700';
     if (value === '有休' || (value?.type && value.type.includes('有休'))) return 'bg-yellow-50 text-yellow-700';
@@ -116,7 +115,7 @@ const ShiftPatternEditor = ({ pattern, hasBreakArray, onApply, disabled = false 
   const [tempHasBreak, setTempHasBreak] = useState(Array.isArray(hasBreakArray) ? [...hasBreakArray] : Array(5).fill(true));
   const DAY_NAMES = ['月', '火', '水', '木', '金'];
 
-  const summary = useMemo(() => summarizePattern(pattern, SHIFT_PATTERNS, hasBreakArray), [pattern, hasBreakArray]);
+  const summary = useMemo(() => summarizePattern(pattern, hasBreakArray), [pattern, hasBreakArray]);
 
   return (
     <div className="h-full w-full">
@@ -146,7 +145,7 @@ const ShiftPatternEditor = ({ pattern, hasBreakArray, onApply, disabled = false 
                     <input type="checkbox" checked={tempHasBreak[i]} 
                         onChange={() => { const n = [...tempHasBreak]; n[i] = !n[i]; setTempHasBreak(n); }}
                         disabled={tempPattern[i] === 'シフト休'}
-                        className="rounded text-sky-500"
+                        className="rounded text-sky-500 h-3.5 w-3.5"
                     />
                     <span className="text-[10px] text-slate-500">休憩</span>
                   </label>
@@ -164,12 +163,6 @@ const ShiftPatternEditor = ({ pattern, hasBreakArray, onApply, disabled = false 
   );
 };
 
-/**
- * -----------------------------------------------------------------------------
- * 4. SHIFT SCHEDULE TABLE (Rule-based Layout)
- * -----------------------------------------------------------------------------
- */
-
 const ShiftSchedule = ({ staff, schedule, days, isAdmin, currentUser, onUpdate, onApplyPattern, onDeleteStaff }) => {
   const COL_WIDTHS = { role: 55, id: 80, name: 110, config: 160, submit: 55, remand: 55, approve: 55, del: 40 };
   const getLeft = (key) => Object.keys(COL_WIDTHS).slice(0, Object.keys(COL_WIDTHS).indexOf(key)).reduce((sum, k) => sum + COL_WIDTHS[k], 0);
@@ -181,9 +174,8 @@ const ShiftSchedule = ({ staff, schedule, days, isAdmin, currentUser, onUpdate, 
 
   return (
     <div className="bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden">
-      <div className="overflow-auto scrollbar-thin scrollbar-thumb-slate-200" style={{ maxHeight: '65vh' }}>
+      <div className="overflow-auto" style={{ maxHeight: '65vh' }}>
         <div className="grid relative" style={{ gridTemplateColumns: gridTemplate }}>
-          {/* 固定ヘッダー */}
           <div className={hFixed} style={{ left: getLeft('role') }}>役職</div>
           <div className={hFixed} style={{ left: getLeft('id') }}>番号</div>
           <div className={hFixed} style={{ left: getLeft('name') }}>氏名</div>
@@ -191,16 +183,13 @@ const ShiftSchedule = ({ staff, schedule, days, isAdmin, currentUser, onUpdate, 
           <div className={hFixed} style={{ left: getLeft('submit') }}>提出</div>
           <div className={hFixed} style={{ left: getLeft('remand') }}>差戻</div>
           <div className={hFixed} style={{ left: getLeft('approve') }}>承認</div>
-          <div className={`${hFixed} border-r-2`} style={{ left: getLeft('del') }}>削除</div>
-          
+          <div className={`${hFixed} border-r-2 shadow-[2px_0_4px_rgba(0,0,0,0.05)]`} style={{ left: getLeft('del') }}>削除</div>
           {days.map(d => (
             <div key={d.day} className={`${hCell} ${['土','日'].includes(d.dayOfWeek) ? 'bg-slate-100/50 text-slate-400' : ''}`}>
-              <span className="text-[9px] uppercase tracking-tighter mb-0.5">{d.dayOfWeek}</span>
-              <span className="text-sm font-black text-slate-700">{d.day}</span>
+              <span className="text-[9px] uppercase tracking-tighter leading-none mb-1">{d.dayOfWeek}</span>
+              <span className="text-sm font-black text-slate-700 leading-none">{d.day}</span>
             </div>
           ))}
-
-          {/* 行データ */}
           {staff.map(s => {
             const editable = isAdmin || currentUser?.id === s.id;
             return (
@@ -222,16 +211,8 @@ const ShiftSchedule = ({ staff, schedule, days, isAdmin, currentUser, onUpdate, 
                 <div className={`${cFixed} border-r-2 shadow-[2px_0_4px_rgba(0,0,0,0.05)]`} style={{ left: getLeft('del') }}>
                   <div className="w-full flex justify-center">{isAdmin && <button onClick={() => onDeleteStaff(s.id)} className="p-1 hover:bg-red-50 rounded-full transition-colors"><DeleteIcon /></button>}</div>
                 </div>
-
                 {days.map(d => (
-                  <Cell 
-                    key={d.day} 
-                    value={schedule[s.id]?.[d.day]} 
-                    onUpdate={(val) => onUpdate(s.id, d.day, val)}
-                    disabled={!editable}
-                    isToday={new Date().getDate() === d.day}
-                    borderClass="border-slate-100"
-                  />
+                  <Cell key={d.day} value={schedule[s.id]?.[d.day]} onUpdate={(val) => onUpdate(s.id, d.day, val)} disabled={!editable} isToday={new Date().getDate() === d.day} borderClass="border-slate-100" />
                 ))}
               </React.Fragment>
             );
@@ -242,30 +223,9 @@ const ShiftSchedule = ({ staff, schedule, days, isAdmin, currentUser, onUpdate, 
   );
 };
 
-const TaskShortageDisplay = ({ staff, days, schedule }) => {
-  return (
-    <div className="bg-white rounded-3xl p-8 border border-slate-100 shadow-sm mt-8">
-       <h2 className="text-xl font-black text-slate-900 mb-6 flex items-center gap-3">
-         <span className="w-2 h-6 bg-sky-400 rounded-full"></span>業務リソース・稼働分析
-       </h2>
-       <div className="overflow-x-auto">
-         <div className="flex gap-3 pb-4">
-            {days.map(d => (
-              <div key={d.day} className="flex-shrink-0 w-16 p-3 bg-slate-50 rounded-xl border border-slate-100 text-center">
-                <div className="text-[9px] font-black text-slate-300 uppercase leading-none mb-1">{d.dayOfWeek}</div>
-                <div className="text-lg font-black text-slate-600 leading-none">{d.day}</div>
-                <div className="mt-2 text-[9px] font-bold text-green-500">充足</div>
-              </div>
-            ))}
-         </div>
-       </div>
-    </div>
-  );
-};
-
 /**
  * -----------------------------------------------------------------------------
- * 5. MAIN CONTENT (Logic & Firebase Rule Implementation)
+ * 4. MAIN APP CONTENT
  * -----------------------------------------------------------------------------
  */
 
@@ -275,49 +235,42 @@ const AppContent = () => {
   const [schedule, setSchedule] = useState({});
   const [year, setYear] = useState(new Date().getFullYear());
   const [month, setMonth] = useState(new Date().getMonth() + 1);
-  const [isLoaded, setIsLoaded] = useState(false);
+  const [isReady, setIsReady] = useState(false);
 
-  // Firestore ルートパス (Rule 1)
-  const getPublicRef = (collectionName) => collection(db, 'artifacts', appId, 'public', 'data', collectionName);
-  const getPublicDoc = (collectionName, docId) => doc(db, 'artifacts', appId, 'public', 'data', collectionName, docId);
+  // Firestore パスの設定 (Rule 1)
+  const getPublicPath = (collectionName) => `artifacts/${appId}/public/data/${collectionName}`;
 
   useEffect(() => {
     let unsubStaff, unsubSched;
 
-    const startApp = async () => {
+    const init = async () => {
       try {
-        // Rule 3: Auth FIRST and await
-        if (initialAuthToken) {
-          await signInWithCustomToken(auth, initialAuthToken);
-        } else {
-          await signInAnonymously(auth);
-        }
+        // Rule 3: Auth First
+        if (initialAuthToken) await signInWithCustomToken(auth, initialAuthToken);
+        else await signInAnonymously(auth);
 
         onAuthStateChanged(auth, (u) => {
           if (u) {
             setUser(u);
-            // データのリアルタイム購読開始 (Rule 1 & 2)
-            unsubStaff = onSnapshot(getPublicRef('staff'), (snap) => {
+            // 同期開始 (Rule 1)
+            unsubStaff = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'staff'), (snap) => {
               setStaff(snap.docs.map(d => ({id: d.id, ...d.data()})));
-            }, (err) => console.error("Firestore error (staff):", err));
+            });
 
-            unsubSched = onSnapshot(getPublicDoc('schedules', `schedule_${year}_${month}`), (snap) => {
+            unsubSched = onSnapshot(doc(db, 'artifacts', appId, 'public', 'data', `schedule_${year}_${month}`), (snap) => {
               setSchedule(snap.data() || {});
-            }, (err) => console.error("Firestore error (schedule):", err));
+            });
 
-            setIsLoaded(true);
+            setIsReady(true);
           }
         });
       } catch (err) {
-        console.error("Auth failed:", err);
+        console.error("Firebase Error:", err);
       }
     };
 
-    startApp();
-    return () => {
-      unsubStaff?.();
-      unsubSched?.();
-    };
+    init();
+    return () => { unsubStaff?.(); unsubSched?.(); };
   }, [year, month]);
 
   const days = useMemo(() => {
@@ -331,9 +284,9 @@ const AppContent = () => {
   const onUpdateSchedule = async (staffId, day, value) => {
     if (!user) return;
     const numericVal = isNaN(parseFloat(value)) ? value : parseFloat(value);
-    const update = { ...schedule, [staffId]: { ...(schedule[staffId] || {}), [day]: numericVal } };
-    setSchedule(update); // Optimistic UI
-    await setDoc(getPublicDoc('schedules', `schedule_${year}_${month}`), update);
+    const newSched = { ...schedule, [staffId]: { ...(schedule[staffId] || {}), [day]: numericVal } };
+    setSchedule(newSched);
+    await setDoc(doc(db, 'artifacts', appId, 'public', 'data', `schedule_${year}_${month}`), newSched);
   };
 
   const onApplyPattern = async (staffId, pattern, breakArray) => {
@@ -341,28 +294,28 @@ const AppContent = () => {
     const target = staff.find(s => s.id === staffId);
     if (!target) return;
 
-    await setDoc(getPublicDoc('staff', staffId), { 
+    await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'staff', staffId), { 
       ...target, 
       defaultShift: { pattern, hasBreakArray: breakArray } 
     });
 
-    const newSched = { ...schedule[staffId] };
+    const newStaffSched = { ...schedule[staffId] };
     days.forEach(d => {
-      if (['土','日'].includes(d.dayOfWeek)) newSched[d.day] = 'シフト休';
+      if (['土','日'].includes(d.dayOfWeek)) newStaffSched[d.day] = 'シフト休';
       else {
         const pIdx = ['月','火','水','木','金'].indexOf(d.dayOfWeek);
         const pId = pattern[pIdx];
-        if (pId === 'シフト休') newSched[d.day] = 'シフト休';
+        if (pId === 'シフト休') newStaffSched[d.day] = 'シフト休';
         else {
           const p = SHIFT_PATTERNS.find(x => x.id === pId);
-          if (p) newSched[d.day] = breakArray[pIdx] ? p.workHours : (p.workHours + 1);
+          if (p) newStaffSched[d.day] = breakArray[pIdx] ? p.workHours : (p.workHours + 1);
         }
       }
     });
-    await setDoc(getPublicDoc('schedules', `schedule_${year}_${month}`), { ...schedule, [staffId]: newSched });
+    await setDoc(doc(db, 'artifacts', appId, 'public', 'data', `schedule_${year}_${month}`), { ...schedule, [staffId]: newStaffSched });
   };
 
-  if (!isLoaded) return <div className="h-screen flex items-center justify-center font-black text-slate-200 animate-pulse tracking-widest uppercase bg-[#FDFCFB]">Connecting Cloud Network...</div>;
+  if (!isReady) return <div className="h-screen flex items-center justify-center font-black text-slate-300 animate-pulse tracking-widest bg-[#FDFCFB]">CONNECTING CLOUD...</div>;
 
   return (
     <div className="min-h-screen bg-[#FDFCFB] p-4 sm:p-8 font-sans text-slate-800">
@@ -380,19 +333,28 @@ const AppContent = () => {
               </select>
             </div>
           </div>
-          <div className="text-[10px] font-black tracking-widest text-slate-300 uppercase flex items-center gap-2">
-            <span className="w-2 h-2 bg-green-400 rounded-full animate-ping"></span>
-            Cloud Ledger Syncing
+          <div className="text-[10px] font-black tracking-widest text-slate-400 uppercase flex items-center gap-2">
+            <span className="w-2 h-2 bg-green-500 rounded-full shadow-[0_0_8px_rgba(34,197,94,0.6)]"></span>
+            Cloud Logic Synchronized
           </div>
         </header>
 
-        <ShiftSchedule 
-          staff={staff} schedule={schedule} days={days} isAdmin={true} 
-          currentUser={staff.find(s => s.email === user?.email)}
-          onUpdate={onUpdateSchedule} onApplyPattern={onApplyPattern} onDeleteStaff={()=>{}}
-        />
-
-        <TaskShortageDisplay staff={staff} days={days} schedule={schedule} />
+        <ShiftSchedule staff={staff} schedule={schedule} days={days} isAdmin={true} currentUser={staff[0]} onUpdate={onUpdateSchedule} onApplyPattern={onApplyPattern} onDeleteStaff={()=>{}} />
+        
+        <div className="bg-white rounded-3xl p-8 border border-slate-100 shadow-lg">
+           <h2 className="text-xl font-black text-slate-900 mb-6 flex items-center gap-3">
+             <span className="w-2 h-6 bg-sky-400 rounded-full"></span>業務分析
+           </h2>
+           <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 lg:grid-cols-10 gap-3">
+              {days.map(d => (
+                <div key={d.day} className="p-3 bg-slate-50 rounded-xl border border-slate-100 text-center">
+                  <div className="text-[9px] font-black text-slate-300 uppercase mb-1 leading-none">{d.dayOfWeek}</div>
+                  <div className="text-lg font-black text-slate-600 leading-none">{d.day}</div>
+                  <div className="mt-1 text-[9px] font-bold text-green-500">Adequate</div>
+                </div>
+              ))}
+           </div>
+        </div>
       </div>
     </div>
   );
