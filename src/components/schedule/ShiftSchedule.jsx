@@ -237,6 +237,7 @@ const ShiftSchedule = ({ currentUser, isAdmin, schedule, staff, days, holidays, 
   const scrollContainerRef = useRef(null);
   const sortedStaff = useMemo(() => [...staff].sort((a, b) => String(a.employeeId || '').localeCompare(String(b.employeeId || ''), undefined, { numeric: true })), [staff]);
   
+  // 今日の日付へ中央スクロールするロジック
   useEffect(() => {
     if (!scrollContainerRef.current) return;
     const today = new Date();
@@ -245,21 +246,34 @@ const ShiftSchedule = ({ currentUser, isAdmin, schedule, staff, days, holidays, 
             const container = scrollContainerRef.current;
             const target = container?.querySelector(`[data-day="${today.getDate()}"]`);
             if (container && target) {
-                container.scrollTo({ left: target.offsetLeft - (container.clientWidth / 2) + (target.clientWidth / 2), behavior: 'smooth' });
+                const containerWidth = container.clientWidth;
+                const targetLeft = target.offsetLeft;
+                const targetWidth = target.clientWidth;
+                const scrollLeft = targetLeft - (containerWidth / 2) + (targetWidth / 2);
+                container.scrollTo({ left: scrollLeft, behavior: 'smooth' });
             }
-        }, 100);
+        }, 150);
     } else { scrollContainerRef.current.scrollLeft = 0; }
   }, [year, month]);
 
-  const headerCellClass = "sticky top-0 z-10 bg-slate-200 p-2 border-b-2 border-r border-slate-300 font-semibold text-xs text-center";
+  const headerCellClass = "sticky top-0 z-30 bg-slate-200 p-2 border-b-2 border-r border-slate-300 font-semibold text-xs text-center";
   const dataCellClass = "bg-white border-b border-r border-slate-300 flex items-center h-9";
 
   return (
-    <div className="bg-white rounded-lg shadow-md ring-1 ring-black ring-opacity-5 overflow-hidden flex flex-col" style={{maxHeight: '70vh'}}>
-      <div className="flex overflow-y-auto overflow-x-hidden">
+    <div className="bg-white rounded-lg shadow-md ring-1 ring-black ring-opacity-5 overflow-y-auto overflow-x-hidden" style={{maxHeight: '70vh'}}>
+      <div className="flex">
+        {/* --- 左側：固定エリア --- */}
         <div className="flex-shrink-0 z-20 bg-white border-r-2 border-slate-300 shadow-xl">
           <div className="grid" style={{ gridTemplateColumns: staffInfoWidth }}>
-            <div className={headerCellClass}>役職</div><div className={headerCellClass}>社員番号</div><div className={headerCellClass}>稼働名前</div><div className={headerCellClass}>基本シフト設定</div><div className={headerCellClass}>提出☑</div><div className={headerCellClass}>差戻☑</div><div className={headerCellClass}>承認☑</div><div className={headerCellClass}>削除</div>
+            <div className={headerCellClass}>役職</div>
+            <div className={headerCellClass}>社員番号</div>
+            <div className={headerCellClass}>稼働名前</div>
+            <div className={headerCellClass}>基本シフト設定</div>
+            <div className={headerCellClass}>提出☑</div>
+            <div className={headerCellClass}>差戻☑</div>
+            <div className={headerCellClass}>承認☑</div>
+            <div className={headerCellClass}>削除</div>
+
             {sortedStaff.map(s => {
               const isEditable = isAdmin || currentUser.id === s.id;
               return (
@@ -277,10 +291,13 @@ const ShiftSchedule = ({ currentUser, isAdmin, schedule, staff, days, holidays, 
             })}
           </div>
         </div>
+
+        {/* --- 右側：スクロールエリア --- */}
         <div ref={scrollContainerRef} className="overflow-x-auto flex-grow bg-white">
           <div className="grid" style={{ gridTemplateColumns: `repeat(${days.length}, minmax(70px, 1fr))` }}>
             {days.map(({ day, dayOfWeek }) => {
-              const isH = holidays.includes(day); const isT = new Date().getFullYear() === year && (new Date().getMonth() + 1) === month && new Date().getDate() === day;
+              const isH = holidays.includes(day); 
+              const isT = new Date().getFullYear() === year && (new Date().getMonth() + 1) === month && new Date().getDate() === day;
               return (
                   <div key={day} className={`sticky top-0 z-10 p-2 text-xs font-semibold text-center border-b-2 border-r whitespace-nowrap ${isT ? 'bg-yellow-100 text-yellow-900 border-yellow-300 ring-2 ring-yellow-300 ring-inset' : dayOfWeek === '土' ? 'bg-sky-100 text-sky-800 border-sky-200' : (dayOfWeek === '日' || isH) ? 'bg-pink-100 text-pink-800 border-pink-200' : 'bg-slate-100 text-slate-900 border-slate-300'}`} data-day={day}>
                     <div>{day}</div><div>{dayOfWeek}</div>
