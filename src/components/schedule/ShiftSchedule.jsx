@@ -5,9 +5,10 @@ import { createPortal } from 'react-dom';
 // Utils & Icons (Inlined to avoid import errors)
 // -----------------------------------------------------------------------------
 
-const summarizePattern = (pattern, patterns) => {
+const summarizePattern = (pattern, patterns, hasBreak) => {
     if (!pattern || pattern.length !== 5) return '未設定';
     const DAY_NAMES = ['月', '火', '水', '木', '金'];
+    const breakText = hasBreak ? "休憩: あり" : "休憩: なし";
 
     const groups = {};
     const order = [];
@@ -21,7 +22,7 @@ const summarizePattern = (pattern, patterns) => {
         groups[key].push(DAY_NAMES[index]);
     });
 
-    return order.map(key => {
+    const lines = order.map(key => {
         const days = groups[key].join('');
         if (key === 'シフト休') {
             return `${days}:シフト休`;
@@ -31,7 +32,9 @@ const summarizePattern = (pattern, patterns) => {
             return `${days}:不明なパターン`;
         }
         return `${days} ${patternDetail.name} ${patternDetail.startTime}～${patternDetail.endTime} ${patternDetail.workHours.toFixed(1)}`;
-    }).join('\n');
+    });
+
+    return `${breakText}\n${lines.join('\n')}`;
 };
 
 const formatValue = (value) => {
@@ -316,9 +319,10 @@ const EditableStaffInfoCell = ({ value, onUpdate, className, disabled = false })
   );
 };
 
-const ShiftPatternEditor = ({ pattern, patterns, onApply, summary, disabled = false }) => {
+const ShiftPatternEditor = ({ pattern, hasBreak, patterns, onApply, summary, disabled = false }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [editedPattern, setEditedPattern] = useState(pattern || Array(5).fill('シフト休'));
+  const [editedHasBreak, setEditedHasBreak] = useState(hasBreak || false);
   
   // 9:00スタートのパターンを除外するフィルタリング
   const filteredPatterns = patterns.filter(p => p.startTime !== '09:00' && p.startTime !== '9:00');
@@ -329,7 +333,8 @@ const ShiftPatternEditor = ({ pattern, patterns, onApply, summary, disabled = fa
 
   useEffect(() => {
     setEditedPattern(pattern || Array(5).fill('シフト休'));
-  }, [pattern]);
+    setEditedHasBreak(hasBreak || false);
+  }, [pattern, hasBreak]);
 
   const handleOpen = () => {
     if (disabled) return;
@@ -343,12 +348,13 @@ const ShiftPatternEditor = ({ pattern, patterns, onApply, summary, disabled = fa
   };
   
   const handleApply = () => {
-    onApply(editedPattern);
+    onApply(editedPattern, editedHasBreak);
     setIsOpen(false);
   };
 
   const handleCancel = () => {
     setEditedPattern(pattern);
+    setEditedHasBreak(hasBreak);
     setIsOpen(false);
   };
   
@@ -366,22 +372,37 @@ const ShiftPatternEditor = ({ pattern, patterns, onApply, summary, disabled = fa
             onMouseDown={(e) => e.stopPropagation()}
         >
             <h4 className="font-bold text-md mb-4 text-slate-800">基本シフトパターン編集</h4>
-            <div className="mb-4 p-3 bg-slate-50 rounded-md border border-slate-200">
-                <label className="font-semibold text-xs text-slate-600 block mb-1">月〜金 一括設定</label>
+            
+            <div className="mb-4 p-3 bg-slate-50 rounded-md border border-slate-200 space-y-3">
                 <div className="flex items-center gap-2">
-                    <select
-                        value={bulkPatternId}
-                        onChange={(e) => setBulkPatternId(e.target.value)}
-                        className="flex-grow text-xs p-1.5 border border-slate-300 rounded-md"
-                    >
-                         <option value="シフト休">シフト休</option>
-                         {filteredPatterns.map(p => (
-                             <option key={p.id} value={p.id}>{`${p.name} (${p.startTime}-${p.endTime}, ${p.workHours}h)`}</option>
-                         ))}
-                    </select>
-                    <button onClick={handleBulkApply} className="text-xs px-3 py-1.5 bg-[#F4B896] text-white rounded-md hover:bg-[#E8A680]">適用</button>
+                    <input 
+                        type="checkbox" 
+                        id="has-break-checkbox"
+                        checked={editedHasBreak}
+                        onChange={(e) => setEditedHasBreak(e.target.checked)}
+                        className="h-4 w-4 text-[#D9824D] rounded border-slate-300 focus:ring-[#F4B896]"
+                    />
+                    <label htmlFor="has-break-checkbox" className="font-semibold text-sm text-slate-700 cursor-pointer">1時間休憩あり</label>
+                </div>
+                
+                <div className="border-t border-slate-200 pt-2">
+                    <label className="font-semibold text-xs text-slate-600 block mb-1">月〜金 一括設定</label>
+                    <div className="flex items-center gap-2">
+                        <select
+                            value={bulkPatternId}
+                            onChange={(e) => setBulkPatternId(e.target.value)}
+                            className="flex-grow text-xs p-1.5 border border-slate-300 rounded-md"
+                        >
+                            <option value="シフト休">シフト休</option>
+                            {filteredPatterns.map(p => (
+                                <option key={p.id} value={p.id}>{`${p.name} (${p.startTime}-${p.endTime}, ${p.workHours}h)`}</option>
+                            ))}
+                        </select>
+                        <button onClick={handleBulkApply} className="text-xs px-3 py-1.5 bg-[#F4B896] text-white rounded-md hover:bg-[#E8A680]">適用</button>
+                    </div>
                 </div>
             </div>
+
             <div className="space-y-2">
                 {DAY_NAMES.map((dayName, index) => {
                     const value = editedPattern[index];
@@ -443,7 +464,7 @@ const ShiftSchedule = ({
   const scrollContainerRef = useRef(null);
   
   const patternSummary = (staffMember) => {
-      return summarizePattern(staffMember.defaultShift.pattern, shiftPatterns);
+      return summarizePattern(staffMember.defaultShift.pattern, shiftPatterns, staffMember.defaultShift.hasBreak);
   }
 
   // スタッフを社員番号順にソート
@@ -574,8 +595,9 @@ const ShiftSchedule = ({
                 <div className="sticky left-[280px] bg-slate-50 border-b border-r border-slate-300 text-xs z-20 h-9 flex items-center px-1">
                     <ShiftPatternEditor
                       pattern={staffMember.defaultShift.pattern}
+                      hasBreak={staffMember.defaultShift.hasBreak}
                       patterns={shiftPatterns}
-                      onApply={(newPattern) => onApplyStaffPattern(staffMember.id, newPattern)}
+                      onApply={(newPattern, newHasBreak) => onApplyStaffPattern(staffMember.id, newPattern, newHasBreak)}
                       summary={patternSummary(staffMember)}
                       disabled={!isEditable}
                     />
