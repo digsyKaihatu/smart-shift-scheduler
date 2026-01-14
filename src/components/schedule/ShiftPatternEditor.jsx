@@ -5,7 +5,11 @@ const ShiftPatternEditor = ({ pattern, patterns, onApply, summary, disabled = fa
   const [isOpen, setIsOpen] = useState(false);
   // パターンが未設定の場合は「シフト休」×5日で初期化
   const [editedPattern, setEditedPattern] = useState(pattern || Array(5).fill('シフト休'));
-  const [bulkPatternId, setBulkPatternId] = useState(patterns[0]?.id || 'シフト休');
+  
+  // 9:00スタートのパターンを除外するフィルタリング
+  const filteredPatterns = patterns.filter(p => p.startTime !== '09:00' && p.startTime !== '9:00');
+  
+  const [bulkPatternId, setBulkPatternId] = useState(filteredPatterns[0]?.id || 'シフト休');
   const buttonRef = useRef(null);
   const DAY_NAMES = ['月', '火', '水', '木', '金'];
 
@@ -59,7 +63,7 @@ const ShiftPatternEditor = ({ pattern, patterns, onApply, summary, disabled = fa
                         className="flex-grow text-xs p-1.5 border border-slate-300 rounded-md"
                     >
                          <option value="シフト休">シフト休</option>
-                         {patterns.map(p => (
+                         {filteredPatterns.map(p => (
                              <option key={p.id} value={p.id}>{`${p.name} (${p.startTime}-${p.endTime}, ${p.workHours}h)`}</option>
                          ))}
                     </select>
@@ -79,7 +83,7 @@ const ShiftPatternEditor = ({ pattern, patterns, onApply, summary, disabled = fa
                                 className="col-span-3 text-xs p-1 border border-slate-300 rounded-md"
                             >
                                 <option value="シフト休">シフト休</option>
-                                {patterns.map(p => (
+                                {filteredPatterns.map(p => (
                                     <option key={p.id} value={p.id}>{`${p.name} (${p.startTime}-${p.endTime}, ${p.workHours}h)`}</option>
                                 ))}
                             </select>
