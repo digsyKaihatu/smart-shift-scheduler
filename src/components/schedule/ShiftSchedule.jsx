@@ -17,20 +17,43 @@ const summarizePattern = (pattern, patterns, hasBreak) => {
         if (key === 'シフト休') return `${days}:休`;
         const patternDetail = patterns.find(p => p.id === key);
         if (!patternDetail) return `${days}:?`;
-        // 枠内に収めるため、パターン名と時間を簡潔に
         return `${days} ${patternDetail.name} ${patternDetail.startTime}-${patternDetail.endTime}`;
     });
     
-    // 休憩表記を最後に移動し、括弧書きでコンパクトに
     return `${lines.join('\n')}\n(${breakText})`;
 };
 
+// 閲覧時の表記を短縮するヘルパー関数
 const formatValue = (value) => {
+    const mapping = {
+        'シフト休': '休',
+        '欠勤': '欠',
+        '通休': '通',
+        '有休': '有',
+        '遅刻': '遅',
+        '早退': '早'
+    };
+
     if (typeof value === 'number') return value % 1 === 0 ? Math.floor(value) : value;
-    if (typeof value === 'string') return value;
+    
+    if (typeof value === 'string') {
+        return mapping[value] || value;
+    }
+    
     if (value && typeof value === 'object' && 'type' in value) {
-        if ('locked' in value) return value.type;
-        return `${value.type}(${value.hours})`;
+        let displayType = value.type;
+        // マッピングがあれば置換、なければ部分一致で置換を試みる
+        if (mapping[value.type]) {
+            displayType = mapping[value.type];
+        } else {
+            // "午前有休" -> "午前有" などの置換
+            Object.entries(mapping).forEach(([full, short]) => {
+                displayType = displayType.replace(full, short);
+            });
+        }
+
+        if ('locked' in value) return displayType;
+        return `${displayType}(${value.hours})`;
     }
     return '';
 };
@@ -150,10 +173,15 @@ const EditableCell = ({ value, onUpdate, borderClass, disabled = false, isAdmin 
                 <option value="" disabled hidden>選択...</option>
                 <option value="稼働時間入力">稼働時間入力</option>
                 <optgroup label="ステータス">
-                    {['有休', 'シフト休', '通休', '欠勤'].map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                    <option value="有休">有休</option>
+                    <option value="シフト休">シフト休</option>
+                    <option value="通休">通院休暇</option>
+                    <option value="欠勤">欠勤</option>
                 </optgroup>
                 <optgroup label="時間単位">
-                    {['遅刻', '早退', '午前有休', '午後有休', '午前休', '午後休', '午前通休', '午後通休'].map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                    {['遅刻', '早退', '午前有休', '午後有休', '午前休', '午後休', '午前通休', '午後通休'].map(opt => (
+                        <option key={opt} value={opt}>{opt === '午前通休' ? '午前通院休暇' : opt === '午後通休' ? '午後通院休暇' : opt}</option>
+                    ))}
                 </optgroup>
                  <option value="">(クリア)</option>
             </select>
@@ -163,8 +191,12 @@ const EditableCell = ({ value, onUpdate, borderClass, disabled = false, isAdmin 
 
   return (
     <div ref={cellRef} className={`${baseClasses} bg-white w-full max-w-full overflow-hidden relative`}>
-      {editingSpecialShift && <span className="absolute left-1 top-1/2 -translate-y-1/2 text-xs text-slate-600 z-10 pointer-events-none">{editingSpecialShift}:</span>}
-      <input ref={inputRef} type="number" step="0.5" value={inputValue} onChange={(e) => setInputValue(e.target.value)} onBlur={() => { commitInput(); setMode('view'); }} onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()} className="absolute inset-0 w-full h-full p-0 m-0 bg-transparent text-center text-xs outline-none focus:outline-sky-500 focus:-outline-offset-2" style={{ paddingLeft: editingSpecialShift ? '2.5rem' : '0' }} />
+      {editingSpecialShift && (
+        <span className="absolute left-1 top-1/2 -translate-y-1/2 text-[10px] text-slate-600 z-10 pointer-events-none">
+            {editingSpecialShift.includes('通休') ? editingSpecialShift.replace('通休', '通院') : editingSpecialShift}:
+        </span>
+      )}
+      <input ref={inputRef} type="number" step="0.5" value={inputValue} onChange={(e) => setInputValue(e.target.value)} onBlur={() => { commitInput(); setMode('view'); }} onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()} className="absolute inset-0 w-full h-full p-0 m-0 bg-transparent text-center text-xs outline-none focus:outline-sky-500 focus:-outline-offset-2" style={{ paddingLeft: editingSpecialShift ? '3rem' : '0' }} />
     </div>
   );
 };
