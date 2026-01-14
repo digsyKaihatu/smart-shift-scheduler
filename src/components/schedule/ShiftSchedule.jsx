@@ -207,8 +207,8 @@ const EditableCell = ({ value, onUpdate, borderClass, disabled = false, isAdmin 
       setMode('select');
   }
   
-  // 今日の場合は枠線を強調
-  const todayBorderClass = isToday ? 'ring-1 ring-inset ring-yellow-300 z-10' : '';
+  // 今日の場合は枠線を強調し、スクロール時に重なり順を下げるため z-index を低く設定
+  const todayBorderClass = isToday ? 'ring-1 ring-inset ring-yellow-300 z-[1]' : '';
   const baseClasses = `border-b border-r ${borderClass} text-center text-xs h-9 flex items-center justify-center w-[6em] min-w-[6em] max-w-[6em] ${todayBorderClass}`;
 
   if (mode === 'view') {
@@ -294,7 +294,7 @@ const EditableStaffInfoCell = ({ value, onUpdate, className, disabled = false })
     if (!disabled) setIsEditing(true);
   }
   
-  const wrapperClass = `h-9 text-xs border-b border-r border-slate-300 flex items-center px-2 bg-slate-50 overflow-hidden ${className}`;
+  const wrapperClass = `h-9 text-xs border-b border-r border-slate-300 flex items-center px-2 bg-white overflow-hidden ${className}`;
 
   if (isEditing) {
     return (
@@ -364,7 +364,7 @@ const ShiftPatternEditor = ({ pattern, hasBreak, patterns, onApply, summary, dis
 
   const editorPopup = isOpen ? createPortal(
     <div
-      className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+      className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[100] p-4"
       onMouseDown={handleCancel}
     >
         <div
@@ -497,9 +497,13 @@ const ShiftSchedule = ({
       return 'border-slate-300';
   }
 
+  // 固定ヘッダーセルの基本クラス (z-indexを30に設定)
   const stickyHeaderCellClass = "sticky top-0 z-30 bg-slate-200 p-2 border-b-2 border-r border-slate-300 font-semibold text-xs text-center";
+  
+  // 固定データセルの基本クラス (z-indexを20に設定)
+  const stickyDataCellClass = "sticky z-20 bg-white border-b border-r border-slate-300 flex items-center h-9";
 
-  // スクロール処理: マウント時/月変更時に今日の日付へ（ブラウザの縦スクロールを発生させない安全な方法）
+  // スクロール処理: マウント時/月変更時に今日の日付へ
   useEffect(() => {
     if (!scrollContainerRef.current) return;
 
@@ -543,7 +547,7 @@ const ShiftSchedule = ({
       <div className="min-w-max">
         <div className="grid" style={{ gridTemplateColumns: `${staffInfoWidth} repeat(${days.length}, minmax(70px, 1fr))`}}>
           
-          {/* --- ヘッダー行 --- */}
+          {/* --- ヘッダー行 (z-30 で内容物の上に固定) --- */}
           <div className={`${stickyHeaderCellClass} left-0`}>役職</div>
           <div className={`${stickyHeaderCellClass} left-[60px]`}>社員番号</div>
           <div className={`${stickyHeaderCellClass} left-[160px]`}>稼働名前</div>
@@ -551,11 +555,11 @@ const ShiftSchedule = ({
           <div className={`${stickyHeaderCellClass} left-[430px]`}>提出☑</div>
           <div className={`${stickyHeaderCellClass} left-[490px]`}>差戻☑</div>
           <div className={`${stickyHeaderCellClass} left-[550px]`}>承認☑</div>
-          <div className={`${stickyHeaderCellClass} left-[610px] border-r-2 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]`}>削除</div>
+          {/* 削除列の右側に影をつけて境界を明確にする */}
+          <div className={`${stickyHeaderCellClass} left-[610px] border-r-2 shadow-[4px_0_6px_-1px_rgba(0,0,0,0.1)]`}>削除</div>
 
           {days.map(({ day, dayOfWeek }) => {
             const isHoliday = holidays.includes(day);
-            // 今日判定
             const today = new Date();
             const isToday = today.getFullYear() === year && (today.getMonth() + 1) === month && today.getDate() === day;
             
@@ -582,17 +586,17 @@ const ShiftSchedule = ({
             )
           })}
 
-          {/* --- データ行 --- */}
+          {/* --- データ行 (固定列は z-20 で内容物の上に固定) --- */}
           {sortedStaff.map((staffMember) => {
             const isEditable = isAdmin || currentUser.id === staffMember.id;
             
             return (
               <React.Fragment key={staffMember.id}>
-                <EditableStaffInfoCell value={staffMember.role} onUpdate={(val) => onUpdateStaffInfo(staffMember.id, 'role', val)} className="sticky left-0 z-20 bg-slate-50 border-r" disabled={!isEditable} />
-                <EditableStaffInfoCell value={staffMember.employeeId} onUpdate={(val) => onUpdateStaffInfo(staffMember.id, 'employeeId', val)} className="sticky left-[60px] z-20 bg-slate-50 border-r" disabled={!isEditable} />
-                <EditableStaffInfoCell value={staffMember.name} onUpdate={(val) => onUpdateStaffInfo(staffMember.id, 'name', val)} className="sticky left-[160px] z-20 bg-slate-50 border-r" disabled={!isEditable} />
+                <EditableStaffInfoCell value={staffMember.role} onUpdate={(val) => onUpdateStaffInfo(staffMember.id, 'role', val)} className="sticky left-0 z-20" disabled={!isEditable} />
+                <EditableStaffInfoCell value={staffMember.employeeId} onUpdate={(val) => onUpdateStaffInfo(staffMember.id, 'employeeId', val)} className="sticky left-[60px] z-20" disabled={!isEditable} />
+                <EditableStaffInfoCell value={staffMember.name} onUpdate={(val) => onUpdateStaffInfo(staffMember.id, 'name', val)} className="sticky left-[160px] z-20" disabled={!isEditable} />
                 
-                <div className="sticky left-[280px] bg-slate-50 border-b border-r border-slate-300 text-xs z-20 h-9 flex items-center px-1">
+                <div className={`${stickyDataCellClass} left-[280px] text-xs px-1`}>
                     <ShiftPatternEditor
                       pattern={staffMember.defaultShift.pattern}
                       hasBreak={staffMember.defaultShift.hasBreak}
@@ -603,7 +607,7 @@ const ShiftSchedule = ({
                     />
                 </div>
 
-                <div className="sticky left-[430px] bg-slate-50 border-b border-r border-slate-300 flex items-center justify-center z-20 h-9">
+                <div className={`${stickyDataCellClass} left-[430px] justify-center`}>
                   <input
                     type="checkbox"
                     checked={staffMember.shiftSubmitted?.[`${year}-${month}`] || false}
@@ -613,7 +617,7 @@ const ShiftSchedule = ({
                   />
                 </div>
 
-                <div className="sticky left-[490px] bg-slate-50 border-b border-r border-slate-300 flex items-center justify-center z-20 h-9">
+                <div className={`${stickyDataCellClass} left-[490px] justify-center`}>
                   <input
                     type="checkbox"
                     checked={staffMember.shiftRemanded?.[`${year}-${month}`] || false}
@@ -623,7 +627,7 @@ const ShiftSchedule = ({
                   />
                 </div>
 
-                <div className="sticky left-[550px] bg-slate-50 border-b border-r border-slate-300 flex items-center justify-center z-20 h-9">
+                <div className={`${stickyDataCellClass} left-[550px] justify-center`}>
                   <input
                     type="checkbox"
                     checked={staffMember.shiftApproved?.[`${year}-${month}`] || false}
@@ -633,7 +637,8 @@ const ShiftSchedule = ({
                   />
                 </div>
 
-                <div className="sticky left-[610px] bg-slate-50 border-b border-r-2 border-slate-300 flex items-center justify-center z-20 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)] h-9">
+                {/* 削除列の右側にも影をつけ、スクロールする日付が潜り込むように見せる */}
+                <div className={`${stickyDataCellClass} left-[610px] justify-center border-r-2 shadow-[4px_0_6px_-1px_rgba(0,0,0,0.1)]`}>
                   {isAdmin && (
                     <button
                       type="button"
