@@ -30,7 +30,8 @@ export const initialShiftPatterns = [
   { id: '★', name: '★', startTime: '9:30', endTime: '15:30', breakTime: '1:00', workHours: 5.0 }
 ];
 
-export const initialStaff = [
+// hookが期待している変数名 "initialStaffData" に修正
+export const initialStaffData = [
   {
     id: 'admin',
     name: '管理者',
