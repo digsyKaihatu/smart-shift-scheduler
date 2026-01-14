@@ -23,7 +23,6 @@ const summarizePattern = (pattern, patterns, hasBreak) => {
     return `${lines.join('\n')}\n(${breakText})`;
 };
 
-// 閲覧時の表記を短縮するヘルパー関数
 const formatValue = (value) => {
     const mapping = {
         'シフト休': '休',
@@ -35,10 +34,7 @@ const formatValue = (value) => {
     };
 
     if (typeof value === 'number') return value % 1 === 0 ? Math.floor(value) : value;
-    
-    if (typeof value === 'string') {
-        return mapping[value] || value;
-    }
+    if (typeof value === 'string') return mapping[value] || value;
     
     if (value && typeof value === 'object' && 'type' in value) {
         let displayType = value.type;
@@ -49,7 +45,6 @@ const formatValue = (value) => {
                 displayType = displayType.replace(full, short);
             });
         }
-
         if ('locked' in value) return displayType;
         return `${displayType}(${value.hours})`;
     }
@@ -57,19 +52,19 @@ const formatValue = (value) => {
 };
 
 const DeleteIcon = () => (
-    <svg xmlns="http://www.w3.org/2000/svg" style={{ width: '20px', height: '20px', minWidth: '20px' }} className="text-slate-400 group-hover:text-red-600 transition-colors pointer-events-none" viewBox="0 0 20 20" fill="currentColor">
+    <svg xmlns="http://www.w3.org/2000/svg" style={{ width: '20px', height: '20px' }} className="text-slate-400 group-hover:text-red-600 transition-colors pointer-events-none" viewBox="0 0 20 20" fill="currentColor">
         <path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm4 0a1 1 0 012 0v6a1 1 0 11-2 0V8z" clipRule="evenodd" />
     </svg>
 );
 
 const SetHolidayIcon = () => (
-    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-slate-500 group-hover:text-sky-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-slate-500 group-hover:text-sky-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
       <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
     </svg>
 );
 
 const UnlockIcon = () => (
-    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-slate-500 group-hover:text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-slate-500 group-hover:text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
       <path strokeLinecap="round" strokeLinejoin="round" d="M8 11V7a4 4 0 118 0m-4 8v3m-6 2h12a2 2 0 002-2v-7a2 2 0 00-2-2H5a2 2 0 00-2 2v7a2 2 0 002 2z" />
     </svg>
 );
@@ -204,14 +199,14 @@ const EditableStaffInfoCell = ({ value, onUpdate, className, disabled = false })
   const [currentValue, setCurrentValue] = useState(value);
   useEffect(() => setCurrentValue(value), [value]);
   const handleBlur = () => { if (currentValue.trim() !== value) onUpdate(currentValue.trim()); setIsEditing(false); };
-  const wrapperClass = `h-9 text-xs border-b border-r border-slate-300 flex items-center px-2 bg-white overflow-hidden ${className}`;
+  const wrapperClass = `h-9 text-xs border-b border-r border-slate-300 flex items-center px-2 overflow-hidden ${className}`;
   if (isEditing) {
     return (
-      <div className={wrapperClass}><input type="text" value={currentValue} onChange={(e) => setCurrentValue(e.target.value)} onBlur={handleBlur} onKeyDown={(e) => e.key === 'Enter' && handleBlur()} autoFocus className="w-full h-full bg-transparent outline-none" /></div>
+      <div className={`${wrapperClass} bg-white`}><input type="text" value={currentValue} onChange={(e) => setCurrentValue(e.target.value)} onBlur={handleBlur} onKeyDown={(e) => e.key === 'Enter' && handleBlur()} autoFocus className="w-full h-full bg-transparent outline-none" /></div>
     );
   }
   return (
-    <div onClick={() => !disabled && setIsEditing(true)} className={`${wrapperClass} transition-colors ${disabled ? 'cursor-not-allowed text-slate-500' : 'cursor-pointer hover:bg-slate-100'}`}><div className="font-semibold truncate w-full">{value}</div></div>
+    <div onClick={() => !disabled && setIsEditing(true)} className={`${wrapperClass} bg-white transition-colors ${disabled ? 'cursor-not-allowed text-slate-500' : 'cursor-pointer hover:bg-slate-100'}`}><div className="font-semibold truncate w-full">{value}</div></div>
   );
 };
 
@@ -219,10 +214,7 @@ const ShiftPatternEditor = ({ pattern, hasBreak, patterns, onApply, summary, dis
   const [isOpen, setIsOpen] = useState(false);
   const [editedPattern, setEditedPattern] = useState(pattern || Array(5).fill('シフト休'));
   const [editedHasBreak, setEditedHasBreak] = useState(hasBreak || false);
-  
-  // 9:00スタートのパターンを除外するフィルタリング
-  const filteredPatterns = patterns.filter(p => p.startTime !== '09:00' && p.startTime !== '9:00');
-  
+  const filteredPatterns = patterns.filter(p => p.startTime !== '9:00' && p.startTime !== '09:00');
   const [bulkPatternId, setBulkPatternId] = useState(filteredPatterns[0]?.id || 'シフト休');
   useEffect(() => { setEditedPattern(pattern || Array(5).fill('シフト休')); setEditedHasBreak(hasBreak || false); }, [pattern, hasBreak]);
   const handleCancel = () => { setEditedPattern(pattern); setEditedHasBreak(hasBreak); setIsOpen(false); };
@@ -280,35 +272,50 @@ const ShiftSchedule = ({ currentUser, isAdmin, schedule, staff, days, holidays, 
             const target = container?.querySelector(`[data-day="${today.getDate()}"]`);
             if (container && target) {
                 const containerWidth = container.clientWidth;
+                // 固定幅650pxを考慮したスクロール計算
                 const scrollLeft = target.offsetLeft - 650 - ((containerWidth - 650) / 2) + (target.clientWidth / 2);
                 container.scrollTo({ left: scrollLeft, behavior: 'smooth' });
             }
-        }, 200);
+        }, 300);
     } else { scrollContainerRef.current.scrollLeft = 0; }
   }, [year, month, days]);
 
-  const colWidths = { role: 60, empId: 100, name: 120, setting: 150, submit: 60, remand: 60, approve: 60, delete: 40 };
-  const colLefts = { role: 0, empId: 60, name: 160, setting: 280, submit: 430, remand: 490, approve: 550, delete: 610 };
-  const gridTemplateColumns = `${Object.values(colWidths).map(w => `${w}px`).join(' ')} repeat(${days.length}, minmax(70px, 1fr))`;
+  // 固定列の幅定義
+  const widths = { role: 60, empId: 100, name: 120, setting: 150, submit: 60, remand: 60, approve: 60, del: 40 };
+  // 各列の左端からの位置計算
+  const pos = {
+    role: 0,
+    empId: widths.role,
+    name: widths.role + widths.empId,
+    setting: widths.role + widths.empId + widths.name,
+    submit: widths.role + widths.empId + widths.name + widths.setting,
+    remand: widths.role + widths.empId + widths.name + widths.setting + widths.submit,
+    approve: widths.role + widths.empId + widths.name + widths.setting + widths.submit + widths.remand,
+    del: widths.role + widths.empId + widths.name + widths.setting + widths.submit + widths.remand + widths.approve
+  };
+
+  const gridTemplateColumns = `${widths.role}px ${widths.empId}px ${widths.name}px ${widths.setting}px ${widths.submit}px ${widths.remand}px ${widths.approve}px ${widths.del}px repeat(${days.length}, minmax(70px, 1fr))`;
 
   const stickyHeaderBase = "sticky top-0 z-30 bg-slate-200 p-2 border-b-2 border-r border-slate-300 font-semibold text-xs text-center h-12 flex flex-col items-center justify-center";
   const stickyFixedHeaderBase = "sticky top-0 z-50 bg-slate-200 p-2 border-b-2 border-r border-slate-300 font-semibold text-xs text-center h-12 flex items-center justify-center";
-  const stickyFixedColBase = "sticky z-20 bg-white border-b border-r border-slate-300 flex items-center h-9";
+  const stickyFixedColBase = "sticky z-20 border-b border-r border-slate-300 flex items-center h-9";
 
   return (
     <div className="bg-white rounded-lg shadow-md ring-1 ring-black ring-opacity-5 overflow-hidden">
       <div ref={scrollContainerRef} className="overflow-auto bg-white" style={{maxHeight: '70vh'}}>
-        <div className="grid" style={{ gridTemplateColumns }}>
+        <div className="grid relative" style={{ gridTemplateColumns }}>
           
-          <div className={stickyFixedHeaderBase} style={{ left: colLefts.role }}>役職</div>
-          <div className={stickyFixedHeaderBase} style={{ left: colLefts.empId }}>社員番号</div>
-          <div className={stickyFixedHeaderBase} style={{ left: colLefts.name }}>稼働名前</div>
-          <div className={stickyFixedHeaderBase} style={{ left: colLefts.setting }}>基本シフト設定</div>
-          <div className={stickyFixedHeaderBase} style={{ left: colLefts.submit }}>提出☑</div>
-          <div className={stickyFixedHeaderBase} style={{ left: colLefts.remand }}>差戻☑</div>
-          <div className={stickyFixedHeaderBase} style={{ left: colLefts.approve }}>承認☑</div>
-          <div className={`${stickyFixedHeaderBase} border-r-2 shadow-[2px_0_5px_rgba(0,0,0,0.1)]`} style={{ left: colLefts.delete }}>削除</div>
+          {/* 見出し行の固定 */}
+          <div className={stickyFixedHeaderBase} style={{ left: pos.role }}>役職</div>
+          <div className={stickyFixedHeaderBase} style={{ left: pos.empId }}>社員番号</div>
+          <div className={stickyFixedHeaderBase} style={{ left: pos.name }}>稼働名前</div>
+          <div className={stickyFixedHeaderBase} style={{ left: pos.setting }}>基本シフト設定</div>
+          <div className={stickyFixedHeaderBase} style={{ left: pos.submit }}>提出☑</div>
+          <div className={stickyFixedHeaderBase} style={{ left: pos.remand }}>差戻☑</div>
+          <div className={stickyFixedHeaderBase} style={{ left: pos.approve }}>承認☑</div>
+          <div className={`${stickyFixedHeaderBase} border-r-2 shadow-[2px_0_5px_rgba(0,0,0,0.1)]`} style={{ left: pos.del }}>削除</div>
 
+          {/* 日付ヘッダー */}
           {days.map(({ day, dayOfWeek }) => {
             const isH = holidays.includes(day); 
             const isT = new Date().getFullYear() === year && (new Date().getMonth() + 1) === month && new Date().getDate() === day;
@@ -321,20 +328,23 @@ const ShiftSchedule = ({ currentUser, isAdmin, schedule, staff, days, holidays, 
             )
           })}
 
+          {/* データ行の固定列と日付列 */}
           {sortedStaff.map(s => {
             const isEditable = isAdmin || currentUser.id === s.id;
             const summary = summarizePattern(s.defaultShift.pattern, shiftPatterns, s.defaultShift.hasBreak);
             return (
               <React.Fragment key={s.id}>
-                <div className={stickyFixedColBase} style={{ left: colLefts.role }}><EditableStaffInfoCell value={s.role} onUpdate={v => onUpdateStaffInfo(s.id, 'role', v)} disabled={!isEditable} className="w-full h-full" /></div>
-                <div className={stickyFixedColBase} style={{ left: colLefts.empId }}><EditableStaffInfoCell value={s.employeeId} onUpdate={v => onUpdateStaffInfo(s.id, 'employeeId', v)} disabled={!isEditable} className="w-full h-full" /></div>
-                <div className={stickyFixedColBase} style={{ left: colLefts.name }}><EditableStaffInfoCell value={s.name} onUpdate={v => onUpdateStaffInfo(s.id, 'name', v)} disabled={!isEditable} className="w-full h-full" /></div>
-                <div className={`${stickyFixedColBase} px-1`} style={{ left: colLefts.setting }}><ShiftPatternEditor pattern={s.defaultShift.pattern} hasBreak={s.defaultShift.hasBreak} patterns={shiftPatterns} onApply={(p, hb) => onApplyStaffPattern(s.id, p, hb)} summary={summary} disabled={!isEditable} /></div>
-                <div className={`${stickyFixedColBase} justify-center`} style={{ left: colLefts.submit }}><input type="checkbox" checked={s.shiftSubmitted?.[`${year}-${month}`] || false} onChange={() => onToggleShiftSubmitted(s.id)} className="h-5 w-5 rounded border-slate-400 text-sky-600 focus:ring-sky-500 cursor-pointer disabled:cursor-not-allowed" disabled={!isEditable} /></div>
-                <div className={`${stickyFixedColBase} justify-center`} style={{ left: colLefts.remand }}><input type="checkbox" checked={s.shiftRemanded?.[`${year}-${month}`] || false} onChange={() => onToggleShiftRemanded(s.id)} className="h-5 w-5 rounded border-slate-400 text-red-600 focus:ring-red-500 cursor-pointer disabled:cursor-not-allowed" disabled={!isAdmin} /></div>
-                <div className={`${stickyFixedColBase} justify-center`} style={{ left: colLefts.approve }}><input type="checkbox" checked={s.shiftApproved?.[`${year}-${month}`] || false} onChange={() => onToggleShiftApproved(s.id)} className="h-5 w-5 rounded border-slate-400 text-green-600 focus:ring-green-500 cursor-pointer disabled:cursor-not-allowed" disabled={!isAdmin} /></div>
-                <div className={`${stickyFixedColBase} justify-center border-r-2 shadow-[2px_0_5px_rgba(0,0,0,0.1)]`} style={{ left: colLefts.delete }}>{isAdmin && <button onMouseDown={() => onDeleteStaff(s.id)} className="group p-1 rounded-full hover:bg-red-100 flex items-center justify-center" style={{ width: '28px', height: '28px' }}><DeleteIcon /></button>}</div>
+                {/* 固定エリアのデータ */}
+                <div className={`${stickyFixedColBase} bg-white`} style={{ left: pos.role }}><EditableStaffInfoCell value={s.role} onUpdate={v => onUpdateStaffInfo(s.id, 'role', v)} disabled={!isEditable} className="w-full h-full" /></div>
+                <div className={`${stickyFixedColBase} bg-white`} style={{ left: pos.empId }}><EditableStaffInfoCell value={s.employeeId} onUpdate={v => onUpdateStaffInfo(s.id, 'employeeId', v)} disabled={!isEditable} className="w-full h-full" /></div>
+                <div className={`${stickyFixedColBase} bg-white`} style={{ left: pos.name }}><EditableStaffInfoCell value={s.name} onUpdate={v => onUpdateStaffInfo(s.id, 'name', v)} disabled={!isEditable} className="w-full h-full" /></div>
+                <div className={`${stickyFixedColBase} bg-white px-1`} style={{ left: pos.setting }}><ShiftPatternEditor pattern={s.defaultShift.pattern} hasBreak={s.defaultShift.hasBreak} patterns={shiftPatterns} onApply={(p, hb) => onApplyStaffPattern(s.id, p, hb)} summary={summary} disabled={!isEditable} /></div>
+                <div className={`${stickyFixedColBase} bg-white justify-center`} style={{ left: pos.submit }}><input type="checkbox" checked={s.shiftSubmitted?.[`${year}-${month}`] || false} onChange={() => onToggleShiftSubmitted(s.id)} className="h-5 w-5 rounded border-slate-400 text-sky-600 focus:ring-sky-500 cursor-pointer disabled:cursor-not-allowed" disabled={!isEditable} /></div>
+                <div className={`${stickyFixedColBase} bg-white justify-center`} style={{ left: pos.remand }}><input type="checkbox" checked={s.shiftRemanded?.[`${year}-${month}`] || false} onChange={() => onToggleShiftRemanded(s.id)} className="h-5 w-5 rounded border-slate-400 text-red-600 focus:ring-red-500 cursor-pointer disabled:cursor-not-allowed" disabled={!isAdmin} /></div>
+                <div className={`${stickyFixedColBase} bg-white justify-center`} style={{ left: pos.approve }}><input type="checkbox" checked={s.shiftApproved?.[`${year}-${month}`] || false} onChange={() => onToggleShiftApproved(s.id)} className="h-5 w-5 rounded border-slate-400 text-green-600 focus:ring-green-500 cursor-pointer disabled:cursor-not-allowed" disabled={!isAdmin} /></div>
+                <div className={`${stickyFixedColBase} bg-white justify-center border-r-2 shadow-[2px_0_5px_rgba(0,0,0,0.1)]`} style={{ left: pos.del }}>{isAdmin && <button onMouseDown={() => onDeleteStaff(s.id)} className="group p-1 rounded-full hover:bg-red-100 flex items-center justify-center" style={{ width: '28px', height: '28px' }}><DeleteIcon /></button>}</div>
 
+                {/* 日付セル */}
                 {days.map(({ day, dayOfWeek }) => (
                     <EditableCell 
                       key={`${s.id}-${day}`} 
