@@ -3,40 +3,13 @@ import { createPortal } from 'react-dom';
 
 /**
  * ==========================================
- * 1. アイコンコンポーネント
- * ==========================================
- */
-const DeleteIcon = () => (
-  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-    <path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm4 0a1 1 0 012 0v6a1 1 0 11-2 0V8z" clipRule="evenodd" />
-  </svg>
-);
-
-const SetHolidayIcon = () => (
-  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-    <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-  </svg>
-);
-
-const UnlockIcon = () => (
-  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-    <path strokeLinecap="round" strokeLinejoin="round" d="M8 11V7a4 4 0 118 0m-4 8v3m-6 2h12a2 2 0 002-2v-7a2 2 0 00-2-2H5a2 2 0 00-2 2v7a2 2 0 002 2z" />
-  </svg>
-);
-
-const ChevronDownIcon = () => (
-  <svg className="w-3 h-3 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
-  </svg>
-);
-
-/**
- * ==========================================
- * 2. 初期データ & ユーティリティ
+ * 1. 定数・初期データ
  * ==========================================
  */
 const initialShiftPatterns = [
   { id: 'A', name: 'A', startTime: '9:00', endTime: '18:00', breakTime: '1:00', workHours: 8.0 },
+  { id: 'B', name: 'B', startTime: '9:00', endTime: '17:30', breakTime: '1:00', workHours: 7.5 },
+  { id: 'C', name: 'C', startTime: '9:00', endTime: '17:00', breakTime: '1:00', workHours: 7.0 },
   { id: 'I', name: 'I', startTime: '9:30', endTime: '18:30', breakTime: '1:00', workHours: 8.0 },
   { id: 'H', name: 'H', startTime: '9:00', endTime: '13:00', breakTime: '0:00', workHours: 4.0 },
   { id: 'シフト休', name: '休', startTime: '-', endTime: '-', breakTime: '-', workHours: 0 }
@@ -44,22 +17,48 @@ const initialShiftPatterns = [
 
 const initialStaffData = [
   {
-    id: 's1', name: '管理者', role: '管理者', employeeId: '000', email: 'admin@example.com',
-    possibleTasks: ['t1', 't2', 't3'], defaultShift: { pattern: ['I', 'I', 'I', 'I', 'I'], hasBreakArray: [true, true, true, true, true] },
-    shiftSubmitted: {}, shiftRemanded: {}, shiftApproved: {}
+    id: 's1',
+    name: '田中 太郎',
+    role: 'リーダー',
+    employeeId: '1001',
+    email: 'tanaka@example.com',
+    possibleTasks: ['t1', 't2'],
+    defaultShift: { pattern: ['A', 'A', 'A', 'A', 'A'], hasBreakArray: [true, true, true, true, true] },
+    shiftSubmitted: {},
+    shiftRemanded: {},
+    shiftApproved: {}
+  },
+  {
+    id: 's2',
+    name: '佐藤 花子',
+    role: 'メンバー',
+    employeeId: '1002',
+    email: 'sato@example.com',
+    possibleTasks: ['t2', 't3'],
+    defaultShift: { pattern: ['I', 'I', 'I', 'I', 'I'], hasBreakArray: [true, true, true, true, true] },
+    shiftSubmitted: {},
+    shiftRemanded: {},
+    shiftApproved: {}
   }
 ];
 
 const initialTasks = [
-  { id: 't1', name: '業務A', requiredPersonnel: 3 },
-  { id: 't2', name: '業務B', requiredPersonnel: 2 },
-  { id: 't3', name: '業務C', requiredPersonnel: 2 }
+  { id: 't1', name: '業務A', requiredPersonnel: 1 },
+  { id: 't2', name: '業務B', requiredPersonnel: 1 },
+  { id: 't3', name: '業務C', requiredPersonnel: 1 }
 ];
 
+/**
+ * ==========================================
+ * 2. ユーティリティ
+ * ==========================================
+ */
 const formatValue = (value) => {
-  const mapping = { 'シフト休': '休', '欠勤': '欠', '通休': '通', '有休': '有', '遅刻': '遅', '早退': '早' };
+  const mapping = { 'シフト休': '休', '欠勤': '欠', '有休': '有', '遅刻': '遅', '早退': '早' };
   if (typeof value === 'number') return value % 1 === 0 ? Math.floor(value) : value.toFixed(1);
-  if (value && typeof value === 'object' && 'type' in value) return mapping[value.type] || value.type;
+  if (value && typeof value === 'object' && 'type' in value) {
+    return mapping[value.type] || value.type;
+  }
   return mapping[value] || value;
 };
 
@@ -72,47 +71,35 @@ const summarizePattern = (pattern, patterns, hasBreakArray) => {
   }).join(' ');
 };
 
-const generateScheduleForMonth = (year, month, staffData, shiftPatternsData) => {
-  const scheduleForMonth = {};
-  const daysInMonth = new Date(year, month, 0).getDate();
-  staffData.forEach(member => {
-    scheduleForMonth[member.id] = {};
-    for (let day = 1; day <= daysInMonth; day++) {
-      const date = new Date(year, month - 1, day);
-      const dayOfWeek = date.getDay();
-      if (dayOfWeek === 0 || dayOfWeek === 6) {
-        scheduleForMonth[member.id][day] = 'シフト休';
-      } else {
-        const pId = member.defaultShift?.pattern?.[dayOfWeek - 1];
-        if (pId === 'シフト休' || !pId) {
-          scheduleForMonth[member.id][day] = 'シフト休';
-        } else {
-          const p = shiftPatternsData.find(x => x.id === pId);
-          scheduleForMonth[member.id][day] = p ? p.workHours : '';
-        }
-      }
-    }
-  });
-  return scheduleForMonth;
-};
-
 /**
  * ==========================================
- * 3. コンポーネント
+ * 3. 共通コンポーネント
  * ==========================================
  */
-
-// --- ローディング ---
 const LoadingScreen = ({ message }) => (
-  <div className="fixed inset-0 bg-white/95 flex flex-col items-center justify-center z-[100]">
-    <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-[#F4B896] mb-4"></div>
-    <p className="font-bold text-slate-500 text-sm tracking-widest">{message}</p>
+  <div className="fixed inset-0 bg-white/90 flex flex-col items-center justify-center z-[100]">
+    <div className="animate-spin rounded-full h-12 w-12 border-t-4 border-[#F4B896]"></div>
+    <p className="mt-4 font-bold text-slate-600">{message}</p>
   </div>
 );
 
-// --- シフト表 (固定列) ---
+/**
+ * ==========================================
+ * 4. シフトスケジュール表 (固定列対応)
+ * ==========================================
+ */
 const ShiftSchedule = ({ schedule, staff, days, shiftPatterns, year, month, onUpdateSchedule }) => {
-  const colWidths = { role: 60, empId: 80, name: 110, setting: 160, check: 45, del: 40 };
+  // 列の幅定義
+  const colWidths = {
+    role: 70,
+    empId: 80,
+    name: 110,
+    setting: 150,
+    check: 50,
+    delete: 50
+  };
+
+  // Sticky位置の計算
   const stickyPos = {
     role: 0,
     empId: colWidths.role,
@@ -121,33 +108,32 @@ const ShiftSchedule = ({ schedule, staff, days, shiftPatterns, year, month, onUp
     submit: colWidths.role + colWidths.empId + colWidths.name + colWidths.setting,
     remand: colWidths.role + colWidths.empId + colWidths.name + colWidths.setting + colWidths.check,
     approve: colWidths.role + colWidths.empId + colWidths.name + colWidths.setting + colWidths.check * 2,
-    del: colWidths.role + colWidths.empId + colWidths.name + colWidths.setting + colWidths.check * 3
+    delete: colWidths.role + colWidths.empId + colWidths.name + colWidths.setting + colWidths.check * 3
   };
 
-  const headerBase = "p-2 border border-slate-300 bg-slate-100 font-bold text-[10px] text-center sticky top-0 h-12 flex items-center justify-center";
-  const fixedHeader = (left) => `sticky top-0 z-50 bg-slate-100 border-b-2 border-slate-300 p-2 font-bold text-[10px] text-center h-12 flex items-center justify-center`;
-  const fixedCell = "sticky z-20 border border-slate-200 bg-white p-1 h-12 flex items-center justify-center overflow-hidden whitespace-nowrap text-[10px]";
+  const headerClass = "p-2 border border-slate-300 bg-slate-100 font-bold text-[10px] text-center sticky top-0 z-40";
+  const fixedHeaderClass = (left) => `${headerClass} z-50`;
+  const cellClass = "p-2 border border-slate-200 text-center bg-white h-12 flex items-center justify-center";
+  const fixedCellClass = (left) => `p-2 border border-slate-200 bg-white sticky z-20 h-12 flex items-center justify-center font-medium overflow-hidden whitespace-nowrap`;
 
   return (
-    <div className="bg-white rounded-xl shadow-sm overflow-hidden border border-slate-200">
+    <div className="bg-white rounded-lg shadow-sm overflow-hidden border border-slate-200">
       <div className="overflow-auto max-h-[65vh]">
-        <table className="border-separate border-spacing-0 w-full">
+        <table className="border-separate border-spacing-0 w-full text-[11px]">
           <thead>
             <tr>
-              <th className={fixedHeader()} style={{ left: stickyPos.role, width: colWidths.role, minWidth: colWidths.role }}>役職</th>
-              <th className={fixedHeader()} style={{ left: stickyPos.empId, width: colWidths.empId, minWidth: colWidths.empId }}>社員番号</th>
-              <th className={fixedHeader()} style={{ left: stickyPos.name, width: colWidths.name, minWidth: colWidths.name }}>稼働名前</th>
-              <th className={fixedHeader()} style={{ left: stickyPos.setting, width: colWidths.setting, minWidth: colWidths.setting }}>基本シフト設定</th>
-              <th className={fixedHeader()} style={{ left: stickyPos.submit, width: colWidths.check, minWidth: colWidths.check }}>提出</th>
-              <th className={fixedHeader()} style={{ left: stickyPos.remand, width: colWidths.check, minWidth: colWidths.check }}>差戻</th>
-              <th className={fixedHeader()} style={{ left: stickyPos.approve, width: colWidths.check, minWidth: colWidths.check }}>承認</th>
-              <th className={fixedHeader()} style={{ left: stickyPos.del, width: colWidths.del, minWidth: colWidths.del }}>削除</th>
+              <th className={fixedHeaderClass()} style={{ left: stickyPos.role, width: colWidths.role, minWidth: colWidths.role }}>役職</th>
+              <th className={fixedHeaderClass()} style={{ left: stickyPos.empId, width: colWidths.empId, minWidth: colWidths.empId }}>社員番号</th>
+              <th className={fixedHeaderClass()} style={{ left: stickyPos.name, width: colWidths.name, minWidth: colWidths.name }}>稼働名前</th>
+              <th className={fixedHeaderClass()} style={{ left: stickyPos.setting, width: colWidths.setting, minWidth: colWidths.setting }}>基本シフト設定</th>
+              <th className={fixedHeaderClass()} style={{ left: stickyPos.submit, width: colWidths.check, minWidth: colWidths.check }}>提出☑</th>
+              <th className={fixedHeaderClass()} style={{ left: stickyPos.remand, width: colWidths.check, minWidth: colWidths.check }}>差戻☑</th>
+              <th className={fixedHeaderClass()} style={{ left: stickyPos.approve, width: colWidths.check, minWidth: colWidths.check }}>承認☑</th>
+              <th className={fixedHeaderClass()} style={{ left: stickyPos.delete, width: colWidths.delete, minWidth: colWidths.delete }}>削除</th>
               {days.map(d => (
-                <th key={d.day} className={`${headerBase} min-w-[42px] z-30 ${d.dayOfWeek === '日' ? 'bg-red-50 text-red-600' : d.dayOfWeek === '土' ? 'bg-blue-50 text-blue-600' : ''}`}>
-                  <div className="flex flex-col items-center">
-                    <span className="text-[8px] opacity-60 uppercase mb-0.5">{d.dayOfWeek}</span>
-                    <span className="text-sm font-black">{d.day}</span>
-                  </div>
+                <th key={d.day} className={`${headerClass} min-w-[45px] ${d.dayOfWeek === '日' ? 'bg-red-50' : d.dayOfWeek === '土' ? 'bg-blue-50' : ''}`}>
+                  <div>{d.day}</div>
+                  <div className="scale-75 text-slate-500">{d.dayOfWeek}</div>
                 </th>
               ))}
             </tr>
@@ -155,30 +141,34 @@ const ShiftSchedule = ({ schedule, staff, days, shiftPatterns, year, month, onUp
           <tbody>
             {staff.map(s => (
               <tr key={s.id}>
-                <td className={fixedCell} style={{ left: stickyPos.role }}>{s.role}</td>
-                <td className={fixedCell} style={{ left: stickyPos.empId }}>{s.employeeId}</td>
-                <td className={`${fixedCell} font-bold text-slate-700`} style={{ left: stickyPos.name }}>{s.name}</td>
-                <td className={`${fixedCell} text-[9px] leading-tight text-slate-400`} style={{ left: stickyPos.setting }}>
+                <td className={fixedCellClass()} style={{ left: stickyPos.role }}>{s.role}</td>
+                <td className={fixedCellClass()} style={{ left: stickyPos.empId }}>{s.employeeId}</td>
+                <td className={fixedCellClass()} style={{ left: stickyPos.name, fontWeight: 'bold' }}>{s.name}</td>
+                <td className={fixedCellClass()} style={{ left: stickyPos.setting }}>
+                  <span className="text-[9px] leading-tight text-slate-500">
                     {summarizePattern(s.defaultShift.pattern, shiftPatterns, s.defaultShift.hasBreakArray)}
+                  </span>
                 </td>
-                <td className={fixedCell} style={{ left: stickyPos.submit }}>
-                    <input type="checkbox" checked={!!s.shiftSubmitted[`${year}-${month}`]} readOnly className="h-3 w-3 rounded border-slate-300" />
+                <td className={fixedCellClass()} style={{ left: stickyPos.submit }}>
+                   <input type="checkbox" checked={!!s.shiftSubmitted[`${year}-${month}`]} readOnly className="rounded border-slate-300" />
                 </td>
-                <td className={fixedCell} style={{ left: stickyPos.remand }}>
-                    <input type="checkbox" checked={!!s.shiftRemanded[`${year}-${month}`]} readOnly className="h-3 w-3 rounded border-slate-300" />
+                <td className={fixedCellClass()} style={{ left: stickyPos.remand }}>
+                   <input type="checkbox" checked={!!s.shiftRemanded[`${year}-${month}`]} readOnly className="rounded border-slate-300" />
                 </td>
-                <td className={fixedCell} style={{ left: stickyPos.approve }}>
-                    <input type="checkbox" checked={!!s.shiftApproved[`${year}-${month}`]} readOnly className="h-3 w-3 rounded border-slate-300" />
+                <td className={fixedCellClass()} style={{ left: stickyPos.approve }}>
+                   <input type="checkbox" checked={!!s.shiftApproved[`${year}-${month}`]} readOnly className="rounded border-slate-300" />
                 </td>
-                <td className={fixedCell} style={{ left: stickyPos.del }}>
-                    <button className="text-slate-300 hover:text-red-500 transition-colors"><DeleteIcon /></button>
+                <td className={fixedCellClass()} style={{ left: stickyPos.delete }}>
+                   <button className="text-slate-300 hover:text-red-500"><DeleteIcon /></button>
                 </td>
                 {days.map(d => {
                   const val = schedule[s.id]?.[d.day] || '';
                   const isWeekend = d.dayOfWeek === '土' || d.dayOfWeek === '日';
                   return (
-                    <td key={d.day} className={`border border-slate-100 text-center h-12 min-w-[42px] font-bold text-xs ${isWeekend ? 'bg-slate-50' : 'bg-white'}`}>
+                    <td key={d.day} className={`p-0 border border-slate-200 text-center ${isWeekend ? 'bg-slate-50' : 'bg-white'}`}>
+                      <div className="h-12 flex items-center justify-center font-bold">
                         {formatValue(val)}
+                      </div>
                     </td>
                   );
                 })}
@@ -198,32 +188,32 @@ const MonthlyCalendar = ({ schedule, staff, year, month }) => {
   const key = `${year}-${month}`;
 
   return (
-    <div className="bg-white rounded-2xl shadow-sm p-6 border border-slate-200">
-      <h2 className="text-md font-bold mb-5 flex items-center gap-2 text-slate-700">
-        <span className="w-1.5 h-6 bg-[#F4B896] rounded-full"></span>
-        出勤・休暇者スケジュール
+    <div className="bg-white rounded-lg shadow-sm p-4 border border-slate-200">
+      <h2 className="text-lg font-bold mb-4 flex items-center gap-2">
+        <span className="w-1.5 h-1.5 bg-[#F4B896] rounded-full"></span>
+        {year}年{month}月の出勤・休暇者
       </h2>
-      <div className="grid grid-cols-7 gap-px bg-slate-200 border border-slate-200 rounded-xl overflow-hidden shadow-inner">
+      <div className="grid grid-cols-7 gap-px bg-slate-200 border border-slate-200 overflow-hidden rounded">
         {['日','月','火','水','木','金','土'].map(d => (
-          <div key={d} className={`text-center py-2 font-black text-[10px] bg-slate-100 ${d === '日' ? 'text-red-400' : d === '土' ? 'text-blue-400' : 'text-slate-400'}`}>{d}</div>
+          <div key={d} className="bg-slate-100 text-center p-2 font-bold text-slate-500 text-xs">{d}</div>
         ))}
         {calendarDays.map(d => {
           const date = new Date(year, month-1, d);
           const dayOfWeek = date.getDay();
-          const dayEntries = staff.map(s => {
+          const dayStaff = staff.map(s => {
             const val = schedule[key]?.[s.id]?.[d];
-            if (val && val !== 'シフト休' && val !== '欠勤') return { name: s.name, type: 'work' };
-            if (val === '欠勤') return { name: s.name, type: 'absent' };
+            if (val && val !== 'シフト休' && val !== '欠勤') return { name: s.name, status: 'work' };
+            if (val === '欠勤') return { name: s.name, status: 'absent' };
             return null;
           }).filter(Boolean);
 
           return (
-            <div key={d} className={`bg-white min-h-[95px] p-1.5 ${dayOfWeek === 0 ? 'bg-red-50/20' : dayOfWeek === 6 ? 'bg-blue-50/20' : ''}`}>
-              <div className="text-[9px] font-bold text-slate-300 mb-1">{d}</div>
+            <div key={d} className={`bg-white min-h-[100px] p-1.5 ${dayOfWeek === 0 ? 'bg-red-50/20' : dayOfWeek === 6 ? 'bg-blue-50/20' : ''}`}>
+              <div className="text-[10px] font-bold text-slate-400 mb-1">{d}</div>
               <div className="flex flex-col gap-0.5">
-                {dayEntries.map((e, i) => (
-                  <div key={i} className={`text-[9px] px-1 py-0.5 rounded-md truncate font-bold shadow-sm ${e.type === 'work' ? 'bg-green-50 text-green-600 border border-green-100' : 'bg-red-50 text-red-500 border border-red-100'}`}>
-                    {e.name}
+                {dayStaff.map((s, i) => (
+                  <div key={i} className={`text-[9px] px-1 py-0.5 rounded truncate font-medium ${s.status === 'work' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
+                    {s.name}
                   </div>
                 ))}
               </div>
@@ -237,40 +227,38 @@ const MonthlyCalendar = ({ schedule, staff, year, month }) => {
 
 // --- 業務別充足状況 ---
 const TaskShortageDisplay = ({ tasks, staff, days, taskCountsByDay }) => (
-  <div className="bg-white rounded-2xl shadow-sm p-6 border border-slate-200 h-full">
-    <h2 className="text-md font-bold mb-5 flex items-center gap-2 text-slate-700">
-        <span className="w-1.5 h-6 bg-sky-300 rounded-full"></span>
-        業務別充足状況
+  <div className="bg-white rounded-lg shadow-sm p-4 border border-slate-200">
+    <h2 className="text-lg font-bold mb-4 flex items-center gap-2">
+        <span className="w-1.5 h-1.5 bg-sky-400 rounded-full"></span>
+        業務一覧
     </h2>
     <div className="overflow-x-auto">
-      <table className="w-full text-[10px] border-collapse">
+      <table className="w-full text-[11px] border-collapse">
         <thead>
-          <tr className="bg-slate-50 border-b border-slate-200">
-            <th className="p-2 text-left text-slate-500 font-bold uppercase tracking-wider">業務</th>
-            <th className="p-2 text-center text-slate-500 font-bold">定員</th>
+          <tr className="bg-slate-50">
+            <th className="p-2 text-left border border-slate-200">業務名</th>
+            <th className="p-2 text-center border border-slate-200">定員</th>
             {days.slice(0, 15).map(d => (
-              <th key={d.day} className="p-1 text-slate-400 font-medium">{d.day}</th>
+              <th key={d.day} className="p-1 border border-slate-200 text-center min-w-[30px]">{d.day}</th>
             ))}
-            <th className="p-2 text-slate-300 italic">...</th>
+            <th className="p-2 border border-slate-200 text-slate-400 italic">以下略...</th>
           </tr>
         </thead>
         <tbody>
           {tasks.map(t => (
-            <tr key={t.id} className="border-b border-slate-100 last:border-0">
-              <td className="p-3 font-bold text-slate-600">{t.name}</td>
-              <td className="p-3 text-center">
-                <span className="bg-slate-100 px-2 py-0.5 rounded-full font-bold text-slate-500">{t.requiredPersonnel}</span>
-              </td>
+            <tr key={t.id}>
+              <td className="p-2 border border-slate-200 font-bold">{t.name}</td>
+              <td className="p-2 border border-slate-200 text-center bg-slate-50">{t.requiredPersonnel}名</td>
               {days.slice(0, 15).map(d => {
                 const count = taskCountsByDay[d.day]?.[t.id] || 0;
                 const isShort = count < t.requiredPersonnel;
                 return (
-                  <td key={d.day} className={`p-1 text-center font-black ${isShort ? 'text-red-500' : 'text-slate-400'}`}>
+                  <td key={d.day} className={`p-1 border border-slate-200 text-center font-bold ${isShort ? 'text-red-600 bg-red-50' : 'text-slate-600'}`}>
                     {count}
                   </td>
                 );
               })}
-              <td className=""></td>
+              <td className="border border-slate-200"></td>
             </tr>
           ))}
         </tbody>
@@ -281,7 +269,7 @@ const TaskShortageDisplay = ({ tasks, staff, days, taskCountsByDay }) => (
 
 /**
  * ==========================================
- * 4. メインApp
+ * 5. App 本体
  * ==========================================
  */
 export default function App() {
@@ -293,16 +281,19 @@ export default function App() {
   const [month, setMonth] = useState(new Date().getMonth() + 1);
 
   const key = `${year}-${month}`;
-
+  
   useEffect(() => {
-    // データ初期化シミュレーション
+    // データ読み込みシミュレーション
     const timer = setTimeout(() => {
-      const generated = {
-        [key]: generateScheduleForMonth(year, month, staff, initialShiftPatterns)
+      const initialSchedule = {
+        [key]: {
+            's1': { 1: 8, 2: 8, 3: 8, 4: 'シフト休', 5: 'シフト休', 6: 8, 7: 8, 8: 8, 9: 8, 10: 8 },
+            's2': { 1: 8, 2: '欠勤', 3: 8, 4: 'シフト休', 5: 'シフト休', 6: 8, 7: 8, 8: 8, 9: 8, 10: 8 }
+        }
       };
-      setSchedule(generated);
+      setSchedule(initialSchedule);
       setIsLoading(false);
-    }, 600);
+    }, 500);
     return () => clearTimeout(timer);
   }, [key]);
 
@@ -333,46 +324,35 @@ export default function App() {
   if (isLoading) return <LoadingScreen message="シフト管理システムを準備中..." />;
 
   return (
-    <div className="min-h-screen bg-[#FFFDFB] text-slate-800 p-4 font-sans selection:bg-[#F4B896]/30">
-      <div className="max-w-7xl mx-auto space-y-8">
-        
-        {/* モダンなヘッダー */}
-        <header className="bg-gradient-to-br from-[#F4B896] to-[#E8A680] text-white rounded-[2rem] shadow-2xl p-8 flex flex-col md:flex-row justify-between items-center gap-6 border border-white/20">
-          <div className="flex flex-col gap-1">
-            <h1 className="text-3xl font-black tracking-tighter drop-shadow-sm flex items-center gap-3">
-              digsy SMART SHIFT
-              <span className="bg-white/20 text-[10px] px-2 py-0.5 rounded-full font-normal tracking-widest uppercase border border-white/20">Pro</span>
-            </h1>
-            <p className="text-white/70 text-[10px] font-bold tracking-[0.2em] ml-1 uppercase">Cloud Management Console</p>
+    <div className="min-h-screen bg-[#FFFDFB] text-slate-800 p-4 font-sans">
+      <div className="max-w-7xl mx-auto space-y-6">
+        <header className="bg-gradient-to-r from-[#F4B896] to-[#E8A680] text-white rounded-2xl shadow-xl p-6 flex justify-between items-center">
+          <div className="flex items-center gap-8">
+            <h1 className="text-2xl font-black tracking-tighter">digsy SMART SHIFT</h1>
+            <div className="flex items-center gap-2 bg-white/20 p-2 rounded-xl backdrop-blur-sm">
+              <select value={year} onChange={e => setYear(Number(e.target.value))} className="bg-transparent font-bold outline-none cursor-pointer">
+                {[2024, 2025, 2026].map(y => <option key={y} value={y} className="text-slate-800">{y}</option>)}
+              </select>
+              <span>年</span>
+              <select value={month} onChange={e => setMonth(Number(e.target.value))} className="bg-transparent font-bold outline-none cursor-pointer">
+                {Array.from({length: 12}, (_, i) => i + 1).map(m => <option key={m} value={m} className="text-slate-800">{m}</option>)}
+              </select>
+              <span>月</span>
+            </div>
           </div>
-          
-          <div className="flex items-center gap-3 bg-white/10 p-1.5 rounded-2xl backdrop-blur-xl border border-white/20 shadow-inner">
-            <div className="flex items-center gap-1.5 px-3 py-2 bg-white/10 rounded-xl">
-              <select value={year} onChange={e => setYear(Number(e.target.value))} className="bg-transparent font-black outline-none cursor-pointer text-sm">
-                {[2024, 2025, 2026].map(y => <option key={y} value={y} className="text-slate-800 font-bold">{y}</option>)}
-              </select>
-              <span className="text-[10px] font-bold opacity-60">年</span>
-            </div>
-            <div className="flex items-center gap-1.5 px-3 py-2 bg-white/10 rounded-xl">
-              <select value={month} onChange={e => setMonth(Number(e.target.value))} className="bg-transparent font-black outline-none cursor-pointer text-sm">
-                {Array.from({length: 12}, (_, i) => i + 1).map(m => <option key={m} value={m} className="text-slate-800 font-bold">{m}</option>)}
-              </select>
-              <span className="text-[10px] font-bold opacity-60">月</span>
-            </div>
+          <div className="bg-white/10 px-4 py-2 rounded-xl text-sm font-bold">
+             管理者パネル
           </div>
         </header>
 
         <main className="space-y-10">
-          {/* シフト管理表 */}
-          <section className="animate-in fade-in slide-in-from-bottom-4 duration-700">
-            <div className="flex justify-between items-end mb-5 px-3">
-                <h2 className="text-lg font-bold flex items-center gap-2.5 text-slate-700">
-                  <span className="w-1.5 h-7 bg-[#F4B896] rounded-full shadow-[0_0_8px_#F4B896]"></span>
-                  シフト管理マスター
+          <section>
+            <div className="flex justify-between items-end mb-4">
+                <h2 className="text-xl font-bold flex items-center gap-2">
+                  <span className="w-1.5 h-6 bg-[#F4B896] rounded-full"></span>
+                  シフト管理表
                 </h2>
-                <div className="text-[9px] font-bold text-slate-400 bg-slate-100 px-3 py-1.5 rounded-lg border border-slate-200">
-                    LEFT-COLUMN PINNED MODE: ACTIVE
-                </div>
+                <div className="text-[10px] text-slate-400">※左側の基本情報は横スクロール時に固定されます</div>
             </div>
             <ShiftSchedule 
               schedule={schedule[key] || {}} 
@@ -385,7 +365,6 @@ export default function App() {
             />
           </section>
 
-          {/* 統計・カレンダーグリッド */}
           <div className="grid grid-cols-1 xl:grid-cols-5 gap-8">
             <div className="xl:col-span-2">
                 <TaskShortageDisplay 
@@ -406,8 +385,8 @@ export default function App() {
           </div>
         </main>
 
-        <footer className="text-center py-12 border-t border-slate-100 text-slate-300 text-[9px] font-bold tracking-[0.3em] uppercase">
-          &copy; 2026 DIGSY SMART SHIFT SYSTEM. ALL CHANGES ARE RECORDED.
+        <footer className="text-center py-12 text-slate-400 text-[10px] tracking-widest">
+          &copy; 2026 DIGSY SMART SHIFT SCHEDULER. 
         </footer>
       </div>
     </div>
