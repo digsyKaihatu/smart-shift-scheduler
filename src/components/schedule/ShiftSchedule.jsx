@@ -1,6 +1,207 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { EditableCell, EditableStaffInfoCell } from '../common/EditableCells';
+
+// -----------------------------------------------------------------------------
+// ヘルパー・内部コンポーネント (エラー回避のため、こちらに定義を統合しました)
+// -----------------------------------------------------------------------------
+
+/**
+ * 閲覧モードでの表記を短縮するヘルパー関数
+ */
+const formatValue = (value) => {
+  const mapping = {
+    'シフト休': '休',
+    '欠勤': '欠',
+    '通休': '通',
+    '有休': '有',
+    '遅刻': '遅',
+    '早退': '早'
+  };
+
+  if (typeof value === 'number') {
+    return value % 1 === 0 ? Math.floor(value) : value.toFixed(1);
+  }
+
+  if (value && typeof value === 'object' && 'type' in value) {
+    let displayType = value.type;
+    if (mapping[value.type]) {
+      displayType = mapping[value.type];
+    } else {
+      Object.entries(mapping).forEach(([full, short]) => {
+        displayType = displayType.replace(full, short);
+      });
+    }
+    if ('locked' in value) return displayType;
+    return `${displayType}(${value.hours})`;
+  }
+
+  if (typeof value === 'string') {
+    return mapping[value] || value;
+  }
+
+  return value;
+};
+
+/**
+ * シフト入力セルコンポーネント
+ */
+const EditableCell = ({ value, onUpdate, borderClass, disabled = false, isAdmin = false, isToday = false }) => {
+  const [mode, setMode] = useState('view');
+  const [inputValue, setInputValue] = useState('');
+  const [editingSpecialShift, setEditingSpecialShift] = useState(null);
+  const inputRef = useRef(null);
+
+  const isLocked = typeof value === 'object' && value !== null && 'locked' in value && value.locked;
+  const isEffectivelyDisabled = disabled || (isLocked && !isAdmin);
+
+  useEffect(() => {
+    if (mode === 'input' && inputRef.current) {
+      inputRef.current.focus();
+      inputRef.current.select();
+    }
+  }, [mode]);
+
+  const commitInput = () => {
+    const hours = parseFloat(inputValue);
+    if (!isNaN(hours) && hours >= 0) {
+      onUpdate(editingSpecialShift ? { type: editingSpecialShift, hours } : hours);
+    }
+    setMode('view');
+    setEditingSpecialShift(null);
+  };
+
+  const handleSelectChange = (e) => {
+    const selected = e.target.value;
+    const specialShiftOptions = ['遅刻', '早退', '午前有休', '午後有休', '午前休', '午後休', '午前通休', '午後通休'];
+
+    if (specialShiftOptions.includes(selected)) {
+        const currentHours = (typeof value === 'object' && value?.type === selected) ? value.hours : 4.0;
+        setEditingSpecialShift(selected);
+        setInputValue(String(currentHours));
+        setMode('input');
+    } else if (selected === '稼働時間入力') {
+        setEditingSpecialShift(null);
+        setInputValue(String(typeof value === 'number' ? value : 8.0));
+        setMode('input');
+    } else {
+        onUpdate(selected);
+        setMode('view');
+    }
+  };
+
+  const getBackgroundColor = () => {
+    const hoverClass = isEffectivelyDisabled ? '' : 'hover:bg-opacity-80';
+    const todayClass = isToday && value === '' ? 'bg-yellow-50' : '';
+
+    if (typeof value === 'number' && value > 0) return `bg-green-100 ${hoverClass}`;
+    if (typeof value === 'object' && value !== null && 'type' in value) {
+        if (value.type.includes('有休')) return `bg-yellow-100 ${hoverClass}`;
+        return `bg-slate-200 ${hoverClass}`;
+    }
+    switch(value) {
+      case '有休': return `bg-yellow-100 ${hoverClass}`;
+      case '通休': return `bg-blue-100 ${hoverClass}`;
+      case 'シフト休': return `bg-slate-200 ${hoverClass}`;
+      case '欠勤': return `bg-red-100 ${hoverClass}`;
+      default: return `${todayClass || 'bg-white'} ${isEffectivelyDisabled ? '' : 'hover:bg-slate-50'}`;
+    }
+  };
+  
+  const baseClasses = `border-b border-r ${borderClass} text-center text-xs h-10 flex items-center justify-center w-[75px] min-w-[75px] max-w-[75px]`;
+
+  if (mode === 'view') {
+    return (
+      <div onClick={() => !isEffectivelyDisabled && setMode('select')} className={`relative ${baseClasses} transition-colors duration-150 ${getBackgroundColor()} ${isEffectivelyDisabled ? 'cursor-not-allowed text-slate-500' : 'cursor-pointer'}`}>
+        <span className="truncate w-full px-0.5">{formatValue(value)}</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className={`${baseClasses} bg-white relative`}>
+      {mode === 'select' ? (
+        <select
+          autoFocus
+          onChange={handleSelectChange}
+          onBlur={() => setMode('view')}
+          className="absolute inset-0 w-full h-full opacity-100 bg-transparent text-center text-xs cursor-pointer appearance-none outline-none focus:ring-2 focus:ring-sky-500"
+          defaultValue=""
+        >
+          <option value="" disabled hidden>選択...</option>
+          <option value="稼働時間入力">稼働時間入力</option>
+          <optgroup label="ステータス">
+              <option value="有休">有休</option>
+              <option value="シフト休">シフト休</option>
+              <option value="通休">通院休暇</option>
+              <option value="欠勤">欠勤</option>
+          </optgroup>
+          <optgroup label="時間単位">
+              {['遅刻', '早退', '午前有休', '午後有休', '午前休', '午後休', '午前通休', '午後通休'].map(opt => (
+                  <option key={opt} value={opt}>{opt.replace('通休', '通院休暇')}</option>
+              ))}
+          </optgroup>
+          <option value="">(クリア)</option>
+        </select>
+      ) : (
+        <>
+          <input
+            ref={inputRef}
+            type="number"
+            step="0.5"
+            value={inputValue}
+            onChange={(e) => setInputValue(e.target.value)}
+            onBlur={commitInput}
+            onKeyDown={(e) => e.key === 'Enter' && commitInput()}
+            className="absolute inset-0 w-full h-full p-0 m-0 bg-transparent text-center text-xs outline-none"
+          />
+        </>
+      )}
+    </div>
+  );
+};
+
+/**
+ * スタッフ情報編集セルコンポーネント
+ */
+const EditableStaffInfoCell = ({ value, onUpdate, className, disabled = false }) => {
+  const [isEditing, setIsEditing] = useState(false);
+  const [currentValue, setCurrentValue] = useState(value);
+
+  useEffect(() => {
+    setCurrentValue(value);
+  }, [value]);
+
+  const handleBlur = () => {
+    if (currentValue.trim() !== value) {
+      onUpdate(currentValue.trim());
+    }
+    setIsEditing(false);
+  };
+
+  const wrapperClass = `h-10 text-[11px] border-b border-r border-slate-300 flex items-center px-1.5 overflow-hidden ${className}`;
+
+  if (isEditing) {
+    return (
+      <div className={`${wrapperClass} bg-white`}>
+        <input
+          type="text"
+          value={currentValue}
+          onChange={(e) => setCurrentValue(e.target.value)}
+          onBlur={handleBlur}
+          onKeyDown={(e) => e.key === 'Enter' && handleBlur()}
+          autoFocus
+          className="w-full h-full bg-transparent outline-none"
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div onClick={() => !disabled && setIsEditing(true)} className={`${wrapperClass} bg-white transition-colors ${disabled ? 'cursor-not-allowed text-slate-500' : 'cursor-pointer hover:bg-slate-50'}`}>
+        <div className="font-semibold truncate w-full">{value}</div>
+    </div>
+  );
+};
 
 // パターンサマリー生成
 const summarizePattern = (pattern, patterns, hasBreakArray) => {
@@ -103,6 +304,10 @@ const UnlockIcon = () => (
     <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M8 11V7a4 4 0 118 0m-4 8v3m-6 2h12a2 2 0 002-2v-7a2 2 0 00-2-2H5a2 2 0 00-2 2v7a2 2 0 002 2z" /></svg>
 );
 
+// -----------------------------------------------------------------------------
+// メインコンポーネント: ShiftSchedule
+// -----------------------------------------------------------------------------
+
 const ShiftSchedule = ({ currentUser, isAdmin, schedule, staff, days, holidays, shiftPatterns, year, month, onUpdateSchedule, onDeleteStaff, onUpdateStaffInfo, onApplyStaffPattern, onToggleShiftSubmitted, onToggleShiftApproved, onToggleShiftRemanded, onSetDayAsHolidayForAll }) => {
   const scrollContainerRef = useRef(null);
   const sortedStaff = useMemo(() => [...staff].sort((a, b) => String(a.employeeId || '').localeCompare(String(b.employeeId || ''), undefined, { numeric: true })), [staff]);
@@ -171,7 +376,6 @@ const ShiftSchedule = ({ currentUser, isAdmin, schedule, staff, days, holidays, 
           {/* スクロール列ヘッダー */}
           {days.map(({ day, dayOfWeek }) => {
             const isToday = new Date().getDate() === day && (new Date().getMonth()+1) === month;
-            const isH = holidays.includes(day);
             return (
               <div key={day} className={`${stickyHeaderBase} whitespace-nowrap ${isToday ? 'bg-yellow-50' : ''}`} data-day={day}>
                 <div className="text-[9px] opacity-70 mb-1">{dayOfWeek}</div><div className="text-sm font-bold">{day}</div>
