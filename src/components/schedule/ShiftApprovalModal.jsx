@@ -7,8 +7,12 @@ const ShiftApprovalModal = ({ staffMember, schedule, shiftPatterns, holidays, ye
 
     // 基本シフトパターンの要約テキスト生成
     const patternSummary = useMemo(() => {
-        return summarizePattern(staffMember.defaultShift.pattern, shiftPatterns);
-    }, [staffMember.defaultShift.pattern, shiftPatterns]);
+        return summarizePattern(
+            staffMember.defaultShift.pattern, 
+            shiftPatterns, 
+            staffMember.defaultShift.hasBreakArray // 休憩設定も渡す
+        );
+    }, [staffMember.defaultShift.pattern, staffMember.defaultShift.hasBreakArray, shiftPatterns]);
 
     // イレギュラー勤務（基本パターンと異なる日）の抽出ロジック
     const irregularPatterns = useMemo(() => {
