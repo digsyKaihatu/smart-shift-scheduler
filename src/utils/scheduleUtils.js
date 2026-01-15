@@ -47,31 +47,49 @@ export const generateInitialSchedule = (staffData, shiftPatternsData) => {
     };
 };
 
-export const summarizePattern = (pattern, patterns) => {
+/**
+ * シフトパターンのサマリーを生成する関数
+ * @param {Array} pattern - ['A', 'A', 'B', 'A', 'A'] のようなパターンの配列
+ * @param {Array} patterns - シフトパターンの定義データ
+ * @param {Array} hasBreakArray - [true, true, false, true, true] のような休憩有無の配列
+ */
+export const summarizePattern = (pattern, patterns, hasBreakArray) => {
     if (!pattern || pattern.length !== 5) return '未設定';
     const DAY_NAMES = ['月', '火', '水', '木', '金'];
 
-    const groups = {};
-    const order = [];
+    // 休憩設定の取得ヘルパー（データがない場合はtrue=休憩ありとみなす）
+    const getBreak = (i) => Array.isArray(hasBreakArray) ? hasBreakArray[i] : true;
 
-    pattern.forEach((p, index) => {
-        const key = p;
-        if (!groups[key]) {
-            groups[key] = [];
-            order.push(key);
+    // 5日間すべて同じ設定かどうかをチェック
+    const firstId = pattern[0];
+    const firstBreak = getBreak(0);
+    const isUniform = pattern.every((id, i) => id === firstId && getBreak(i) === firstBreak);
+
+    // 一括表示（すべて同じ場合）
+    if (isUniform) {
+        if (firstId === 'シフト休') {
+            return '月〜金: シフト休';
         }
-        groups[key].push(DAY_NAMES[index]);
+        const p = patterns.find(x => x.id === firstId);
+        if (p) {
+            const breakStr = firstBreak ? '(休有)' : '(休無)';
+            return `月〜金 ${p.startTime}～${p.endTime} ${breakStr}`;
+        }
+    }
+
+    // 曜日ごとの表示（設定が異なる場合）
+    const lines = pattern.map((pId, index) => {
+        const isBreak = getBreak(index);
+        const breakLabel = isBreak ? "(有)" : "(無)";
+        
+        if (pId === 'シフト休') return `${DAY_NAMES[index]}:休`;
+        
+        const p = patterns.find(x => x.id === pId);
+        if (!p) return `${DAY_NAMES[index]}:?`;
+        
+        return `${DAY_NAMES[index]}:${p.name}${breakLabel}`;
     });
 
-    return order.map(key => {
-        const days = groups[key].join('');
-        if (key === 'シフト休') {
-            return `${days}:シフト休`;
-        }
-        const patternDetail = patterns.find(p => p.id === key);
-        if (!patternDetail) {
-            return `${days}:不明なパターン`;
-        }
-        return `${days} ${patternDetail.name} ${patternDetail.startTime}～${patternDetail.endTime} ${patternDetail.workHours.toFixed(1)}`;
-    }).join('\n');
+    // 2行に分けて表示（月〜水 / 木〜金）
+    return `${lines.slice(0, 3).join(' ')}\n${lines.slice(3).join(' ')}`;
 };
