@@ -17,7 +17,7 @@ const summarizePattern = (pattern, patterns, hasBreakArray) => {
   return `${lines.slice(0, 3).join(' ')}\n${lines.slice(3).join(' ')}`;
 };
 
-// パターン編集コンポーネント（インライン定義）
+// パターン編集コンポーネント
 const ShiftPatternEditor = ({ pattern, hasBreakArray, patterns, onApply, summary, disabled = false }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [editedPattern, setEditedPattern] = useState(pattern || Array(5).fill('シフト休'));
@@ -80,9 +80,9 @@ const ShiftPatternEditor = ({ pattern, hasBreakArray, patterns, onApply, summary
   ) : null;
 
   return (
-    <div className="h-full">
+    <div className="h-full w-full">
       <button onClick={() => !disabled && setIsOpen(true)} className={`w-full h-full flex items-center justify-start text-left p-1 rounded transition-colors ${disabled ? 'cursor-not-allowed' : 'hover:bg-slate-200'}`} disabled={disabled}>
-        <div className="text-[10px] leading-tight font-semibold whitespace-pre-wrap text-slate-700">{summary}</div>
+        <div className="text-[10px] leading-tight font-semibold whitespace-pre-wrap text-slate-700 overflow-hidden">{summary}</div>
       </button>
       {editorPopup}
     </div>
@@ -107,6 +107,31 @@ const ShiftSchedule = ({ currentUser, isAdmin, schedule, staff, days, holidays, 
   const scrollContainerRef = useRef(null);
   const sortedStaff = useMemo(() => [...staff].sort((a, b) => String(a.employeeId || '').localeCompare(String(b.employeeId || ''), undefined, { numeric: true })), [staff]);
   
+  // 固定列の幅定義（1セットとして扱われる部分）
+  const widths = { 
+    role: 60, 
+    empId: 90, 
+    name: 120, 
+    setting: 170, 
+    submit: 65, 
+    remand: 65, 
+    approve: 65, 
+    del: 45 
+  };
+
+  const pos = {
+    role: 0, 
+    empId: widths.role, 
+    name: widths.role + widths.empId,
+    setting: widths.role + widths.empId + widths.name,
+    submit: widths.role + widths.empId + widths.name + widths.setting,
+    remand: widths.role + widths.empId + widths.name + widths.setting + widths.submit,
+    approve: widths.role + widths.empId + widths.name + widths.setting + widths.submit + widths.remand,
+    del: widths.role + widths.empId + widths.name + widths.setting + widths.submit + widths.remand + widths.approve
+  };
+
+  const totalFixedPadding = pos.del + widths.del;
+
   useEffect(() => {
     if (!scrollContainerRef.current) return;
     const today = new Date();
@@ -116,62 +141,65 @@ const ShiftSchedule = ({ currentUser, isAdmin, schedule, staff, days, holidays, 
             const target = container?.querySelector(`[data-day="${today.getDate()}"]`);
             if (container && target) {
                 const containerWidth = container.clientWidth;
-                const fixedWidth = 715; 
-                const scrollLeft = target.offsetLeft - fixedWidth - ((containerWidth - fixedWidth) / 2) + (target.clientWidth / 2);
+                const scrollLeft = target.offsetLeft - totalFixedPadding - ((containerWidth - totalFixedPadding) / 2) + (target.clientWidth / 2);
                 container.scrollTo({ left: scrollLeft, behavior: 'smooth' });
             }
         }, 300);
     }
-  }, [year, month, days]);
+  }, [year, month, days, totalFixedPadding]);
 
-  const widths = { role: 55, empId: 85, name: 115, setting: 165, submit: 65, remand: 65, approve: 65, del: 40 };
-  const pos = {
-    role: 0, empId: widths.role, name: widths.role + widths.empId,
-    setting: widths.role + widths.empId + widths.name,
-    submit: widths.role + widths.empId + widths.name + widths.setting,
-    remand: widths.role + widths.empId + widths.name + widths.setting + widths.submit,
-    approve: widths.role + widths.empId + widths.name + widths.setting + widths.submit + widths.remand,
-    del: widths.role + widths.empId + widths.name + widths.setting + widths.submit + widths.remand + widths.approve
-  };
-
-  const gridTemplateColumns = `${widths.role}px ${widths.empId}px ${widths.name}px ${widths.setting}px ${widths.submit}px ${widths.remand}px ${widths.approve}px ${widths.del}px repeat(${days.length}, minmax(70px, 1fr))`;
+  const gridTemplateColumns = `${widths.role}px ${widths.empId}px ${widths.name}px ${widths.setting}px ${widths.submit}px ${widths.remand}px ${widths.approve}px ${widths.del}px repeat(${days.length}, minmax(75px, 1fr))`;
 
   const stickyHeaderBase = "sticky top-0 z-30 bg-slate-200 p-1.5 border-b-2 border-r border-slate-300 font-bold text-[11px] text-center h-12 flex flex-col items-center justify-center";
-  const stickyFixedHeaderBase = "sticky top-0 z-50 bg-slate-200 p-1.5 border-b-2 border-r border-slate-300 font-bold text-[11px] text-center h-12 flex items-center justify-center";
-  const stickyFixedColBase = "sticky z-20 border-b border-r border-slate-300 flex items-center h-10";
+  const stickyFixedHeaderBase = "sticky top-0 z-50 bg-slate-200 p-1.5 border-b-2 border-r border-slate-300 font-bold text-[11px] text-center h-12 flex items-center justify-center flex-shrink-0";
+  const stickyFixedColBase = "sticky z-20 border-b border-r border-slate-300 flex items-center h-10 flex-shrink-0";
 
   return (
     <div className="bg-white rounded-lg shadow-md ring-1 ring-black ring-opacity-5 overflow-hidden border border-slate-200">
       <div ref={scrollContainerRef} className="overflow-auto bg-white" style={{maxHeight: '75vh'}}>
         <div className="grid relative" style={{ gridTemplateColumns }}>
-          <div className={stickyFixedHeaderBase} style={{ left: pos.role }}>役職</div>
-          <div className={stickyFixedHeaderBase} style={{ left: pos.empId }}>社員番号</div>
-          <div className={stickyFixedHeaderBase} style={{ left: pos.name }}>稼働名前</div>
-          <div className={stickyFixedHeaderBase} style={{ left: pos.setting }}>基本シフト設定</div>
-          <div className={stickyFixedHeaderBase} style={{ left: pos.submit }}>提出☑</div>
-          <div className={stickyFixedHeaderBase} style={{ left: pos.remand }}>差戻☑</div>
-          <div className={stickyFixedHeaderBase} style={{ left: pos.approve }}>承認☑</div>
-          <div className={`${stickyFixedHeaderBase} border-r-2 shadow-[2px_0_4px_rgba(0,0,0,0.1)]`} style={{ left: pos.del }}>削除</div>
+          {/* 固定列ヘッダー */}
+          <div className={stickyFixedHeaderBase} style={{ left: pos.role, width: widths.role, minWidth: widths.role }}>役職</div>
+          <div className={stickyFixedHeaderBase} style={{ left: pos.empId, width: widths.empId, minWidth: widths.empId }}>社員番号</div>
+          <div className={stickyFixedHeaderBase} style={{ left: pos.name, width: widths.name, minWidth: widths.name }}>稼働名前</div>
+          <div className={stickyFixedHeaderBase} style={{ left: pos.setting, width: widths.setting, minWidth: widths.setting }}>基本シフト設定</div>
+          <div className={stickyFixedHeaderBase} style={{ left: pos.submit, width: widths.submit, minWidth: widths.submit }}>提出☑</div>
+          <div className={stickyFixedHeaderBase} style={{ left: pos.remand, width: widths.remand, minWidth: widths.remand }}>差戻☑</div>
+          <div className={stickyFixedHeaderBase} style={{ left: pos.approve, width: widths.approve, minWidth: widths.approve }}>承認☑</div>
+          <div className={`${stickyFixedHeaderBase} border-r-2 border-slate-400 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.2)]`} style={{ left: pos.del, width: widths.del, minWidth: widths.del }}>削除</div>
           
+          {/* スクロール列ヘッダー */}
           {days.map(({ day, dayOfWeek }) => {
             const isToday = new Date().getDate() === day && (new Date().getMonth()+1) === month;
             const isH = holidays.includes(day);
             return (
               <div key={day} className={`${stickyHeaderBase} whitespace-nowrap ${isToday ? 'bg-yellow-50' : ''}`} data-day={day}>
                 <div className="text-[9px] opacity-70 mb-1">{dayOfWeek}</div><div className="text-sm font-bold">{day}</div>
-                {isAdmin && <button onClick={() => onSetDayAsHolidayForAll(day)} className="group absolute bottom-0.5 right-0.5 p-0.5 bg-white/50 rounded-full hover:bg-sky-100">{staff.every(s => typeof (schedule[s.id]?.[day]) === 'object' && (schedule[s.id]?.[day])?.locked) ? <UnlockIcon /> : <SetHolidayIcon />}</button>}
+                {isAdmin && (
+                  <button onClick={() => onSetDayAsHolidayForAll(day)} className="group absolute bottom-0.5 right-0.5 p-0.5 bg-white/50 rounded-full hover:bg-sky-100">
+                    {staff.every(s => typeof (schedule[s.id]?.[day]) === 'object' && (schedule[s.id]?.[day])?.locked) ? <UnlockIcon /> : <SetHolidayIcon />}
+                  </button>
+                )}
               </div>
             );
           })}
 
+          {/* スタッフデータ行 */}
           {sortedStaff.map(s => {
             const isEditable = isAdmin || currentUser?.id === s.id;
             return (
               <React.Fragment key={s.id}>
-                <div className={`${stickyFixedColBase} bg-white`} style={{ left: pos.role }}><EditableStaffInfoCell value={s.role} onUpdate={v => onUpdateStaffInfo(s.id, 'role', v)} disabled={!isEditable} /></div>
-                <div className={`${stickyFixedColBase} bg-white`} style={{ left: pos.empId }}><EditableStaffInfoCell value={s.employeeId} onUpdate={v => onUpdateStaffInfo(s.id, 'employeeId', v)} disabled={!isEditable} /></div>
-                <div className={`${stickyFixedColBase} bg-white`} style={{ left: pos.name }}><EditableStaffInfoCell value={s.name} onUpdate={v => onUpdateStaffInfo(s.id, 'name', v)} disabled={!isEditable} /></div>
-                <div className={`${stickyFixedColBase} bg-white px-1`} style={{ left: pos.setting }}>
+                {/* 固定列セル */}
+                <div className={`${stickyFixedColBase} bg-white`} style={{ left: pos.role, width: widths.role, minWidth: widths.role }}>
+                  <EditableStaffInfoCell value={s.role} onUpdate={v => onUpdateStaffInfo(s.id, 'role', v)} disabled={!isEditable} className="border-none w-full" />
+                </div>
+                <div className={`${stickyFixedColBase} bg-white`} style={{ left: pos.empId, width: widths.empId, minWidth: widths.empId }}>
+                  <EditableStaffInfoCell value={s.employeeId} onUpdate={v => onUpdateStaffInfo(s.id, 'employeeId', v)} disabled={!isEditable} className="border-none w-full" />
+                </div>
+                <div className={`${stickyFixedColBase} bg-white`} style={{ left: pos.name, width: widths.name, minWidth: widths.name }}>
+                  <EditableStaffInfoCell value={s.name} onUpdate={v => onUpdateStaffInfo(s.id, 'name', v)} disabled={!isEditable} className="border-none w-full" />
+                </div>
+                <div className={`${stickyFixedColBase} bg-white px-1`} style={{ left: pos.setting, width: widths.setting, minWidth: widths.setting }}>
                     <ShiftPatternEditor 
                         pattern={s.defaultShift.pattern} 
                         hasBreakArray={s.defaultShift.hasBreakArray} 
@@ -181,12 +209,30 @@ const ShiftSchedule = ({ currentUser, isAdmin, schedule, staff, days, holidays, 
                         disabled={!isEditable} 
                     />
                 </div>
-                <div className={`${stickyFixedColBase} bg-white justify-center`} style={{ left: pos.submit }}><input type="checkbox" checked={s.shiftSubmitted?.[`${year}-${month}`] || false} onChange={() => onToggleShiftSubmitted(s.id)} className="h-4 w-4 rounded text-sky-600" disabled={!isEditable} /></div>
-                <div className={`${stickyFixedColBase} bg-white justify-center`} style={{ left: pos.remand }}><input type="checkbox" checked={s.shiftRemanded?.[`${year}-${month}`] || false} onChange={() => onToggleShiftRemanded(s.id)} className="h-4 w-4 rounded text-red-600" disabled={!isAdmin} /></div>
-                <div className={`${stickyFixedColBase} bg-white justify-center`} style={{ left: pos.approve }}><input type="checkbox" checked={s.shiftApproved?.[`${year}-${month}`] || false} onChange={() => onToggleShiftApproved(s.id)} className="h-4 w-4 rounded text-green-600" disabled={!isAdmin} /></div>
-                <div className={`${stickyFixedColBase} bg-white justify-center border-r-2 shadow-[2px_0_4px_rgba(0,0,0,0.1)]`} style={{ left: pos.del }}>{isAdmin && <button onClick={() => onDeleteStaff(s.id)} className="p-1 hover:bg-red-50 rounded-full"><DeleteIcon /></button>}</div>
+                <div className={`${stickyFixedColBase} bg-white justify-center`} style={{ left: pos.submit, width: widths.submit, minWidth: widths.submit }}>
+                  <input type="checkbox" checked={s.shiftSubmitted?.[`${year}-${month}`] || false} onChange={() => onToggleShiftSubmitted(s.id)} className="h-4 w-4 rounded text-sky-600 cursor-pointer" disabled={!isEditable} />
+                </div>
+                <div className={`${stickyFixedColBase} bg-white justify-center`} style={{ left: pos.remand, width: widths.remand, minWidth: widths.remand }}>
+                  <input type="checkbox" checked={s.shiftRemanded?.[`${year}-${month}`] || false} onChange={() => onToggleShiftRemanded(s.id)} className="h-4 w-4 rounded text-red-600 cursor-pointer" disabled={!isAdmin} />
+                </div>
+                <div className={`${stickyFixedColBase} bg-white justify-center`} style={{ left: pos.approve, width: widths.approve, minWidth: widths.approve }}>
+                  <input type="checkbox" checked={s.shiftApproved?.[`${year}-${month}`] || false} onChange={() => onToggleShiftApproved(s.id)} className="h-4 w-4 rounded text-green-600 cursor-pointer" disabled={!isAdmin} />
+                </div>
+                <div className={`${stickyFixedColBase} bg-white justify-center border-r-2 border-slate-400 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.2)]`} style={{ left: pos.del, width: widths.del, minWidth: widths.del }}>
+                  {isAdmin && <button onClick={() => onDeleteStaff(s.id)} className="p-1 hover:bg-red-50 rounded-full transition-colors"><DeleteIcon /></button>}
+                </div>
+
+                {/* スクロール列（日付セル） */}
                 {days.map(({ day }) => (
-                  <EditableCell key={day} value={schedule[s.id]?.[day] ?? ''} onUpdate={v => onUpdateSchedule(s.id, day, v)} isAdmin={isAdmin} disabled={!isEditable} borderClass="border-slate-200" isToday={new Date().getDate() === day && (new Date().getMonth()+1) === month} />
+                  <EditableCell 
+                    key={day} 
+                    value={schedule[s.id]?.[day] ?? ''} 
+                    onUpdate={v => onUpdateSchedule(s.id, day, v)} 
+                    isAdmin={isAdmin} 
+                    disabled={!isEditable} 
+                    borderClass="border-slate-200" 
+                    isToday={new Date().getDate() === day && (new Date().getMonth()+1) === month} 
+                  />
                 ))}
               </React.Fragment>
             )
