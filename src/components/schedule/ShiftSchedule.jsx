@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
+import { summarizePattern } from '../../utils/scheduleUtils';
 
 // -----------------------------------------------------------------------------
 // ヘルパー・内部コンポーネント
@@ -213,21 +214,6 @@ const EditableStaffInfoCell = ({ value, onUpdate, className, disabled = false })
         <div className="font-semibold truncate w-full">{displayValue}</div>
     </div>
   );
-};
-
-// パターンサマリー生成
-const summarizePattern = (pattern, patterns, hasBreakArray) => {
-  if (!pattern || pattern.length !== 5) return '未設定';
-  const DAY_NAMES = ['月', '火', '水', '木', '金'];
-  const lines = pattern.map((pId, index) => {
-    const isBreak = Array.isArray(hasBreakArray) ? hasBreakArray[index] : true;
-    const breakLabel = isBreak ? "" : "×"; 
-    if (pId === 'シフト休') return `${DAY_NAMES[index]}:休`;
-    const p = patterns.find(x => x.id === pId);
-    if (!p) return `${DAY_NAMES[index]}:?`;
-    return `${DAY_NAMES[index]}:${p.name}${breakLabel}`;
-  });
-  return `${lines.slice(0, 3).join(' ')}\n${lines.slice(3).join(' ')}`;
 };
 
 // パターン編集コンポーネント
