@@ -6,15 +6,14 @@ import { oktaConfig } from './config/okta';
 
 // Hooks & Utils
 import { useShiftData } from './hooks/useShiftData';
-import { getJapaneseHolidays, formatValue } from './utils/dateUtils';
-import { generateScheduleForMonth } from './utils/scheduleUtils';
+import { getJapaneseHolidays } from './utils/dateUtils';
 
 // Components
 import LoadingScreen from './components/common/LoadingScreen';
 import HelpGuideModal from './components/common/HelpGuideModal';
 import ShiftSchedule from './components/schedule/ShiftSchedule';
 import TaskShortageDisplay from './components/tasks/TaskShortageDisplay';
-import { ConfirmationModal, ConfirmDeleteModal } from './components/common/Modal';
+import { ConfirmDeleteModal } from './components/common/Modal';
 
 const oktaAuth = new OktaAuth(oktaConfig);
 
@@ -22,7 +21,7 @@ const MainContent = () => {
   const { oktaAuth, authState } = useOktaAuth();
   const {
     staff, setStaff, schedule, setSchedule, tasks, shiftPatterns, adminConfig,
-    isLoading, loadingMessage, initialDataLoaded, saveStatus
+    isLoading, loadingMessage, saveStatus
   } = useShiftData();
 
   const [currentUser, setCurrentUser] = useState(null);
@@ -64,7 +63,12 @@ const MainContent = () => {
         const val = schedule[key]?.[s.id]?.[day];
         const isWorking = (typeof val === 'number' && val > 0) || (val?.hours > 0);
         if (isWorking) {
-          s.possibleTasks.forEach(tId => counts[day][tId] = (counts[day][tId] || 0) + 1);
+          // 防御的コーディング: possibleTasks が undefined の場合のエラーを防止
+          (s.possibleTasks || []).forEach(tId => {
+            if (counts[day][tId] !== undefined) {
+              counts[day][tId] = (counts[day][tId] || 0) + 1;
+            }
+          });
         }
       });
     });
@@ -147,10 +151,31 @@ const MainContent = () => {
           onSetDayAsHolidayForAll={()=>{}}
         />
 
-        <TaskShortageDisplay tasks={tasks} staff={staff} days={days} taskCountsByDay={taskCountsByDay} />
+        <TaskShortageDisplay 
+            tasks={tasks} 
+            staff={staff} 
+            days={days} 
+            holidays={currentMonthHolidays}
+            taskCountsByDay={taskCountsByDay} 
+            isAdmin={isAdmin}
+            onUpdateTask={(id, name) => setStaff(prev => prev.map(s => ({...s, possibleTasks: s.possibleTasks || []})))} // ダミー
+            onUpdateTaskStaff={(taskId, staffIds) => {
+                setStaff(prev => prev.map(s => {
+                    const isAssigned = staffIds.includes(s.id);
+                    const currentTasks = s.possibleTasks || [];
+                    const newTasks = isAssigned 
+                        ? (currentTasks.includes(taskId) ? currentTasks : [...currentTasks, taskId])
+                        : currentTasks.filter(tid => tid !== taskId);
+                    return { ...s, possibleTasks: newTasks };
+                }));
+            }}
+        />
       </div>
       {isHelpOpen && <HelpGuideModal onClose={() => setIsHelpOpen(false)} />}
-      {confirmDelete && <ConfirmDeleteModal itemType="メンバー" itemName={confirmDelete.name} onConfirm={() => setConfirmDelete(null)} onCancel={() => setConfirmDelete(null)} />}
+      {confirmDelete && <ConfirmDeleteModal itemType="メンバー" itemName={confirmDelete.name} onConfirm={() => {
+          setStaff(prev => prev.filter(s => s.id !== confirmDelete.id));
+          setConfirmDelete(null);
+      }} onCancel={() => setConfirmDelete(null)} />}
     </div>
   );
 };
