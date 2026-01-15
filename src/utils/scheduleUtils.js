@@ -72,7 +72,8 @@ export const summarizePattern = (pattern, patterns, hasBreakArray) => {
         }
         const p = patterns.find(x => x.id === firstId);
         if (p) {
-            const breakStr = firstBreak ? '(休有)' : '(休無)';
+            // ここを変更: (休有)/(休無) -> 休憩あり/休憩なし
+            const breakStr = firstBreak ? '休憩あり' : '休憩なし';
             return `月〜金 ${p.startTime}～${p.endTime} ${breakStr}`;
         }
     }
@@ -80,7 +81,8 @@ export const summarizePattern = (pattern, patterns, hasBreakArray) => {
     // 曜日ごとの表示（設定が異なる場合）
     const lines = pattern.map((pId, index) => {
         const isBreak = getBreak(index);
-        const breakLabel = isBreak ? "(有)" : "(無)";
+        // ここを変更: (有)/(無) -> (休憩あり)/(休憩なし) ※スペースの都合上、カッコ付き等で区別
+        const breakLabel = isBreak ? "(休憩あり)" : "(休憩なし)";
         
         if (pId === 'シフト休') return `${DAY_NAMES[index]}:休`;
         
