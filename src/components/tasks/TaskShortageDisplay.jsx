@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 
 // -----------------------------------------------------------------------------
-// インライン定義: インポートエラー回避のためコンポーネントを直接定義
+// インライン定義: 内部コンポーネントも安全に修正
 // -----------------------------------------------------------------------------
 
 const DeleteIcon = () => (
@@ -19,11 +19,11 @@ const ChevronDownIcon = () => (
 
 const EditableTaskName = ({ value, onUpdate, disabled = false }) => {
   const [isEditing, setIsEditing] = useState(false);
-  const [currentValue, setCurrentValue] = useState(value);
+  const [currentValue, setCurrentValue] = useState(value || '');
   const inputRef = useRef(null);
 
   useEffect(() => {
-    setCurrentValue(value);
+    setCurrentValue(value || '');
   }, [value]);
 
   useEffect(() => {
@@ -36,7 +36,7 @@ const EditableTaskName = ({ value, onUpdate, disabled = false }) => {
     if (currentValue.trim() !== value && currentValue.trim() !== '') {
       onUpdate(currentValue.trim());
     } else {
-        setCurrentValue(value);
+        setCurrentValue(value || '');
     }
     setIsEditing(false);
   };
@@ -45,14 +45,8 @@ const EditableTaskName = ({ value, onUpdate, disabled = false }) => {
     if (e.key === 'Enter') {
       handleBlur();
     } else if (e.key === 'Escape') {
-      setCurrentValue(value);
+      setCurrentValue(value || '');
       setIsEditing(false);
-    }
-  };
-
-  const handleClick = () => {
-    if (!disabled) {
-      setIsEditing(true);
     }
   };
 
@@ -72,22 +66,22 @@ const EditableTaskName = ({ value, onUpdate, disabled = false }) => {
 
   return (
     <div
-      onClick={handleClick}
+      onClick={() => !disabled && setIsEditing(true)}
       className={`text-xs font-semibold text-slate-600 p-1 rounded ${disabled ? 'cursor-not-allowed' : 'cursor-pointer hover:bg-slate-200'}`}
-      title={disabled ? '' : "クリックして編集"}
     >
-      {value}
+      {value || '名称未設定'}
     </div>
   );
 };
 
-const TaskStaffSelector = ({ task, allStaff, assignedStaffIds, onUpdate, disabled = false }) => {
+const TaskStaffSelector = ({ task, allStaff = [], assignedStaffIds = [], onUpdate, disabled = false }) => {
   const [isOpen, setIsOpen] = useState(false);
+  const safeAssignedStaffIds = assignedStaffIds || [];
 
   const handleToggleStaff = (staffId) => {
-    const newAssignedStaffIds = assignedStaffIds.includes(staffId)
-      ? assignedStaffIds.filter(id => id !== staffId)
-      : [...assignedStaffIds, staffId];
+    const newAssignedStaffIds = safeAssignedStaffIds.includes(staffId)
+      ? safeAssignedStaffIds.filter(id => id !== staffId)
+      : [...safeAssignedStaffIds, staffId];
     onUpdate(task.id, newAssignedStaffIds);
   };
 
@@ -101,7 +95,7 @@ const TaskStaffSelector = ({ task, allStaff, assignedStaffIds, onUpdate, disable
   };
 
   const assignedStaffNames = allStaff
-    .filter(s => assignedStaffIds.includes(s.id))
+    .filter(s => safeAssignedStaffIds.includes(s.id))
     .map(s => s.name)
     .join(', ');
 
@@ -130,7 +124,7 @@ const TaskStaffSelector = ({ task, allStaff, assignedStaffIds, onUpdate, disable
                         <label key={member.id} className="flex items-center space-x-2 p-1.5 rounded hover:bg-slate-100 cursor-pointer">
                             <input
                                 type="checkbox"
-                                checked={assignedStaffIds.includes(member.id)}
+                                checked={safeAssignedStaffIds.includes(member.id)}
                                 onChange={() => handleToggleStaff(member.id)}
                                 className="form-checkbox h-4 w-4 text-[#D9824D] rounded border-slate-300 focus:ring-[#F4B896]"
                             />
@@ -155,8 +149,6 @@ const TaskStaffSelector = ({ task, allStaff, assignedStaffIds, onUpdate, disable
         onClick={() => !disabled && setIsOpen(true)}
         disabled={disabled}
         className={`w-full text-left p-1 rounded border flex justify-between items-center transition-colors ${disabled ? 'cursor-not-allowed bg-slate-100 border-slate-200' : 'bg-white border-slate-300 hover:border-[#F4B896] hover:bg-slate-50'}`}
-        aria-haspopup="true"
-        aria-expanded={isOpen}
       >
         <span className={`text-xs font-medium truncate ${textColor}`} title={assignedStaffNames || '担当者なし'}>
           {buttonText}
@@ -173,84 +165,68 @@ const TaskStaffSelector = ({ task, allStaff, assignedStaffIds, onUpdate, disable
 // -----------------------------------------------------------------------------
 
 const TaskShortageDisplay = ({
-    currentUser, isAdmin, 
-    tasks, staff, days, holidays, taskCountsByDay, 
+    tasks = [], staff = [], days = [], holidays = [], taskCountsByDay = {}, 
+    isAdmin = false,
     onUpdateTask, onDeleteTask, onUpdateTaskStaff, onUpdateTaskPersonnel
 }) => {
     const staffInfoWidth = "280px"; 
     
-    // スタッフを社員番号順にソート
     const sortedStaff = useMemo(() => {
         return [...staff].sort((a, b) => {
             const idA = a.employeeId || '';
             const idB = b.employeeId || '';
-            // 数値・文字列を問わず自然順（1, 2, 10...）でソート
             return String(idA).localeCompare(String(idB), undefined, { numeric: true });
         });
     }, [staff]);
     
     const getDayHeaderClass = (dayOfWeek, isHoliday) => {
         let baseClasses = "sticky top-0 z-30 p-2 text-xs font-semibold text-center border-b-2 border-r whitespace-nowrap";
-        if (dayOfWeek === '土') {
-            return `${baseClasses} bg-sky-100 text-sky-800 border-sky-200`;
-        }
-        if (dayOfWeek === '日' || isHoliday) {
-            return `${baseClasses} bg-pink-100 text-pink-800 border-pink-200`;
-        }
+        if (dayOfWeek === '土') return `${baseClasses} bg-sky-100 text-sky-800 border-sky-200`;
+        if (dayOfWeek === '日' || isHoliday) return `${baseClasses} bg-pink-100 text-pink-800 border-pink-200`;
         return `${baseClasses} bg-slate-100 text-slate-900 border-slate-300`;
     };
-
-    const getCellBorderClass = (dayOfWeek, isHoliday) => {
-        if (dayOfWeek === '土') return 'border-sky-200';
-        if (dayOfWeek === '日' || isHoliday) return 'border-pink-200';
-        return 'border-slate-300';
-    }
 
     const stickyHeaderCellClass = "sticky top-0 z-40 bg-slate-200 p-2 border-b-2 border-r border-slate-300 font-semibold text-xs text-center";
 
     return (
         <div className="bg-white rounded-lg shadow-md ring-1 ring-black ring-opacity-5 p-4">
             <h2 className="text-lg font-bold text-slate-800 mb-3">業務一覧</h2>
-            {/* 横スクロールを有効にするラッパー */}
             <div className="overflow-x-auto">
                  <div className="min-w-max">
                     <div className="grid" style={{ gridTemplateColumns: `${staffInfoWidth} repeat(${days.length}, minmax(70px, 1fr))`}}>
-                        
                         <div className={`${stickyHeaderCellClass} sticky left-0 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]`}>業務</div>
-                        
-                         {days.map(({ day, dayOfWeek }) => {
-                            const isHoliday = holidays.includes(day);
-                            return (
-                                <div key={day} className={getDayHeaderClass(dayOfWeek, isHoliday)}>
+                         {days.map(({ day, dayOfWeek }) => (
+                            <div key={day} className={getDayHeaderClass(dayOfWeek, holidays.includes(day))}>
                                 <div>{day}</div>
                                 <div>{dayOfWeek}</div>
-                                </div>
-                            )
-                        })}
+                            </div>
+                        ))}
 
                         {tasks.map((task) => {
-                             const staffForTaskIds = staff.filter(s => s.possibleTasks.includes(task.id)).map(s => s.id);
+                             // 防御的コーディング: possibleTasks が undefined の場合を考慮
+                             const staffForTaskIds = staff
+                                .filter(s => (s.possibleTasks || []).includes(task.id))
+                                .map(s => s.id);
                              const required = task.requiredPersonnel ?? 3;
 
                             return (
                                 <React.Fragment key={task.id}>
                                     <div className="sticky left-0 z-20 bg-slate-50 p-2 border-b border-r border-slate-300 text-xs font-semibold text-slate-600 flex flex-col items-start justify-center gap-1 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
                                             <div className="flex items-center justify-between w-full">
-                                            <EditableTaskName
-                                                value={task.name}
-                                                onUpdate={(newName) => onUpdateTask(task.id, newName)}
-                                                disabled={!isAdmin}
-                                            />
-                                            {isAdmin && (
-                                                <button
-                                                    type="button"
-                                                    onMouseDown={() => onDeleteTask(task.id)}
-                                                    className="group ml-2 p-1 rounded-full hover:bg-red-100 focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-red-500 flex-shrink-0"
-                                                    aria-label={`${task.name}を削除`}
-                                                >
-                                                    <DeleteIcon />
-                                                </button>
-                                            )}
+                                                <EditableTaskName
+                                                    value={task.name}
+                                                    onUpdate={(newName) => onUpdateTask?.(task.id, newName)}
+                                                    disabled={!isAdmin}
+                                                />
+                                                {isAdmin && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => onDeleteTask?.(task.id)}
+                                                        className="group ml-2 p-1 rounded-full hover:bg-red-100"
+                                                    >
+                                                        <DeleteIcon />
+                                                    </button>
+                                                )}
                                             </div>
                                             
                                             <div className="flex items-center gap-1 text-[10px] w-full mb-1">
@@ -260,8 +236,8 @@ const TaskShortageDisplay = ({
                                                         type="number" 
                                                         min="1"
                                                         value={required}
-                                                        onChange={(e) => onUpdateTaskPersonnel(task.id, parseInt(e.target.value, 10))}
-                                                        className="w-10 p-0.5 border border-slate-300 rounded text-center focus:ring-1 focus:ring-[#F4B896] outline-none"
+                                                        onChange={(e) => onUpdateTaskPersonnel?.(task.id, parseInt(e.target.value, 10))}
+                                                        className="w-10 p-0.5 border border-slate-300 rounded text-center"
                                                     />
                                                 ) : (
                                                     <span className="font-medium">{required}名</span>
@@ -282,31 +258,24 @@ const TaskShortageDisplay = ({
                                         const isHoliday = holidays.includes(day);
                                         const count = taskCountsByDay?.[day]?.[task.id];
                                         let content;
-                                        let className = "p-2 border-b text-center text-xs font-bold z-10 flex items-center justify-center ";
+                                        let className = "p-2 border-b text-center text-xs font-bold z-10 flex items-center justify-center border-r ";
 
                                         if (isHoliday || dayOfWeek === '日' || dayOfWeek === '土') {
                                             content = '-';
-                                            className += 'text-slate-400 bg-slate-50';
+                                            className += 'text-slate-400 bg-slate-50 border-slate-200';
                                         } else if (count === undefined) {
                                             content = '-';
-                                            className += 'text-slate-400 bg-slate-50';
+                                            className += 'text-slate-400 bg-slate-50 border-slate-300';
                                         } else {
                                             if (count >= required) {
                                                 content = `${count}人`;
-                                                className += 'text-slate-800 bg-slate-50';
+                                                className += 'text-slate-800 bg-slate-50 border-slate-300';
                                             } else {
                                                 content = `不足 (${count}/${required})`;
-                                                const ratio = count / required;
-                                                if (ratio <= 0.3) {
-                                                    className += 'text-red-600 bg-red-100';
-                                                } else if (ratio <= 0.6) {
-                                                    className += 'text-orange-600 bg-orange-100';
-                                                } else {
-                                                    className += 'text-yellow-600 bg-yellow-100';
-                                                }
+                                                className += count/required <= 0.3 ? 'text-red-600 bg-red-100' : count/required <= 0.6 ? 'text-orange-600 bg-orange-100' : 'text-yellow-600 bg-yellow-100';
+                                                className += ' border-slate-300';
                                             }
                                         }
-                                        className += ` border-r ${getCellBorderClass(dayOfWeek, isHoliday)}`;
                                         return <div key={`${task.id}-${day}`} className={className}>{content}</div>;
                                     })}
                                 </React.Fragment>
