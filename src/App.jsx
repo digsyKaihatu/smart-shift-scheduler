@@ -3,38 +3,49 @@ import { createPortal } from 'react-dom';
 
 /**
  * ==========================================
- * 1. 定数・初期データ
+ * 1. 定数・初期データ (initialData.js)
  * ==========================================
  */
 const initialShiftPatterns = [
   { id: 'A', name: 'A', startTime: '9:00', endTime: '18:00', breakTime: '1:00', workHours: 8.0 },
   { id: 'B', name: 'B', startTime: '9:00', endTime: '17:30', breakTime: '1:00', workHours: 7.5 },
   { id: 'C', name: 'C', startTime: '9:00', endTime: '17:00', breakTime: '1:00', workHours: 7.0 },
-  { id: 'I', name: 'I', startTime: '9:30', endTime: '18:30', breakTime: '1:00', workHours: 8.0 },
+  { id: 'D', name: 'D', startTime: '9:00', endTime: '16:30', breakTime: '1:00', workHours: 6.5 },
+  { id: 'E', name: 'E', startTime: '9:00', endTime: '16:00', breakTime: '1:00', workHours: 6.0 },
+  { id: 'F', name: 'F', startTime: '9:00', endTime: '15:30', breakTime: '1:00', workHours: 5.5 },
+  { id: 'G', name: 'G', startTime: '9:00', endTime: '15:00', breakTime: '1:00', workHours: 5.0 },
   { id: 'H', name: 'H', startTime: '9:00', endTime: '13:00', breakTime: '0:00', workHours: 4.0 },
-  { id: 'シフト休', name: '休', startTime: '-', endTime: '-', breakTime: '-', workHours: 0 }
+  { id: 'I', name: 'I', startTime: '9:30', endTime: '18:30', breakTime: '1:00', workHours: 8.0 },
+  { id: 'J', name: 'J', startTime: '9:30', endTime: '18:00', breakTime: '1:00', workHours: 7.5 },
+  { id: 'K', name: 'K', startTime: '9:30', endTime: '17:30', breakTime: '1:00', workHours: 7.0 },
+  { id: 'L', name: 'L', startTime: '9:30', endTime: '17:00', breakTime: '1:00', workHours: 6.5 },
+  { id: 'M', name: 'M', startTime: '9:30', endTime: '16:30', breakTime: '1:00', workHours: 6.0 },
+  { id: 'N', name: 'N', startTime: '9:30', endTime: '16:00', breakTime: '1:00', workHours: 5.5 },
+  { id: 'O', name: 'O', startTime: '9:30', endTime: '15:30', breakTime: '1:00', workHours: 5.0 },
+  { id: 'P', name: 'P', startTime: '10:00', endTime: '18:30', breakTime: '1:00', workHours: 7.5 },
+  { id: 'Q', name: 'Q', startTime: '10:00', endTime: '18:00', breakTime: '1:00', workHours: 7.0 },
+  { id: 'R', name: 'R', startTime: '10:00', endTime: '17:00', breakTime: '1:00', workHours: 6.0 },
+  { id: 'S', name: 'S', startTime: '10:00', endTime: '16:00', breakTime: '1:00', workHours: 5.0 },
+  { id: 'T', name: 'T', startTime: '11:00', endTime: '20:00', breakTime: '1:00', workHours: 8.0 },
+  { id: 'U', name: 'U', startTime: '13:00', endTime: '20:00', breakTime: '1:00', workHours: 6.0 },
+  { id: 'V', name: 'V', startTime: '12:00', endTime: '20:00', breakTime: '1:00', workHours: 7.0 },
+  { id: 'W', name: 'W', startTime: '13:30', endTime: '18:00', breakTime: '0:00', workHours: 4.5 },
+  { id: 'X', name: 'X', startTime: '10:00', endTime: '14:00', breakTime: '0:00', workHours: 4.0 },
+  { id: 'Y', name: 'Y', startTime: '10:00', endTime: '13:00', breakTime: '0:00', workHours: 3.0 },
+  { id: 'Z', name: 'Z', startTime: '14:00', endTime: '20:00', breakTime: '1:00', workHours: 5.0 },
+  { id: '@', name: '@', startTime: '14:30', endTime: '20:00', breakTime: '1:00', workHours: 4.5 },
+  { id: '★', name: '★', startTime: '9:30', endTime: '15:30', breakTime: '1:00', workHours: 5.0 }
 ];
 
 const initialStaffData = [
   {
-    id: 's1',
-    name: '田中 太郎',
-    role: 'リーダー',
-    employeeId: '1001',
-    email: 'tanaka@example.com',
-    possibleTasks: ['t1', 't2'],
-    defaultShift: { pattern: ['A', 'A', 'A', 'A', 'A'], hasBreakArray: [true, true, true, true, true] },
-    shiftSubmitted: {},
-    shiftRemanded: {},
-    shiftApproved: {}
-  },
-  {
-    id: 's2',
-    name: '佐藤 花子',
-    role: 'メンバー',
-    employeeId: '1002',
-    email: 'sato@example.com',
-    possibleTasks: ['t2', 't3'],
+    id: 'admin',
+    name: '管理者',
+    role: '管理者',
+    employeeId: '000',
+    email: 'admin@example.com',
+    chatUserId: '',
+    possibleTasks: ['t1', 't2', 't3'],
     defaultShift: { pattern: ['I', 'I', 'I', 'I', 'I'], hasBreakArray: [true, true, true, true, true] },
     shiftSubmitted: {},
     shiftRemanded: {},
@@ -43,97 +54,124 @@ const initialStaffData = [
 ];
 
 const initialTasks = [
-  { id: 't1', name: '業務A', requiredPersonnel: 1 },
-  { id: 't2', name: '業務B', requiredPersonnel: 1 },
-  { id: 't3', name: '業務C', requiredPersonnel: 1 }
+  { id: 't1', name: '業務A', requiredPersonnel: 3 },
+  { id: 't2', name: '業務B', requiredPersonnel: 2 },
+  { id: 't3', name: '業務C', requiredPersonnel: 2 }
 ];
 
 /**
  * ==========================================
- * 2. ユーティリティ
+ * 2. ユーティリティ (dateUtils.js, scheduleUtils.js)
  * ==========================================
  */
+const getJapaneseHolidays = (year, month) => {
+  // 簡易版ロジック (本来は外部APIやライブラリ推奨)
+  return []; 
+};
+
 const formatValue = (value) => {
-  const mapping = { 'シフト休': '休', '欠勤': '欠', '有休': '有', '遅刻': '遅', '早退': '早' };
+  const mapping = { 'シフト休': '休', '欠勤': '欠', '通休': '通', '有休': '有', '遅刻': '遅', '早退': '早' };
   if (typeof value === 'number') return value % 1 === 0 ? Math.floor(value) : value.toFixed(1);
   if (value && typeof value === 'object' && 'type' in value) {
-    return mapping[value.type] || value.type;
+    let displayType = mapping[value.type] || value.type;
+    return value.locked ? displayType : `${displayType}(${value.hours})`;
   }
   return mapping[value] || value;
+};
+
+const generateScheduleForMonth = (year, month, staffData, shiftPatternsData) => {
+  const scheduleForMonth = {};
+  const daysInMonth = new Date(year, month, 0).getDate();
+  staffData.forEach(member => {
+    scheduleForMonth[member.id] = {};
+    for (let day = 1; day <= daysInMonth; day++) {
+      const date = new Date(year, month - 1, day);
+      const dayOfWeek = date.getDay();
+      if (dayOfWeek === 0 || dayOfWeek === 6) {
+        scheduleForMonth[member.id][day] = 'シフト休';
+      } else {
+        const patternIndex = dayOfWeek - 1;
+        const patternId = member.defaultShift?.pattern?.[patternIndex];
+        if (patternId === 'シフト休') {
+          scheduleForMonth[member.id][day] = 'シフト休';
+        } else {
+          const p = shiftPatternsData.find(x => x.id === patternId);
+          scheduleForMonth[member.id][day] = p ? p.workHours : '';
+        }
+      }
+    }
+  });
+  return scheduleForMonth;
 };
 
 const summarizePattern = (pattern, patterns, hasBreakArray) => {
   if (!pattern || pattern.length !== 5) return '未設定';
   const DAY_NAMES = ['月', '火', '水', '木', '金'];
-  return pattern.map((pId, i) => {
+  const lines = pattern.map((pId, index) => {
+    const isBreak = Array.isArray(hasBreakArray) ? hasBreakArray[index] : true;
+    const breakLabel = isBreak ? "" : "×"; 
+    if (pId === 'シフト休') return `${DAY_NAMES[index]}:休`;
     const p = patterns.find(x => x.id === pId);
-    return `${DAY_NAMES[i]}:${p ? p.name : '?'}${hasBreakArray?.[i] ? '' : '×'}`;
-  }).join(' ');
+    return `${DAY_NAMES[index]}:${p ? p.name : '?'}${breakLabel}`;
+  });
+  return `${lines.slice(0, 3).join(' ')}\n${lines.slice(3).join(' ')}`;
 };
 
 /**
  * ==========================================
- * 3. 共通コンポーネント
+ * 3. 共通コンポーネント (Icons, Modal, Loading)
  * ==========================================
  */
-const LoadingScreen = ({ message }) => (
+const ChevronDownIcon = () => (
+  <svg className="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+  </svg>
+);
+
+const DeleteIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-slate-400 hover:text-red-600" viewBox="0 0 20 20" fill="currentColor">
+    <path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm4 0a1 1 0 012 0v6a1 1 0 11-2 0V8z" clipRule="evenodd" />
+  </svg>
+);
+
+const LoadingScreen = ({ message = "読み込み中..." }) => (
   <div className="fixed inset-0 bg-white/90 flex flex-col items-center justify-center z-[100]">
     <div className="animate-spin rounded-full h-12 w-12 border-t-4 border-[#F4B896]"></div>
     <p className="mt-4 font-bold text-slate-600">{message}</p>
   </div>
 );
 
+const ConfirmDeleteModal = ({ itemName, onConfirm, onCancel }) => (
+  <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[110] p-4" onClick={onCancel}>
+    <div className="bg-white rounded-lg p-6 max-w-sm w-full" onClick={e => e.stopPropagation()}>
+      <h3 className="text-lg font-bold mb-4">{itemName} を削除しますか？</h3>
+      <div className="flex justify-end gap-2">
+        <button onClick={onCancel} className="px-4 py-2 bg-slate-100 rounded text-sm font-bold">キャンセル</button>
+        <button onClick={onConfirm} className="px-4 py-2 bg-red-500 text-white rounded text-sm font-bold">削除する</button>
+      </div>
+    </div>
+  </div>
+);
+
 /**
  * ==========================================
- * 4. シフトスケジュール表 (固定列対応)
+ * 4. メインコンポーネント
  * ==========================================
  */
-const ShiftSchedule = ({ schedule, staff, days, shiftPatterns, year, month, onUpdateSchedule }) => {
-  // 列の幅定義
-  const colWidths = {
-    role: 70,
-    empId: 80,
-    name: 110,
-    setting: 150,
-    check: 50,
-    delete: 50
-  };
 
-  // Sticky位置の計算
-  const stickyPos = {
-    role: 0,
-    empId: colWidths.role,
-    name: colWidths.role + colWidths.empId,
-    setting: colWidths.role + colWidths.empId + colWidths.name,
-    submit: colWidths.role + colWidths.empId + colWidths.name + colWidths.setting,
-    remand: colWidths.role + colWidths.empId + colWidths.name + colWidths.setting + colWidths.check,
-    approve: colWidths.role + colWidths.empId + colWidths.name + colWidths.setting + colWidths.check * 2,
-    delete: colWidths.role + colWidths.empId + colWidths.name + colWidths.setting + colWidths.check * 3
-  };
-
-  const headerClass = "p-2 border border-slate-300 bg-slate-100 font-bold text-[10px] text-center sticky top-0 z-40";
-  const fixedHeaderClass = (left) => `${headerClass} z-50`;
-  const cellClass = "p-2 border border-slate-200 text-center bg-white h-12 flex items-center justify-center";
-  const fixedCellClass = (left) => `p-2 border border-slate-200 bg-white sticky z-20 h-12 flex items-center justify-center font-medium overflow-hidden whitespace-nowrap`;
-
+// --- シフトスケジュール表 ---
+const ShiftSchedule = ({ schedule, staff, days, holidays, shiftPatterns, year, month, onUpdateSchedule, onApplyStaffPattern }) => {
   return (
     <div className="bg-white rounded-lg shadow-sm overflow-hidden border border-slate-200">
-      <div className="overflow-auto max-h-[65vh]">
-        <table className="border-separate border-spacing-0 w-full text-[11px]">
-          <thead>
+      <div className="overflow-auto max-h-[60vh]">
+        <table className="w-full border-collapse text-xs">
+          <thead className="sticky top-0 z-30 bg-slate-100">
             <tr>
-              <th className={fixedHeaderClass()} style={{ left: stickyPos.role, width: colWidths.role, minWidth: colWidths.role }}>役職</th>
-              <th className={fixedHeaderClass()} style={{ left: stickyPos.empId, width: colWidths.empId, minWidth: colWidths.empId }}>社員番号</th>
-              <th className={fixedHeaderClass()} style={{ left: stickyPos.name, width: colWidths.name, minWidth: colWidths.name }}>稼働名前</th>
-              <th className={fixedHeaderClass()} style={{ left: stickyPos.setting, width: colWidths.setting, minWidth: colWidths.setting }}>基本シフト設定</th>
-              <th className={fixedHeaderClass()} style={{ left: stickyPos.submit, width: colWidths.check, minWidth: colWidths.check }}>提出☑</th>
-              <th className={fixedHeaderClass()} style={{ left: stickyPos.remand, width: colWidths.check, minWidth: colWidths.check }}>差戻☑</th>
-              <th className={fixedHeaderClass()} style={{ left: stickyPos.approve, width: colWidths.check, minWidth: colWidths.check }}>承認☑</th>
-              <th className={fixedHeaderClass()} style={{ left: stickyPos.delete, width: colWidths.delete, minWidth: colWidths.delete }}>削除</th>
+              <th className="p-2 border border-slate-200 sticky left-0 bg-slate-100 min-w-[100px]">名前</th>
               {days.map(d => (
-                <th key={d.day} className={`${headerClass} min-w-[45px] ${d.dayOfWeek === '日' ? 'bg-red-50' : d.dayOfWeek === '土' ? 'bg-blue-50' : ''}`}>
+                <th key={d.day} className={`p-1 border border-slate-200 min-w-[40px] ${d.dayOfWeek === '日' ? 'bg-red-50' : d.dayOfWeek === '土' ? 'bg-blue-50' : ''}`}>
                   <div>{d.day}</div>
-                  <div className="scale-75 text-slate-500">{d.dayOfWeek}</div>
+                  <div className="scale-75">{d.dayOfWeek}</div>
                 </th>
               ))}
             </tr>
@@ -141,32 +179,12 @@ const ShiftSchedule = ({ schedule, staff, days, shiftPatterns, year, month, onUp
           <tbody>
             {staff.map(s => (
               <tr key={s.id}>
-                <td className={fixedCellClass()} style={{ left: stickyPos.role }}>{s.role}</td>
-                <td className={fixedCellClass()} style={{ left: stickyPos.empId }}>{s.employeeId}</td>
-                <td className={fixedCellClass()} style={{ left: stickyPos.name, fontWeight: 'bold' }}>{s.name}</td>
-                <td className={fixedCellClass()} style={{ left: stickyPos.setting }}>
-                  <span className="text-[9px] leading-tight text-slate-500">
-                    {summarizePattern(s.defaultShift.pattern, shiftPatterns, s.defaultShift.hasBreakArray)}
-                  </span>
-                </td>
-                <td className={fixedCellClass()} style={{ left: stickyPos.submit }}>
-                   <input type="checkbox" checked={!!s.shiftSubmitted[`${year}-${month}`]} readOnly className="rounded border-slate-300" />
-                </td>
-                <td className={fixedCellClass()} style={{ left: stickyPos.remand }}>
-                   <input type="checkbox" checked={!!s.shiftRemanded[`${year}-${month}`]} readOnly className="rounded border-slate-300" />
-                </td>
-                <td className={fixedCellClass()} style={{ left: stickyPos.approve }}>
-                   <input type="checkbox" checked={!!s.shiftApproved[`${year}-${month}`]} readOnly className="rounded border-slate-300" />
-                </td>
-                <td className={fixedCellClass()} style={{ left: stickyPos.delete }}>
-                   <button className="text-slate-300 hover:text-red-500"><DeleteIcon /></button>
-                </td>
+                <td className="p-2 border border-slate-200 sticky left-0 bg-white font-bold">{s.name}</td>
                 {days.map(d => {
                   const val = schedule[s.id]?.[d.day] || '';
-                  const isWeekend = d.dayOfWeek === '土' || d.dayOfWeek === '日';
                   return (
-                    <td key={d.day} className={`p-0 border border-slate-200 text-center ${isWeekend ? 'bg-slate-50' : 'bg-white'}`}>
-                      <div className="h-12 flex items-center justify-center font-bold">
+                    <td key={d.day} className="p-0 border border-slate-200 text-center">
+                      <div className="h-8 flex items-center justify-center">
                         {formatValue(val)}
                       </div>
                     </td>
@@ -189,31 +207,32 @@ const MonthlyCalendar = ({ schedule, staff, year, month }) => {
 
   return (
     <div className="bg-white rounded-lg shadow-sm p-4 border border-slate-200">
-      <h2 className="text-lg font-bold mb-4 flex items-center gap-2">
-        <span className="w-1.5 h-1.5 bg-[#F4B896] rounded-full"></span>
-        {year}年{month}月の出勤・休暇者
-      </h2>
-      <div className="grid grid-cols-7 gap-px bg-slate-200 border border-slate-200 overflow-hidden rounded">
+      <h2 className="text-lg font-bold mb-4">{year}年{month}月の出勤・休暇状況</h2>
+      <div className="grid grid-cols-7 gap-1">
         {['日','月','火','水','木','金','土'].map(d => (
-          <div key={d} className="bg-slate-100 text-center p-2 font-bold text-slate-500 text-xs">{d}</div>
+          <div key={d} className="text-center p-1 font-bold text-slate-400 text-xs">{d}</div>
         ))}
+        {/* 開始曜日のオフセットなどは簡易化 */}
         {calendarDays.map(d => {
           const date = new Date(year, month-1, d);
           const dayOfWeek = date.getDay();
-          const dayStaff = staff.map(s => {
+          const daySchedule = [];
+          staff.forEach(s => {
             const val = schedule[key]?.[s.id]?.[d];
-            if (val && val !== 'シフト休' && val !== '欠勤') return { name: s.name, status: 'work' };
-            if (val === '欠勤') return { name: s.name, status: 'absent' };
-            return null;
-          }).filter(Boolean);
+            if (val && val !== 'シフト休' && val !== '欠勤') {
+              daySchedule.push({ name: s.name, type: 'work' });
+            } else if (val === '欠勤' || (typeof val === 'object' && val.type === '欠勤')) {
+              daySchedule.push({ name: s.name, type: 'absent' });
+            }
+          });
 
           return (
-            <div key={d} className={`bg-white min-h-[100px] p-1.5 ${dayOfWeek === 0 ? 'bg-red-50/20' : dayOfWeek === 6 ? 'bg-blue-50/20' : ''}`}>
-              <div className="text-[10px] font-bold text-slate-400 mb-1">{d}</div>
-              <div className="flex flex-col gap-0.5">
-                {dayStaff.map((s, i) => (
-                  <div key={i} className={`text-[9px] px-1 py-0.5 rounded truncate font-medium ${s.status === 'work' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
-                    {s.name}
+            <div key={d} className={`border border-slate-100 min-h-[80px] p-1 ${dayOfWeek === 0 ? 'bg-red-50/30' : dayOfWeek === 6 ? 'bg-blue-50/30' : ''}`}>
+              <div className="text-[10px] font-bold text-slate-500">{d}</div>
+              <div className="space-y-0.5 mt-1">
+                {daySchedule.map((entry, i) => (
+                  <div key={i} className={`text-[9px] px-1 rounded truncate ${entry.type === 'work' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                    {entry.name}
                   </div>
                 ))}
               </div>
@@ -225,40 +244,33 @@ const MonthlyCalendar = ({ schedule, staff, year, month }) => {
   );
 };
 
-// --- 業務別充足状況 ---
+// --- 業務不足表示 ---
 const TaskShortageDisplay = ({ tasks, staff, days, taskCountsByDay }) => (
   <div className="bg-white rounded-lg shadow-sm p-4 border border-slate-200">
-    <h2 className="text-lg font-bold mb-4 flex items-center gap-2">
-        <span className="w-1.5 h-1.5 bg-sky-400 rounded-full"></span>
-        業務一覧
-    </h2>
+    <h2 className="text-lg font-bold mb-3">業務別充足状況</h2>
     <div className="overflow-x-auto">
-      <table className="w-full text-[11px] border-collapse">
+      <table className="w-full text-xs">
         <thead>
-          <tr className="bg-slate-50">
-            <th className="p-2 text-left border border-slate-200">業務名</th>
-            <th className="p-2 text-center border border-slate-200">定員</th>
-            {days.slice(0, 15).map(d => (
-              <th key={d.day} className="p-1 border border-slate-200 text-center min-w-[30px]">{d.day}</th>
-            ))}
-            <th className="p-2 border border-slate-200 text-slate-400 italic">以下略...</th>
+          <tr>
+            <th className="p-2 text-left border-b">業務名</th>
+            {days.slice(0, 10).map(d => <th key={d.day} className="p-1 border-b">{d.day}</th>)}
+            <th>...</th>
           </tr>
         </thead>
         <tbody>
           {tasks.map(t => (
             <tr key={t.id}>
-              <td className="p-2 border border-slate-200 font-bold">{t.name}</td>
-              <td className="p-2 border border-slate-200 text-center bg-slate-50">{t.requiredPersonnel}名</td>
-              {days.slice(0, 15).map(d => {
+              <td className="p-2 border-b font-medium">{t.name} (定員:{t.requiredPersonnel})</td>
+              {days.slice(0, 10).map(d => {
                 const count = taskCountsByDay[d.day]?.[t.id] || 0;
                 const isShort = count < t.requiredPersonnel;
                 return (
-                  <td key={d.day} className={`p-1 border border-slate-200 text-center font-bold ${isShort ? 'text-red-600 bg-red-50' : 'text-slate-600'}`}>
+                  <td key={d.day} className={`p-1 border-b text-center ${isShort ? 'text-red-600 font-bold bg-red-50' : 'text-slate-500'}`}>
                     {count}
                   </td>
                 );
               })}
-              <td className="border border-slate-200"></td>
+              <td className="border-b"></td>
             </tr>
           ))}
         </tbody>
@@ -269,7 +281,7 @@ const TaskShortageDisplay = ({ tasks, staff, days, taskCountsByDay }) => (
 
 /**
  * ==========================================
- * 5. App 本体
+ * 5. App 本体 (統合エントリーポイント)
  * ==========================================
  */
 export default function App() {
@@ -279,21 +291,19 @@ export default function App() {
   const [schedule, setSchedule] = useState({});
   const [year, setYear] = useState(new Date().getFullYear());
   const [month, setMonth] = useState(new Date().getMonth() + 1);
+  const [currentUser, setCurrentUser] = useState(initialStaffData[0]); // デモ用に初期値をセット
 
   const key = `${year}-${month}`;
   
+  // 初期データ生成シミュレーション
   useEffect(() => {
-    // データ読み込みシミュレーション
     const timer = setTimeout(() => {
       const initialSchedule = {
-        [key]: {
-            's1': { 1: 8, 2: 8, 3: 8, 4: 'シフト休', 5: 'シフト休', 6: 8, 7: 8, 8: 8, 9: 8, 10: 8 },
-            's2': { 1: 8, 2: '欠勤', 3: 8, 4: 'シフト休', 5: 'シフト休', 6: 8, 7: 8, 8: 8, 9: 8, 10: 8 }
-        }
+        [key]: generateScheduleForMonth(year, month, staff, initialShiftPatterns)
       };
       setSchedule(initialSchedule);
       setIsLoading(false);
-    }, 500);
+    }, 800);
     return () => clearTimeout(timer);
   }, [key]);
 
@@ -321,72 +331,81 @@ export default function App() {
     return counts;
   }, [schedule, key, staff, tasks, days]);
 
-  if (isLoading) return <LoadingScreen message="シフト管理システムを準備中..." />;
+  const handleUpdateSchedule = (staffId, day, value) => {
+    setSchedule(prev => {
+      const newMonth = { ...(prev[key] || {}) };
+      const newStaff = { ...(newMonth[staffId] || {}) };
+      newStaff[day] = value;
+      newMonth[staffId] = newStaff;
+      return { ...prev, [key]: newMonth };
+    });
+  };
+
+  if (isLoading) return <LoadingScreen message="シフトデータを準備中..." />;
 
   return (
-    <div className="min-h-screen bg-[#FFFDFB] text-slate-800 p-4 font-sans">
+    <div className="min-h-screen bg-[#FFF9F6] text-slate-800 p-4 font-sans">
       <div className="max-w-7xl mx-auto space-y-6">
-        <header className="bg-gradient-to-r from-[#F4B896] to-[#E8A680] text-white rounded-2xl shadow-xl p-6 flex justify-between items-center">
-          <div className="flex items-center gap-8">
+        <header className="bg-[#F4B896] text-white rounded-xl shadow-lg p-6 flex justify-between items-center">
+          <div className="flex items-center gap-6">
             <h1 className="text-2xl font-black tracking-tighter">digsy SMART SHIFT</h1>
-            <div className="flex items-center gap-2 bg-white/20 p-2 rounded-xl backdrop-blur-sm">
-              <select value={year} onChange={e => setYear(Number(e.target.value))} className="bg-transparent font-bold outline-none cursor-pointer">
+            <div className="flex items-center gap-2 bg-white/20 p-2 rounded-lg">
+              <select value={year} onChange={e => setYear(Number(e.target.value))} className="bg-transparent font-bold outline-none">
                 {[2024, 2025, 2026].map(y => <option key={y} value={y} className="text-slate-800">{y}</option>)}
               </select>
               <span>年</span>
-              <select value={month} onChange={e => setMonth(Number(e.target.value))} className="bg-transparent font-bold outline-none cursor-pointer">
+              <select value={month} onChange={e => setMonth(Number(e.target.value))} className="bg-transparent font-bold outline-none">
                 {Array.from({length: 12}, (_, i) => i + 1).map(m => <option key={m} value={m} className="text-slate-800">{m}</option>)}
               </select>
               <span>月</span>
             </div>
           </div>
-          <div className="bg-white/10 px-4 py-2 rounded-xl text-sm font-bold">
-             管理者パネル
+          <div className="text-right">
+            <div className="text-xs opacity-80">ログイン中</div>
+            <div className="font-bold">{currentUser?.name}</div>
           </div>
         </header>
 
-        <main className="space-y-10">
+        <main className="space-y-8">
+          {/* シフト表 */}
           <section>
-            <div className="flex justify-between items-end mb-4">
-                <h2 className="text-xl font-bold flex items-center gap-2">
-                  <span className="w-1.5 h-6 bg-[#F4B896] rounded-full"></span>
-                  シフト管理表
-                </h2>
-                <div className="text-[10px] text-slate-400">※左側の基本情報は横スクロール時に固定されます</div>
-            </div>
+            <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
+              <span className="w-2 h-6 bg-[#F4B896] rounded-full"></span>
+              メインシフト表
+            </h2>
             <ShiftSchedule 
               schedule={schedule[key] || {}} 
               staff={staff} 
               days={days} 
+              holidays={[]} 
               shiftPatterns={initialShiftPatterns}
               year={year} 
               month={month}
-              onUpdateSchedule={() => {}}
+              onUpdateSchedule={handleUpdateSchedule}
             />
           </section>
 
-          <div className="grid grid-cols-1 xl:grid-cols-5 gap-8">
-            <div className="xl:col-span-2">
-                <TaskShortageDisplay 
-                  tasks={tasks} 
-                  staff={staff} 
-                  days={days} 
-                  taskCountsByDay={taskCountsByDay} 
-                />
-            </div>
-            <div className="xl:col-span-3">
-                <MonthlyCalendar 
-                  schedule={schedule}
-                  staff={staff}
-                  year={year}
-                  month={month}
-                />
-            </div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            {/* 業務充足状況 */}
+            <TaskShortageDisplay 
+              tasks={tasks} 
+              staff={staff} 
+              days={days} 
+              taskCountsByDay={taskCountsByDay} 
+            />
+
+            {/* カレンダー */}
+            <MonthlyCalendar 
+              schedule={schedule}
+              staff={staff}
+              year={year}
+              month={month}
+            />
           </div>
         </main>
 
-        <footer className="text-center py-12 text-slate-400 text-[10px] tracking-widest">
-          &copy; 2026 DIGSY SMART SHIFT SCHEDULER. 
+        <footer className="text-center py-10 text-slate-400 text-xs">
+          &copy; 2025 digsy Smart Shift Scheduler. すべての変更は自動保存されます。
         </footer>
       </div>
     </div>
