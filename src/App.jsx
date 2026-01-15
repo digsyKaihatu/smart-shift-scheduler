@@ -52,8 +52,22 @@ const XIcon = ({ size = 24 }) => (
 );
 
 const getJapaneseHolidays = (year, month) => {
-    // 簡易的な祝日ロジック (本来はライブラリ等を使用)
-    return [];
+    // 簡易的な祝日ロジック
+    // ※実運用では内閣府のCSVなどを利用するか、祝日ライブラリを使用します。
+    // ここではデモ用にいくつかの祝日を固定で定義します。
+    const holidays = [];
+    if (month === 1) holidays.push(1, 13); // 元日, 成人の日(2025)
+    if (month === 2) holidays.push(11, 23); // 建国記念の日, 天皇誕生日
+    if (month === 3) holidays.push(20); // 春分の日
+    if (month === 4) holidays.push(29); // 昭和の日
+    if (month === 5) holidays.push(3, 4, 5, 6); // 憲法記念日, みどりの日, こどもの日, 振替休日
+    if (month === 7) holidays.push(21); // 海の日
+    if (month === 8) holidays.push(11); // 山の日
+    if (month === 9) holidays.push(15, 23); // 敬老の日, 秋分の日
+    if (month === 10) holidays.push(13); // スポーツの日
+    if (month === 11) holidays.push(3, 23); // 文化の日, 勤労感謝の日
+    // ... 他の月も必要に応じて追加
+    return holidays;
 };
 
 const formatValue = (value) => {
@@ -200,7 +214,7 @@ const formatDate = (date) => {
 };
 
 // =============================================================================
-// 2. Initial Data
+// 2. Initial Data & Generators
 // =============================================================================
 
 const initialShiftPatterns = [
@@ -237,6 +251,54 @@ const initialAdminConfig = {
     submissionNotificationIds: ''
 };
 
+// 自動シフト生成ロジック
+const generateScheduleForMonth = (year, month, staffData, shiftPatternsData) => {
+    const scheduleForMonth = {};
+    const daysInMonth = new Date(year, month, 0).getDate();
+    const monthHolidays = getJapaneseHolidays(year, month);
+
+    staffData.forEach(staffMember => {
+        const staffId = staffMember.id;
+        scheduleForMonth[staffId] = {};
+        const defaultPattern = staffMember.defaultShift?.pattern;
+        const hasBreakArray = staffMember.defaultShift?.hasBreakArray || [true, true, true, true, true];
+
+        for (let day = 1; day <= daysInMonth; day++) {
+            const date = new Date(year, month - 1, day);
+            const dayOfWeek = date.getDay(); // Sunday: 0, Monday: 1, ..., Saturday: 6
+            const isHoliday = monthHolidays.includes(day);
+
+            if (dayOfWeek === 0 || dayOfWeek === 6 || isHoliday) {
+                scheduleForMonth[staffId][day] = 'シフト休';
+            } else {
+                // It's a weekday
+                const patternIndex = dayOfWeek - 1; // Monday (1) -> 0
+                if (defaultPattern && patternIndex >= 0 && patternIndex < defaultPattern.length) {
+                    const patternId = defaultPattern[patternIndex];
+                    if (patternId === 'シフト休') {
+                        scheduleForMonth[staffId][day] = 'シフト休';
+                    } else {
+                        const patternDetails = shiftPatternsData.find(p => p.id === patternId);
+                        if (patternDetails) {
+                             // 休憩あり/なしで実働時間を分岐
+                             // ただし、単純化のため、パターンに定義された workHours をそのまま使う
+                             // もし休憩なしなら +1h するロジックを入れる場合はここで行う
+                             const isBreak = hasBreakArray[patternIndex];
+                             scheduleForMonth[staffId][day] = isBreak ? patternDetails.workHours : (patternDetails.workHours + patternDetails.breakHours);
+                        } else {
+                            scheduleForMonth[staffId][day] = '';
+                        }
+                    }
+                } else {
+                    scheduleForMonth[staffId][day] = ''; 
+                }
+            }
+        }
+    });
+
+    return scheduleForMonth;
+};
+
 // =============================================================================
 // 3. Components
 // =============================================================================
@@ -256,7 +318,9 @@ const HelpGuideModal = ({ onClose }) => (
           <button onClick={onClose}><XIcon size={24} /></button>
         </header>
         <main className="p-6 overflow-y-auto space-y-6">
-            <p>ここに使い方の説明が入ります。</p>
+            <p>1. シフト表のセルをクリックして稼働時間やステータスを入力します。</p>
+            <p>2. 「基本シフト設定」でデフォルトの勤務パターンを設定し、「適用」ボタンで一括反映できます。</p>
+            <p>3. データは自動的にブラウザに保存されます。</p>
         </main>
       </div>
     </div>
@@ -503,7 +567,7 @@ const ShiftSchedule = ({
     onUpdateSchedule, onDeleteStaff, onUpdateStaffInfo, onApplyStaffPattern, onToggleShiftSubmitted, onToggleShiftApproved, onToggleShiftRemanded, onSetDayAsHolidayForAll 
 }) => {
   const containerRef = useRef(null);
-  const hasScrolledRef = useRef(false); // 追加: 初回スクロール制御用
+  const hasScrolledRef = useRef(false); 
   
   const widths = { role: 60, empId: 90, name: 120, setting: 170, submit: 65, remand: 65, approve: 65, del: 45 };
   const stickyPositions = useMemo(() => {
@@ -520,8 +584,6 @@ const ShiftSchedule = ({
     if (!containerRef.current) return;
     const today = new Date();
     
-    // 今月を表示している場合のみ「今日」にスクロールするが、
-    // それは「アプリ起動後の初回」のみに限定する。
     if (today.getFullYear() === year && (today.getMonth() + 1) === month) {
         if (!hasScrolledRef.current) {
             setTimeout(() => {
@@ -964,13 +1026,48 @@ const TaskStaffMappingEditor = ({ staff, tasks, onClose, onSave }) => {
 // 4. Main App
 // =============================================================================
 
+const STORAGE_KEY = 'smart-shift-scheduler-v1';
+
 const App = () => {
-  // --- State (Mocking useShiftData) ---
-  const [staff, setStaff] = useState(initialStaffData);
-  const [schedule, setSchedule] = useState({});
-  const [tasks, setTasks] = useState(initialTasks);
-  const [shiftPatterns, setShiftPatterns] = useState(initialShiftPatterns);
-  const [adminConfig, setAdminConfig] = useState(initialAdminConfig);
+  // Helper to load from storage or default
+  const loadState = (key, fallback) => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        return parsed[key] || fallback;
+      }
+    } catch (e) {
+      console.error("Failed to load", e);
+    }
+    return fallback;
+  };
+
+  const [staff, setStaff] = useState(() => loadState('staff', initialStaffData));
+  const [tasks, setTasks] = useState(() => loadState('tasks', initialTasks));
+  const [shiftPatterns, setShiftPatterns] = useState(() => loadState('shiftPatterns', initialShiftPatterns));
+  const [adminConfig, setAdminConfig] = useState(() => loadState('adminConfig', initialAdminConfig));
+
+  // For schedule, we need to ensure it has data if empty
+  const [schedule, setSchedule] = useState(() => {
+     const savedSchedule = loadState('schedule', null);
+     if (savedSchedule) return savedSchedule;
+     
+     // Generate initial schedule if nothing saved
+     const today = new Date();
+     const y = today.getFullYear();
+     const m = today.getMonth() + 1;
+     return {
+         [`${y}-${m}`]: generateScheduleForMonth(y, m, initialStaffData, initialShiftPatterns)
+     };
+  });
+
+  // Save on change
+  useEffect(() => {
+    const data = { staff, tasks, shiftPatterns, adminConfig, schedule };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+  }, [staff, tasks, shiftPatterns, adminConfig, schedule]);
+
   const [isLoading, setIsLoading] = useState(true);
   const [year, setYear] = useState(new Date().getFullYear());
   const [month, setMonth] = useState(new Date().getMonth() + 1);
@@ -987,7 +1084,6 @@ const App = () => {
   const [isTaskMappingOpen, setIsTaskMappingOpen] = useState(false);
 
   useEffect(() => {
-    // Mock Data Loading
     setTimeout(() => setIsLoading(false), 500);
   }, []);
 
