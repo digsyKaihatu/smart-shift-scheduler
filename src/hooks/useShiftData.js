@@ -1,13 +1,15 @@
-import { useState, useEffect, useRef } from 'react';
-import { doc, getDoc, setDoc } from "firebase/firestore";
-import { db } from '../config/firebase';
-import { initialShiftPatterns, initialStaffData, initialAdminConfig, initialTasks } from '../constants/initialData';
-import { generateInitialSchedule } from '../utils/scheduleUtils';
+import { useState, useEffect } from 'react';
+import { 
+  initializeFirestoreData, subscribeMasters, subscribeStaff, subscribeMonthlySchedule,
+  dbUpdateSchedule, dbUpdateStaff, dbAddStaff, dbDeleteStaff, 
+  dbUpdateTask, dbUpdatePatterns, dbUpdateConfig, dbUpdateStaffShiftStatus
+} from '../utils/firebaseDb';
+import { initialStaffData, initialShiftPatterns, initialTasks, initialAdminConfig } from '../constants/initialData';
 
-export const useShiftData = () => {
+export const useShiftData = (currentYear, currentMonth) => {
   const [isLoading, setIsLoading] = useState(true);
   const [loadingMessage, setLoadingMessage] = useState("データベースに接続しています...");
-  const [saveStatus, setSaveStatus] = useState('saved');
+  const [saveStatus, setSaveStatus] = useState('saved'); // 互換性のため残すが、基本即時保存
   const [initialDataLoaded, setInitialDataLoaded] = useState(false);
 
   // Main State
@@ -17,82 +19,136 @@ export const useShiftData = () => {
   const [shiftPatterns, setShiftPatterns] = useState([]);
   const [adminConfig, setAdminConfig] = useState(initialAdminConfig);
 
-  const scheduleDocRef = doc(db, "schedules", "main");
-  const debouncedSave = useRef(null);
-  const isInitialDataSync = useRef(true);
-
-  // 1. Load Data
+  // 1. 初期化とマスタデータの購読
   useEffect(() => {
-    const loadData = async () => {
+    let unsubMasters = () => {};
+    let unsubStaff = () => {};
+
+    const init = async () => {
       try {
-        const docSnap = await getDoc(scheduleDocRef);
-        if (docSnap.exists()) {
-          setLoadingMessage("データを読み込んでいます...");
-          const data = docSnap.data();
-          setStaff(data.staff || initialStaffData);
-          setSchedule(data.schedule || generateInitialSchedule(initialStaffData, initialShiftPatterns));
-          setTasks(data.tasks || initialTasks);
-          setShiftPatterns(data.shiftPatterns || initialShiftPatterns);
-          setAdminConfig(data.adminConfig || initialAdminConfig);
-        } else {
-          setLoadingMessage("初回セットアップを実行中...");
-          const defaultState = {
-            staff: initialStaffData,
-            schedule: generateInitialSchedule(initialStaffData, initialShiftPatterns),
-            tasks: initialTasks,
-            shiftPatterns: initialShiftPatterns,
-            adminConfig: initialAdminConfig
-          };
-          await setDoc(scheduleDocRef, defaultState);
-          setStaff(defaultState.staff);
-          setSchedule(defaultState.schedule);
-          setTasks(defaultState.tasks);
-          setShiftPatterns(defaultState.shiftPatterns);
-          setAdminConfig(defaultState.adminConfig);
-        }
-      } catch (error) {
-        console.error("Firebase Load Error:", error);
-        setLoadingMessage(`エラー: ${error.message}`);
-        return;
+        await initializeFirestoreData();
+        
+        unsubMasters = subscribeMasters(setTasks, setShiftPatterns, setAdminConfig);
+        unsubStaff = subscribeStaff(setStaff);
+        
+        setInitialDataLoaded(true);
+        setIsLoading(false);
+      } catch (e) {
+        console.error("Init Error:", e);
+        setLoadingMessage("エラーが発生しました: " + e.message);
       }
-      setInitialDataLoaded(true);
-      setIsLoading(false);
     };
-    loadData();
+
+    init();
+
+    return () => {
+      unsubMasters();
+      unsubStaff();
+    };
   }, []);
 
-  // 2. Auto Save
+  // 2. 月ごとのシフトデータの購読 (年・月が変わるたびに購読先を切り替え)
   useEffect(() => {
-    if (!initialDataLoaded) return;
-    if (isInitialDataSync.current) {
-      isInitialDataSync.current = false;
-      return;
+    if (!currentYear || !currentMonth) return;
+    const unsubSchedule = subscribeMonthlySchedule(currentYear, currentMonth, setSchedule);
+    return () => unsubSchedule();
+  }, [currentYear, currentMonth]);
+
+  // --- 更新用ラッパー関数（App.jsx互換用） ---
+
+  const handleUpdateSchedule = async (year, month, staffId, day, value) => {
+    setSaveStatus('saving');
+    try {
+      await dbUpdateSchedule(year, month, staffId, day, value);
+      setSaveStatus('saved');
+    } catch (e) {
+      console.error(e);
+      setSaveStatus('error');
     }
+  };
 
-    setSaveStatus('unsaved');
-    if (debouncedSave.current) clearTimeout(debouncedSave.current);
+  const handleUpdateStaffProperty = async (staffId, field, value) => {
+    setSaveStatus('saving');
+    try {
+      await dbUpdateStaff(staffId, { [field]: value });
+      setSaveStatus('saved');
+    } catch (e) {
+      setSaveStatus('error');
+    }
+  };
 
-    debouncedSave.current = setTimeout(async () => {
+  const handleUpdateStaffFull = async (staffId, updatedData) => {
       setSaveStatus('saving');
       try {
-        await setDoc(scheduleDocRef, { staff, schedule, tasks, shiftPatterns, adminConfig });
+        await dbUpdateStaff(staffId, updatedData);
         setSaveStatus('saved');
-      } catch (error) {
-        console.error("Auto-save failed:", error);
-        setSaveStatus('error');
-      }
-    }, 1500);
+      } catch (e) { setSaveStatus('error'); }
+  };
 
-    return () => clearTimeout(debouncedSave.current);
-  }, [staff, schedule, tasks, shiftPatterns, adminConfig, initialDataLoaded]);
+  const handleAddStaff = async (newStaff) => {
+      setSaveStatus('saving');
+      try {
+          await dbAddStaff(newStaff);
+          setSaveStatus('saved');
+      } catch (e) { setSaveStatus('error'); }
+  };
+
+  const handleDeleteStaff = async (staffId) => {
+      setSaveStatus('saving');
+      try {
+          await dbDeleteStaff(staffId);
+          setSaveStatus('saved');
+      } catch (e) { setSaveStatus('error'); }
+  };
+
+  const handleUpdateTasks = async (newTasks) => {
+      setSaveStatus('saving');
+      try {
+          await dbUpdateTask(newTasks);
+          // StateはonSnapshotで更新されるが、楽観的UIとして即時反映も可
+          setSaveStatus('saved');
+      } catch (e) { setSaveStatus('error'); }
+  };
+
+  const handleUpdatePatterns = async (newPatterns) => {
+    setSaveStatus('saving');
+    try {
+        await dbUpdatePatterns(newPatterns);
+        setSaveStatus('saved');
+    } catch (e) { setSaveStatus('error'); }
+  };
+
+  const handleUpdateConfig = async (newConfig) => {
+      setSaveStatus('saving');
+      try {
+          await dbUpdateConfig(newConfig);
+          setSaveStatus('saved');
+      } catch (e) { setSaveStatus('error'); }
+  };
+
+  const handleUpdateShiftStatus = async (staffId, field, year, month, value) => {
+      setSaveStatus('saving');
+      try {
+          await dbUpdateStaffShiftStatus(staffId, field, year, month, value);
+          setSaveStatus('saved');
+      } catch (e) { setSaveStatus('error'); }
+  };
 
   return {
-    staff, setStaff,
-    schedule, setSchedule,
-    tasks, setTasks,
-    shiftPatterns, setShiftPatterns,
-    adminConfig, setAdminConfig,
+    staff, schedule, tasks, shiftPatterns, adminConfig,
     isLoading, loadingMessage, setLoadingMessage, setIsLoading,
-    saveStatus, initialDataLoaded
+    saveStatus, initialDataLoaded,
+    // Actions
+    actions: {
+        updateSchedule: handleUpdateSchedule,
+        updateStaffProperty: handleUpdateStaffProperty,
+        updateStaffFull: handleUpdateStaffFull,
+        addStaff: handleAddStaff,
+        deleteStaff: handleDeleteStaff,
+        updateTasks: handleUpdateTasks,
+        updatePatterns: handleUpdatePatterns,
+        updateConfig: handleUpdateConfig,
+        updateShiftStatus: handleUpdateShiftStatus
+    }
   };
 };
