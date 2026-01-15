@@ -2,16 +2,13 @@ import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronDownIcon } from '../common/Icons';
 
-const TaskStaffSelector = ({ task, allStaff = [], assignedStaffIds = [], onUpdate, disabled = false }) => {
+const TaskStaffSelector = ({ task, allStaff, assignedStaffIds, onUpdate, disabled = false }) => {
   const [isOpen, setIsOpen] = useState(false);
-  
-  // assignedStaffIds が undefined の場合に備えて空配列をデフォルトにする
-  const safeAssignedStaffIds = assignedStaffIds || [];
 
   const handleToggleStaff = (staffId) => {
-    const newAssignedStaffIds = safeAssignedStaffIds.includes(staffId)
-      ? safeAssignedStaffIds.filter(id => id !== staffId)
-      : [...safeAssignedStaffIds, staffId];
+    const newAssignedStaffIds = assignedStaffIds.includes(staffId)
+      ? assignedStaffIds.filter(id => id !== staffId)
+      : [...assignedStaffIds, staffId];
     onUpdate(task.id, newAssignedStaffIds);
   };
 
@@ -25,13 +22,14 @@ const TaskStaffSelector = ({ task, allStaff = [], assignedStaffIds = [], onUpdat
   };
 
   const assignedStaffNames = allStaff
-    .filter(s => safeAssignedStaffIds.includes(s.id))
+    .filter(s => assignedStaffIds.includes(s.id))
     .map(s => s.name)
     .join(', ');
 
   const buttonText = assignedStaffNames || '担当者を追加...';
   const textColor = assignedStaffNames ? 'text-slate-800' : 'text-slate-400';
   
+  // ポータルを使用したドロップダウン（モーダル）部分
   const editorModal = isOpen ? createPortal(
     <div 
         className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
@@ -54,7 +52,7 @@ const TaskStaffSelector = ({ task, allStaff = [], assignedStaffIds = [], onUpdat
                         <label key={member.id} className="flex items-center space-x-2 p-1.5 rounded hover:bg-slate-100 cursor-pointer">
                             <input
                                 type="checkbox"
-                                checked={safeAssignedStaffIds.includes(member.id)}
+                                checked={assignedStaffIds.includes(member.id)}
                                 onChange={() => handleToggleStaff(member.id)}
                                 className="form-checkbox h-4 w-4 text-[#D9824D] rounded border-slate-300 focus:ring-[#F4B896]"
                             />
