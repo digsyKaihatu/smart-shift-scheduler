@@ -21,7 +21,8 @@ export const downloadScheduleCSV = ({ staff, tasks, schedule, shiftPatterns, tas
       s.role,
       s.employeeId,
       s.name,
-      summarizePattern(s.defaultShift.pattern, shiftPatterns).replace(/\n/g, ' '),
+      // 休憩設定(hasBreakArray)も渡してフォーマットする
+      summarizePattern(s.defaultShift.pattern, shiftPatterns, s.defaultShift.hasBreakArray).replace(/\n/g, ' '),
       s.shiftSubmitted?.[key] ? '☑' : '',
       s.shiftRemanded?.[key] ? '☑' : '',
       s.shiftApproved?.[key] ? '☑' : '',
