@@ -12,6 +12,7 @@ import { getJapaneseHolidays } from './utils/dateUtils';
 import LoadingScreen from './components/common/LoadingScreen';
 import HelpGuideModal from './components/common/HelpGuideModal';
 import ShiftSchedule from './components/schedule/ShiftSchedule';
+import MonthlyCalendar from './components/schedule/MonthlyCalendar'; // 追加
 import TaskShortageDisplay from './components/tasks/TaskShortageDisplay';
 import { ConfirmDeleteModal } from './components/common/Modal';
 
@@ -63,7 +64,6 @@ const MainContent = () => {
         const val = schedule[key]?.[s.id]?.[day];
         const isWorking = (typeof val === 'number' && val > 0) || (val?.hours > 0);
         if (isWorking) {
-          // 防御的コーディング: possibleTasks が undefined の場合のエラーを防止
           (s.possibleTasks || []).forEach(tId => {
             if (counts[day][tId] !== undefined) {
               counts[day][tId] = (counts[day][tId] || 0) + 1;
@@ -75,13 +75,15 @@ const MainContent = () => {
     return counts;
   }, [schedule, key, staff, tasks, days]);
 
-  const handleUpdateSchedule = (staffId, day, value) => {
+  // 更新関数を拡張（MonthlyCalendarからの年・月指定にも対応）
+  const handleUpdateSchedule = (staffId, day, value, targetYear = year, targetMonth = month) => {
+    const targetKey = `${targetYear}-${targetMonth}`;
     setSchedule(prev => {
-      const newMonth = { ...(prev[key] || {}) };
+      const newMonth = { ...(prev[targetKey] || {}) };
       const newStaff = { ...(newMonth[staffId] || {}) };
       newStaff[day] = value;
       newMonth[staffId] = newStaff;
-      return { ...prev, [key]: newMonth };
+      return { ...prev, [targetKey]: newMonth };
     });
   };
 
@@ -158,7 +160,6 @@ const MainContent = () => {
             holidays={currentMonthHolidays}
             taskCountsByDay={taskCountsByDay} 
             isAdmin={isAdmin}
-            onUpdateTask={(id, name) => setStaff(prev => prev.map(s => ({...s, possibleTasks: s.possibleTasks || []})))} // ダミー
             onUpdateTaskStaff={(taskId, staffIds) => {
                 setStaff(prev => prev.map(s => {
                     const isAssigned = staffIds.includes(s.id);
@@ -169,6 +170,19 @@ const MainContent = () => {
                     return { ...s, possibleTasks: newTasks };
                 }));
             }}
+        />
+
+        {/* マンスリーカレンダーの復元 */}
+        <MonthlyCalendar 
+            schedule={schedule}
+            staff={staff}
+            tasks={tasks}
+            shiftPatterns={shiftPatterns}
+            initialYear={year}
+            initialMonth={month}
+            onUpdateSchedule={handleUpdateSchedule}
+            isAdmin={isAdmin}
+            currentUser={currentUser}
         />
       </div>
       {isHelpOpen && <HelpGuideModal onClose={() => setIsHelpOpen(false)} />}
