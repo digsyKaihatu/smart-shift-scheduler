@@ -69,7 +69,7 @@ export const summarizePattern = (pattern, patterns, hasBreakArray) => {
     // 一括表示（すべて同じ場合）
     if (isUniform) {
         if (firstId === 'シフト休') {
-            return '月〜金: 休'; // 要望に合わせて「休」に短縮
+            return '月〜金: シフト休';
         }
         const p = patterns.find(x => x.id === firstId);
         if (p) {
@@ -108,7 +108,7 @@ export const summarizePattern = (pattern, patterns, hasBreakArray) => {
             const { pId, isBreak } = JSON.parse(key);
 
             if (pId === 'シフト休') {
-                contentStr = '休'; // 要望に合わせて「休」に短縮
+                contentStr = 'シフト休';
             } else {
                 const p = patterns.find(x => x.id === pId);
                 if (p) {
@@ -116,9 +116,9 @@ export const summarizePattern = (pattern, patterns, hasBreakArray) => {
                     contentStr = `${p.name}：${p.startTime}～${p.endTime}　${breakLabel}`;
                 } else {
                     // フォールバック: マスタに見つからない場合
-                    // 万が一IDに「シフト休」や「休」という文字列が含まれていれば「休」とみなす（セーフティ）
+                    // 万が一IDに「シフト休」や「休」という文字列が含まれていれば「シフト休」とみなす（セーフティ）
                     if (String(pId).includes('シフト休') || String(pId).includes('休')) {
-                         contentStr = '休';
+                         contentStr = 'シフト休';
                     } else {
                          contentStr = `?`; 
                     }
