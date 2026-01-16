@@ -1,9 +1,8 @@
 import React, { useRef, useMemo, useEffect } from 'react';
-import { summarizePattern } from '../../utils/scheduleUtils';
-import { EditableCell, EditableStaffInfoCell } from '../common/EditableCells';
-import { DeleteIcon, SetHolidayIcon, UnlockIcon } from '../common/Icons';
-// バージョンなしのファイルをインポート
-import ScheduleShiftPatternEditor from './ScheduleShiftPatternEditor';
+import { summarizePattern } from '../../utils/scheduleUtils.js';
+import { EditableCell, EditableStaffInfoCell } from '../common/EditableCells.jsx';
+import { DeleteIcon, SetHolidayIcon, UnlockIcon } from '../common/Icons.jsx';
+import ScheduleShiftPatternEditor from './ScheduleShiftPatternEditor.jsx';
 
 // -----------------------------------------------------------------------------
 // メインコンポーネント: ShiftSchedule
@@ -236,7 +235,10 @@ const ShiftSchedule = ({
                             </div>
 
                             {/* 日付セル (スクロール) */}
-                            {safeDays.map(({ day }) => (
+                            {safeDays.map(({ day, dayOfWeek }) => { // dayOfWeek を分割代入
+                                const isHoliday = holidays.includes(day);
+                                const isWeekend = dayOfWeek === '土' || dayOfWeek === '日';
+                                return (
                                 <EditableCell 
                                     key={day} 
                                     value={schedule[s.id]?.[day] ?? ''} 
@@ -245,8 +247,11 @@ const ShiftSchedule = ({
                                     disabled={!isEditable} 
                                     borderClass="border-slate-200" 
                                     isToday={new Date().getDate() === day && (new Date().getMonth()+1) === month} 
+                                    isHoliday={isHoliday}
+                                    isWeekend={isWeekend}
                                 />
-                            ))}
+                                );
+                            })}
                         </div>
                     );
                 })}
