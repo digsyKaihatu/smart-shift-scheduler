@@ -49,6 +49,7 @@ export const generateInitialSchedule = (staffData, shiftPatternsData) => {
 
 /**
  * シフトパターンのサマリーを生成する関数
+ * 同じ設定（パターンIDと休憩有無）の曜日をまとめて表示します。
  * @param {Array} pattern - ['A', 'A', 'B', 'A', 'A'] のようなパターンの配列
  * @param {Array} patterns - シフトパターンの定義データ
  * @param {Array} hasBreakArray - [true, true, false, true, true] のような休憩有無の配列
@@ -57,41 +58,52 @@ export const summarizePattern = (pattern, patterns, hasBreakArray) => {
     if (!pattern || pattern.length !== 5) return '未設定';
     const DAY_NAMES = ['月', '火', '水', '木', '金'];
 
-    // 休憩設定の取得ヘルパー（データがない場合はtrue=休憩ありとみなす）
-    const getBreak = (i) => Array.isArray(hasBreakArray) ? hasBreakArray[i] : true;
+    // 設定内容を一意なキーに変換するヘルパー関数
+    const getSettingKey = (index) => {
+        const pId = pattern[index];
+        // データがない場合はデフォルトtrue（休憩あり）とする
+        const isBreak = Array.isArray(hasBreakArray) ? hasBreakArray[index] : true;
+        
+        if (pId === 'シフト休') return 'HOLIDAY';
+        return `WORK_${pId}_${isBreak}`;
+    };
 
-    // 5日間すべて同じ設定かどうかをチェック
-    const firstId = pattern[0];
-    const firstBreak = getBreak(0);
-    const isUniform = pattern.every((id, i) => id === firstId && getBreak(i) === firstBreak);
+    // グループ化のためのMap (挿入順序を保持)
+    const groups = new Map();
 
-    // 一括表示（すべて同じ場合）
-    if (isUniform) {
-        if (firstId === 'シフト休') {
-            return '月〜金: シフト休';
+    for (let i = 0; i < 5; i++) {
+        const key = getSettingKey(i);
+        if (!groups.has(key)) {
+            groups.set(key, { key, days: [] });
         }
-        const p = patterns.find(x => x.id === firstId);
-        if (p) {
-            // ここを変更: (休有)/(休無) -> 休憩あり/休憩なし
-            const breakStr = firstBreak ? '休憩あり' : '休憩なし';
-            return `月〜金 ${p.startTime}～${p.endTime} ${breakStr}`;
-        }
+        groups.get(key).days.push(DAY_NAMES[i]);
     }
 
-    // 曜日ごとの表示（設定が異なる場合）
-    const lines = pattern.map((pId, index) => {
-        const isBreak = getBreak(index);
-        // ここを変更: (有)/(無) -> (休憩あり)/(休憩なし) ※スペースの都合上、カッコ付き等で区別
-        const breakLabel = isBreak ? "(休憩あり)" : "(休憩なし)";
-        
-        if (pId === 'シフト休') return `${DAY_NAMES[index]}:休`;
-        
-        const p = patterns.find(x => x.id === pId);
-        if (!p) return `${DAY_NAMES[index]}:?`;
-        
-        return `${DAY_NAMES[index]}:${p.name}${breakLabel}`;
-    });
+    const resultLines = [];
 
-    // 2行に分けて表示（月〜水 / 木〜金）
-    return `${lines.slice(0, 3).join(' ')}\n${lines.slice(3).join(' ')}`;
+    for (const group of groups.values()) {
+        const { key, days } = group;
+        const daysStr = days.join('、');
+        let contentStr = '';
+
+        if (key === 'HOLIDAY') {
+            contentStr = 'シフト休';
+        } else {
+            // key format: WORK_{patternId}_{isBreak}
+            const parts = key.split('_');
+            const pId = parts[1];
+            const isBreak = parts[2] === 'true';
+
+            const p = patterns.find(x => x.id === pId);
+            if (p) {
+                const breakLabel = isBreak ? '休憩あり' : '休憩なし';
+                contentStr = `${p.name}：${p.startTime}～${p.endTime}　${breakLabel}`;
+            } else {
+                contentStr = `?`;
+            }
+        }
+        resultLines.push(`${daysStr}　${contentStr}`);
+    }
+
+    return resultLines.join('\n');
 };
