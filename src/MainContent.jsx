@@ -2,29 +2,27 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { useOktaAuth } from '@okta/okta-react';
 
 // Hooks & Services & Utils
-// 拡張子を明示的に指定して解決エラーを防ぐ
-import { useShiftData } from './hooks/useShiftData.js';
-import { chatService } from './services/chatService.js';
-import { downloadScheduleCSV } from './utils/csvExporter.js';
-import { getJapaneseHolidays, formatValue } from './utils/dateUtils.js';
-import { generateScheduleForMonth, summarizePattern } from './utils/scheduleUtils.js';
+import { useShiftData } from './hooks/useShiftData';
+import { chatService } from './services/chatService';
+import { downloadScheduleCSV } from './utils/csvExporter';
+import { getJapaneseHolidays, formatValue } from './utils/dateUtils';
+import { generateScheduleForMonth, summarizePattern } from './utils/scheduleUtils';
 
 // Components
-// 拡張子を明示的に指定
-import LoadingScreen from './components/common/LoadingScreen.jsx';
-import HelpGuideModal from './components/common/HelpGuideModal.jsx';
-import { ConfirmationModal, ConfirmDeleteModal } from './components/common/Modal.jsx';
-import Legend from './components/schedule/Legend.jsx';
-import ShiftSchedule from './components/schedule/ShiftSchedule.jsx';
-import MonthlyCalendar from './components/schedule/MonthlyCalendar.jsx';
-import ShiftPatternDisplay from './components/schedule/ShiftPatternDisplay.jsx';
-import ShiftApprovalModal from './components/schedule/ShiftApprovalModal.jsx';
-import TaskShortageDisplay from './components/tasks/TaskShortageDisplay.jsx';
-import TaskStaffMappingEditor from './components/tasks/TaskStaffMappingEditor.jsx';
-import MemberManagementModal from './components/admin/MemberManagementModal.jsx';
-import AdminSettingsModal from './components/admin/AdminSettingsModal.jsx';
+import LoadingScreen from './components/common/LoadingScreen';
+import HelpGuideModal from './components/common/HelpGuideModal';
+import { ConfirmationModal, ConfirmDeleteModal } from './components/common/Modal';
+import Legend from './components/schedule/Legend';
+import ShiftSchedule from './components/schedule/ShiftSchedule';
+import MonthlyCalendar from './components/schedule/MonthlyCalendar';
+import ShiftPatternDisplay from './components/schedule/ShiftPatternDisplay';
+import ShiftApprovalModal from './components/schedule/ShiftApprovalModal';
+import TaskShortageDisplay from './components/tasks/TaskShortageDisplay';
+import TaskStaffMappingEditor from './components/tasks/TaskStaffMappingEditor';
+import MemberManagementModal from './components/admin/MemberManagementModal';
+import AdminSettingsModal from './components/admin/AdminSettingsModal';
 
-const MainContent_v1 = () => {
+const MainContent = () => {
   const { oktaAuth, authState } = useOktaAuth();
   const {
     staff, setStaff, schedule, setSchedule, tasks, setTasks,
@@ -419,4 +417,4 @@ const MainContent_v1 = () => {
   );
 };
 
-export default MainContent_v1;
+export default MainContent;
