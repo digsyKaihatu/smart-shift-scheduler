@@ -3,7 +3,7 @@ import { summarizePattern } from '../../utils/scheduleUtils';
 import { EditableCell, EditableStaffInfoCell } from '../common/EditableCells';
 import { DeleteIcon, SetHolidayIcon, UnlockIcon } from '../common/Icons';
 // バージョン付きのエディタをインポート（拡張子なしで指定）
-import ScheduleShiftPatternEditor from './ScheduleShiftPatternEditor_v1';
+import ScheduleShiftPatternEditor from './ScheduleShiftPatternEditor';
 
 // -----------------------------------------------------------------------------
 // メインコンポーネント: ShiftSchedule
