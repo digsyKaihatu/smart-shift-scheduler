@@ -2,10 +2,13 @@ import { summarizePattern } from './scheduleUtils';
 
 const escapeCsvCell = (cellData) => {
   if (typeof cellData === 'object' && cellData !== null) {
-    if ('type' in cellData && cellData.type === 'シフト休') return 'シフト休';
+    if ('type' in cellData && cellData.type === 'シフト休') return '休'; // ここを修正: "シフト休" -> "休"
     if ('type' in cellData && 'hours' in cellData) return `${cellData.type}(${cellData.hours})`;
   }
   const stringData = String(cellData ?? '');
+  // 文字列の場合もチェックして置換（念のため）
+  if (stringData === 'シフト休') return '休';
+  
   return stringData.includes(',') ? `"${stringData}"` : stringData;
 };
 
