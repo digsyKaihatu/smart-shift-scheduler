@@ -10,7 +10,7 @@ const ScheduleShiftPatternEditor = ({ pattern, hasBreakArray, patterns, onApply,
   const [editedPattern, setEditedPattern] = useState(pattern || Array(5).fill('シフト休'));
   const [editedHasBreak, setEditedHasBreak] = useState(Array.isArray(hasBreakArray) ? [...hasBreakArray] : Array(5).fill(true));
   
-  // 9:00スタートのパターンを除外するフィルタリング（ShiftPatternDisplayと同様のロジック）
+  // 9:00スタートのパターンを除外するフィルタリング
   const filteredPatterns = patterns.filter(p => p.startTime !== '9:00' && p.startTime !== '09:00');
   
   const [bulkPatternId, setBulkPatternId] = useState(filteredPatterns[0]?.id || 'シフト休');
@@ -63,7 +63,6 @@ const ScheduleShiftPatternEditor = ({ pattern, hasBreakArray, patterns, onApply,
                 <div className="flex items-center justify-between">
                     <label className="font-bold text-xs text-orange-800">月〜金 一括設定</label>
                     <div className="flex items-center gap-2">
-                        {/* チェックボックスを削除し、テキスト表示に変更 */}
                         <span className={`text-[10px] font-bold ${bulkBreak ? 'text-orange-700' : 'text-slate-400'}`}>
                             {bulkBreak ? '休憩あり' : '休憩なし'}
                         </span>
@@ -72,7 +71,11 @@ const ScheduleShiftPatternEditor = ({ pattern, hasBreakArray, patterns, onApply,
                 <div className="flex items-center gap-2">
                     <select value={bulkPatternId} onChange={(e) => handleBulkChange(e.target.value)} className="flex-grow text-xs p-1.5 border border-slate-300 rounded bg-white">
                         <option value="シフト休">シフト休</option>
-                        {filteredPatterns.map(p => <option key={p.id} value={p.id}>{`${p.name} (${p.startTime}-${p.endTime})`}</option>)}
+                        {filteredPatterns.map(p => (
+                            <option key={p.id} value={p.id}>
+                                {`${p.name} (${p.startTime}-${p.endTime}) ${p.breakHours > 0 ? '休憩あり' : '休憩なし'}`}
+                            </option>
+                        ))}
                     </select>
                     <button onClick={applyBulkToAll} className="text-xs px-3 py-1.5 bg-[#F4B896] text-white rounded font-bold hover:bg-[#E8A680]">適用</button>
                 </div>
@@ -84,11 +87,14 @@ const ScheduleShiftPatternEditor = ({ pattern, hasBreakArray, patterns, onApply,
                         <div className="col-span-8">
                             <select value={editedPattern[index]} onChange={(e) => handlePatternChange(index, e.target.value)} className="w-full text-xs p-1.5 border border-slate-300 rounded-md bg-white">
                                 <option value="シフト休">シフト休</option>
-                                {filteredPatterns.map(p => <option key={p.id} value={p.id}>{`${p.name} (${p.startTime}-${p.endTime})`}</option>)}
+                                {filteredPatterns.map(p => (
+                                    <option key={p.id} value={p.id}>
+                                        {`${p.name} (${p.startTime}-${p.endTime}) ${p.breakHours > 0 ? '休憩あり' : '休憩なし'}`}
+                                    </option>
+                                ))}
                             </select>
                         </div>
                         <div className="col-span-3 flex items-center gap-1 justify-end">
-                            {/* チェックボックスを削除し、テキスト表示に変更 */}
                             <span className={`text-[10px] whitespace-nowrap ${editedHasBreak[index] ? 'text-slate-600' : 'text-slate-300'}`}>
                                 {editedPattern[index] === 'シフト休' ? '-' : (editedHasBreak[index] ? '休憩あり' : '休憩なし')}
                             </span>
