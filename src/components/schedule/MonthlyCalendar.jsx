@@ -1,5 +1,12 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 
+// インポートエラー回避のため、祝日取得ロジックをここに定義
+const getJapaneseHolidays = (year, month) => {
+  // 必要に応じて祝日ロジックを実装してください。現在は空配列を返します。
+  // 将来的には祝日判定ライブラリやAPIを使用することをお勧めします。
+  return [];
+};
+
 // アイコンコンポーネント
 const ChevronLeft = ({ size = 24 }) => (
   <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -74,6 +81,11 @@ const MonthlyCalendar = ({ schedule, staff, tasks, shiftPatterns, initialYear, i
       date.setDate(date.getDate() + 1);
     }
     return days;
+  }, [currentDate]);
+
+  // 現在の月の祝日を取得
+  const holidays = useMemo(() => {
+    return getJapaneseHolidays(currentDate.getFullYear(), currentDate.getMonth() + 1);
   }, [currentDate]);
 
   // 初期表示時および月変更時にスクロール位置を調整（ブラウザの縦スクロールを発生させない安全な方法）
@@ -193,16 +205,23 @@ const MonthlyCalendar = ({ schedule, staff, tasks, shiftPatterns, initialYear, i
   
   const CELL_WIDTH = "100px"; 
 
-  const getDayHeaderClass = (dayOfWeek, isHoliday, isToday) => {
+  // ヘッダー（日付部分）のスタイルクラス
+  const getDayHeaderClass = (dayOfWeekIndex, isHoliday, isToday) => {
       let baseClasses = `sticky top-0 z-30 p-2 text-xs font-semibold text-center border-b border-r whitespace-nowrap min-w-[${CELL_WIDTH}] w-[${CELL_WIDTH}] box-border flex-shrink-0 flex items-center justify-center`; 
       
       if (isToday) {
-          // 今日のハイライト
           return `${baseClasses} bg-yellow-100 text-yellow-900 border-yellow-300 shadow-inner ring-2 ring-yellow-300 ring-inset`;
       }
 
-      if (dayOfWeek === '土') return `${baseClasses} bg-sky-100 text-sky-800 border-sky-200`;
-      if (dayOfWeek === '日' || isHoliday) return `${baseClasses} bg-pink-100 text-pink-800 border-pink-200`;
+      // 土曜日: 青系
+      if (dayOfWeekIndex === 6) {
+           return `${baseClasses} bg-sky-100 text-sky-800 border-sky-200`;
+      }
+      // 日曜日または祝日: 赤系
+      if (dayOfWeekIndex === 0 || isHoliday) {
+           return `${baseClasses} bg-pink-100 text-pink-800 border-pink-200`;
+      }
+      // 平日: デフォルト
       return `${baseClasses} bg-slate-100 text-slate-900 border-slate-300`;
   };
 
@@ -219,6 +238,23 @@ const MonthlyCalendar = ({ schedule, staff, tasks, shiftPatterns, initialYear, i
               members: assignedMembers.map(m => m.userName)
           };
       }).filter(Boolean) : [];
+  };
+
+  // ボディ（イベント一覧部分）の背景色を決定する関数
+  const getCellBgClass = (dayOfWeekIndex, isHoliday, isToday) => {
+      if (isToday) {
+          return 'bg-yellow-50 hover:bg-yellow-100 ring-1 ring-inset ring-yellow-200';
+      }
+      // 日曜 または 祝日: 赤系
+      if (dayOfWeekIndex === 0 || isHoliday) { 
+          return 'bg-pink-50 hover:bg-pink-100';
+      }
+      // 土曜: 青系
+      if (dayOfWeekIndex === 6) { 
+          return 'bg-sky-50 hover:bg-sky-100';
+      }
+      // 平日: デフォルト
+      return 'bg-white hover:bg-slate-50'; 
   };
 
   return (
@@ -257,15 +293,16 @@ const MonthlyCalendar = ({ schedule, staff, tasks, shiftPatterns, initialYear, i
                 </div>
                 {daysInMonth.map((d) => {
                     const dateKey = formatDate(d);
-                    const dayOfWeek = ['日', '月', '火', '水', '木', '金', '土'][d.getDay()];
-                    const isWeekend = dayOfWeek === '土' || dayOfWeek === '日';
+                    const dayOfWeekIndex = d.getDay();
+                    const dayOfWeek = ['日', '月', '火', '水', '木', '金', '土'][dayOfWeekIndex];
+                    const isHoliday = holidays.includes(d.getDate());
                     const isToday = dateKey === formatDate(new Date());
 
                     return (
                         <div 
                             key={d.toISOString()} 
                             data-date={dateKey} // スクロールターゲット用の属性
-                            className={getDayHeaderClass(dayOfWeek, isWeekend, isToday)}
+                            className={getDayHeaderClass(dayOfWeekIndex, isHoliday, isToday)}
                         >
                             <div>{d.getDate()}</div>
                             <div className="ml-1">({dayOfWeek})</div>
@@ -282,6 +319,9 @@ const MonthlyCalendar = ({ schedule, staff, tasks, shiftPatterns, initialYear, i
                 {daysInMonth.map((d) => {
                     const dateKey = formatDate(d);
                     const isToday = dateKey === formatDate(new Date());
+                    const dayOfWeekIndex = d.getDay();
+                    const isHoliday = holidays.includes(d.getDate());
+                    
                     let targetEvents = [];
                     let taskSummary = [];
 
@@ -290,12 +330,13 @@ const MonthlyCalendar = ({ schedule, staff, tasks, shiftPatterns, initialYear, i
                     } else {
                         targetEvents = getFilteredEvents(dateKey);
                     }
+
+                    const bgClass = getCellBgClass(dayOfWeekIndex, isHoliday, isToday);
                     
                     return (
                         <div 
                             key={dateKey} 
-                            // 今日の場合は背景色を変更してハイライト
-                            className={`border-r border-slate-200 min-w-[${CELL_WIDTH}] w-[${CELL_WIDTH}] p-1 valign-top transition-colors border-b border-slate-200 flex-shrink-0 box-border ${isToday ? 'bg-yellow-50 hover:bg-yellow-100 ring-1 ring-inset ring-yellow-200' : 'bg-white hover:bg-slate-50'}`}
+                            className={`border-r border-slate-200 min-w-[${CELL_WIDTH}] w-[${CELL_WIDTH}] p-1 valign-top transition-colors border-b border-slate-200 flex-shrink-0 box-border ${bgClass}`}
                             onClick={() => viewMode === 'tasks' ? handleDateClick(d, taskSummary) : handleDateClick(d, targetEvents)}
                         >
                             <div className="flex flex-col gap-1 max-h-[300px] overflow-y-auto scrollbar-thin">
@@ -318,7 +359,7 @@ const MonthlyCalendar = ({ schedule, staff, tasks, shiftPatterns, initialYear, i
                                             return (
                                                 <div 
                                                     key={ev.id} 
-                                                    className={`group relative flex items-center justify-between p-1.5 rounded text-[10px] border-l-2 shadow-sm hover:shadow-md transition-all cursor-pointer ${isToday ? 'bg-opacity-90' : 'bg-opacity-50'}`}
+                                                    className={`group relative flex items-center justify-between p-1.5 rounded text-[10px] border-l-2 shadow-sm hover:shadow-md transition-all cursor-pointer ${isToday ? 'bg-opacity-90' : 'bg-opacity-80 bg-white'}`}
                                                     style={{
                                                         backgroundColor: colors.bg,
                                                         borderColor: colors.border,
