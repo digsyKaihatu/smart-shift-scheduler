@@ -48,7 +48,7 @@ const formatValue = (value) => {
 /**
  * シフト入力セル
  */
-export const EditableCell = ({ value, onUpdate, borderClass, disabled = false, isAdmin = false, isToday = false }) => {
+export const EditableCell = ({ value, onUpdate, borderClass, disabled = false, isAdmin = false, isToday = false, isHoliday = false, isWeekend = false }) => {
   const [mode, setMode] = useState('view');
   const [inputValue, setInputValue] = useState('');
   const [editingSpecialShift, setEditingSpecialShift] = useState(null);
@@ -100,12 +100,23 @@ export const EditableCell = ({ value, onUpdate, borderClass, disabled = false, i
     if (typeof value === 'number' && value > 0) return `bg-green-100 ${hoverClass}`;
     if (typeof value === 'object' && value !== null && 'type' in value) {
         if (value.type.includes('有休')) return `bg-yellow-100 ${hoverClass}`;
+        // オブジェクト形式のシフト休の場合
+        if (value.type === 'シフト休') {
+             if (!isHoliday && !isWeekend) {
+                 return `bg-white text-black ${hoverClass}`; // 平日シフト休
+             }
+             return `bg-slate-200 ${hoverClass}`; // 土日祝シフト休
+        }
         return `bg-slate-200 ${hoverClass}`;
     }
     switch(value) {
       case '有休': return `bg-yellow-100 ${hoverClass}`;
       case '通休': return `bg-blue-100 ${hoverClass}`;
-      case 'シフト休': return `bg-slate-200 ${hoverClass}`;
+      case 'シフト休': 
+          if (!isHoliday && !isWeekend) {
+              return `bg-white text-black ${hoverClass}`; // 平日シフト休
+          }
+          return `bg-slate-200 ${hoverClass}`; // 土日祝シフト休
       case '欠勤': return `bg-red-100 ${hoverClass}`;
       default: return `${todayClass || 'bg-white'} ${isEffectivelyDisabled ? '' : 'hover:bg-slate-50'}`;
     }
