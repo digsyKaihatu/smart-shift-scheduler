@@ -1,246 +1,211 @@
-import React, { useRef, useMemo, useEffect } from 'react';
-import { summarizePattern } from '../../utils/scheduleUtils';
-import { EditableCell, EditableStaffInfoCell } from '../common/EditableCells';
-import { DeleteIcon, SetHolidayIcon, UnlockIcon } from '../common/Icons';
-// バージョンなしのファイルをインポート
-import ScheduleShiftPatternEditor from './ScheduleShiftPatternEditor';
+import React, { useState, useEffect, useRef } from 'react';
 
-// -----------------------------------------------------------------------------
-// メインコンポーネント: ShiftSchedule
-// -----------------------------------------------------------------------------
-
-const ShiftSchedule = ({ 
-    currentUser, 
-    isAdmin, 
-    schedule, 
-    staff = [], 
-    days = [],
-    holidays = [], 
-    shiftPatterns = [], 
-    year, 
-    month, 
-    onUpdateSchedule, 
-    onDeleteStaff, 
-    onUpdateStaffInfo, 
-    onApplyStaffPattern, 
-    onToggleShiftSubmitted, 
-    onToggleShiftApproved, 
-    onToggleShiftRemanded, 
-    onSetDayAsHolidayForAll 
-}) => {
-  const containerRef = useRef(null);
-  const hasScrolledRef = useRef(false); // 初回スクロール制御用フラグ
-  
-  // 安全な配列を保証
-  const safeDays = useMemo(() => Array.isArray(days) ? days : [], [days]);
-  const sortedStaff = useMemo(() => {
-    if (!Array.isArray(staff)) return [];
-    return [...staff].sort((a, b) => String(a.employeeId || '').localeCompare(String(b.employeeId || ''), undefined, { numeric: true }));
-  }, [staff]);
-  
-  // 固定列の幅定義
-  const widths = { 
-    role: 60, 
-    empId: 90, 
-    name: 120, 
-    setting: 170, 
-    submit: 65, 
-    remand: 65, 
-    approve: 65, 
-    del: 45 
+/**
+ * 閲覧モードでの表記を短縮するヘルパー関数
+ * インポートエラー回避のため、ファイル内に定義します。
+ */
+const formatValue = (value) => {
+  const mapping = {
+    'シフト休': '休',
+    '欠勤': '欠',
+    '通休': '通',
+    '有休': '有',
+    '遅刻': '遅',
+    '早退': '早'
   };
 
-  // Sticky Left の位置計算
-  // 順序: role -> empId -> name -> setting -> submit -> remand -> approve -> del
-  const stickyPositions = useMemo(() => {
-    let currentLeft = 0;
-    const positions = {};
-    const keys = ['role', 'empId', 'name', 'setting', 'submit', 'remand', 'approve', 'del'];
-    
-    keys.forEach(key => {
-      positions[key] = currentLeft;
-      currentLeft += widths[key];
-    });
-    return positions;
-  }, [widths]);
+  if (typeof value === 'number') {
+    return value % 1 === 0 ? Math.floor(value) : value.toFixed(1);
+  }
 
-  // 「今日」へスクロールする処理（起動時またはデータロード後の1回のみ）
-  useEffect(() => {
-    if (!containerRef.current) return;
-    if (safeDays.length === 0) return; // データロード待ち
-    if (hasScrolledRef.current) return; // すでに実行済みなら何もしない
-
-    const today = new Date();
-    // 表示中の年月が現在の年月と一致する場合のみスクロールを実行
-    if (today.getFullYear() === year && (today.getMonth() + 1) === month) {
-        hasScrolledRef.current = true; // 実行済みにセット
-        setTimeout(() => {
-            const container = containerRef.current;
-            if (!container) return; // 念のため再チェック
-
-            const target = container.querySelector(`[data-day="${today.getDate()}"]`);
-            if (target) {
-                // 左側の固定列の合計幅
-                const fixedColumnsWidth = Object.values(widths).reduce((a, b) => a + b, 0);
-                
-                const elementLeft = target.offsetLeft;
-                
-                // 固定列の右端から、表示領域の中央あたりに来るように計算
-                // 簡易的に要素の左端を固定列の右端に合わせる（マージンを持たせる）
-                const scrollTo = elementLeft - fixedColumnsWidth - 50; 
-
-                container.scrollTo({ left: Math.max(0, scrollTo), behavior: 'smooth' });
-            }
-        }, 300);
+  // オブジェクト形式（時間単位の休暇など）の場合
+  if (value && typeof value === 'object' && 'type' in value) {
+    let displayType = value.type;
+    // 完全一致での置換
+    if (mapping[value.type]) {
+      displayType = mapping[value.type];
     } else {
-        // 現在の月ではない場合も、初期化処理としては「完了」とみなし、
-        // 後からその月に移動したときに勝手にスクロールしないようにする
-        hasScrolledRef.current = true;
+      // 部分一致（午前有休 -> 午前有 など）の置換
+      Object.entries(mapping).forEach(([full, short]) => {
+        displayType = displayType.replace(full, short);
+      });
     }
-  }, [year, month, safeDays, widths]);
 
-  // スタイル定義
-  const stickyHeaderStyle = (key) => ({
-    position: 'sticky',
-    left: stickyPositions[key],
-    width: widths[key],
-    minWidth: widths[key],
-    maxWidth: widths[key],
-    zIndex: 50 // 左上の角（ヘッダー×固定列）は最前面
-  });
+    if ('locked' in value) {
+      return displayType;
+    }
+    return `${displayType}(${value.hours})`;
+  }
 
-  const stickyCellStyle = (key) => ({
-    position: 'sticky',
-    left: stickyPositions[key],
-    width: widths[key],
-    minWidth: widths[key],
-    maxWidth: widths[key],
-    zIndex: 30 // 固定列（データ部分）は通常のセルより前面
-  });
+  // 文字列の場合
+  if (typeof value === 'string') {
+    return mapping[value] || value;
+  }
 
-  const headerRowClass = "flex w-max";
-  const headerCellBase = "sticky top-0 bg-slate-200 p-1.5 border-b-2 border-r border-slate-300 font-bold text-[11px] text-center h-12 flex items-center justify-center flex-shrink-0 box-border";
-  const cellBase = "bg-white border-b border-r border-slate-300 flex items-center h-10 flex-shrink-0 box-border";
+  return value;
+};
+
+/**
+ * シフト入力セル
+ */
+export const EditableCell = ({ value, onUpdate, borderClass, disabled = false, isAdmin = false, isToday = false }) => {
+  const [mode, setMode] = useState('view');
+  const [inputValue, setInputValue] = useState('');
+  const [editingSpecialShift, setEditingSpecialShift] = useState(null);
+  const cellRef = useRef(null);
+  const inputRef = useRef(null);
+
+  const isLocked = typeof value === 'object' && value !== null && 'locked' in value && value.locked;
+  const isEffectivelyDisabled = disabled || (isLocked && !isAdmin);
+
+  useEffect(() => {
+    if (mode === 'input' && inputRef.current) {
+      inputRef.current.focus();
+      inputRef.current.select();
+    }
+  }, [mode]);
+
+  const commitInput = () => {
+    const hours = parseFloat(inputValue);
+    if (!isNaN(hours) && hours >= 0) {
+      onUpdate(editingSpecialShift ? { type: editingSpecialShift, hours } : hours);
+    }
+    setMode('view');
+    setEditingSpecialShift(null);
+  };
+
+  const handleSelectChange = (e) => {
+    const selected = e.target.value;
+    const specialShiftOptions = ['遅刻', '早退', '午前有休', '午後有休', '午前休', '午後休', '午前通休', '午後通休'];
+
+    if (specialShiftOptions.includes(selected)) {
+        const currentHours = (typeof value === 'object' && value?.type === selected) ? value.hours : 4.0;
+        setEditingSpecialShift(selected);
+        setInputValue(String(currentHours));
+        setMode('input');
+    } else if (selected === '稼働時間入力') {
+        setEditingSpecialShift(null);
+        setInputValue(String(typeof value === 'number' ? value : 8.0));
+        setMode('input');
+    } else {
+        onUpdate(selected);
+        setMode('view');
+    }
+  };
+
+  const getBackgroundColor = () => {
+    const hoverClass = isEffectivelyDisabled ? '' : 'hover:bg-opacity-80';
+    const todayClass = isToday && value === '' ? 'bg-yellow-50' : '';
+
+    if (typeof value === 'number' && value > 0) return `bg-green-100 ${hoverClass}`;
+    if (typeof value === 'object' && value !== null && 'type' in value) {
+        if (value.type.includes('有休')) return `bg-yellow-100 ${hoverClass}`;
+        return `bg-slate-200 ${hoverClass}`;
+    }
+    switch(value) {
+      case '有休': return `bg-yellow-100 ${hoverClass}`;
+      case '通休': return `bg-blue-100 ${hoverClass}`;
+      case 'シフト休': return `bg-slate-200 ${hoverClass}`;
+      case '欠勤': return `bg-red-100 ${hoverClass}`;
+      default: return `${todayClass || 'bg-white'} ${isEffectivelyDisabled ? '' : 'hover:bg-slate-50'}`;
+    }
+  };
+  
+  // 幅を w-[75px] に固定してヘッダーと一致させる
+  const baseClasses = `border-b border-r ${borderClass} text-center text-xs h-10 flex items-center justify-center w-[75px] min-w-[75px] max-w-[75px]`;
+
+  if (mode === 'view') {
+    return (
+      <div onClick={() => !isEffectivelyDisabled && setMode('select')} className={`relative ${baseClasses} transition-colors duration-150 ${getBackgroundColor()} ${isEffectivelyDisabled ? 'cursor-not-allowed text-slate-500' : 'cursor-pointer'}`}>
+        <span className="truncate w-full px-0.5">{formatValue(value)}</span>
+      </div>
+    );
+  }
 
   return (
-    <>
-        <style>{`
-            /* スクロールバーのスタイル（必要に応じて） */
-            .custom-scrollbar::-webkit-scrollbar {
-                height: 12px;
-                width: 12px;
-            }
-            .custom-scrollbar::-webkit-scrollbar-track {
-                background: #f1f5f9;
-            }
-            .custom-scrollbar::-webkit-scrollbar-thumb {
-                background: #cbd5e1;
-                border-radius: 6px;
-            }
-            .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-                background: #94a3b8;
-            }
-        `}</style>
-        
-        {/* 全体を1つのコンテナにする */}
-        <div 
-            ref={containerRef}
-            className="bg-white rounded-lg shadow-md ring-1 ring-black ring-opacity-5 overflow-auto border border-slate-200 h-[75vh] custom-scrollbar relative"
+    <div ref={cellRef} className={`${baseClasses} bg-white relative`}>
+      {mode === 'select' ? (
+        <select
+          autoFocus
+          onChange={handleSelectChange}
+          onBlur={() => setMode('view')}
+          className="absolute inset-0 w-full h-full opacity-100 bg-transparent text-center text-xs cursor-pointer appearance-none outline-none focus:ring-2 focus:ring-sky-500"
+          defaultValue=""
         >
-            <div className="min-w-max">
-                {/* ヘッダー行 */}
-                <div className={`${headerRowClass} sticky top-0 z-40`}>
-                    {/* 左側固定ヘッダー */}
-                    <div className={headerCellBase} style={stickyHeaderStyle('role')}>役職</div>
-                    <div className={headerCellBase} style={stickyHeaderStyle('empId')}>社員番号</div>
-                    <div className={headerCellBase} style={stickyHeaderStyle('name')}>稼働名前</div>
-                    <div className={headerCellBase} style={stickyHeaderStyle('setting')}>基本シフト設定</div>
-                    <div className={headerCellBase} style={stickyHeaderStyle('submit')}>提出☑</div>
-                    <div className={headerCellBase} style={stickyHeaderStyle('remand')}>差戻☑</div>
-                    <div className={headerCellBase} style={stickyHeaderStyle('approve')}>承認☑</div>
-                    <div className={`${headerCellBase} border-r-2`} style={stickyHeaderStyle('del')}>削除</div>
-
-                    {/* 日付ヘッダー (スクロール) */}
-                    {safeDays.map(({ day, dayOfWeek }) => {
-                        const isToday = new Date().getDate() === day && (new Date().getMonth()+1) === month;
-                        return (
-                            <div 
-                                key={day} 
-                                className={`${headerCellBase} bg-slate-200 whitespace-nowrap w-[75px] min-w-[75px] max-w-[75px] flex-col ${isToday ? 'bg-yellow-100' : ''}`} 
-                                style={{ zIndex: 40 }} // 通常のヘッダーはz-40
-                                data-day={day}
-                            >
-                                <div className="text-[9px] opacity-70 mb-1">{dayOfWeek}</div>
-                                <div className="text-sm font-bold">{day}</div>
-                                {isAdmin && (
-                                <button onClick={() => onSetDayAsHolidayForAll(day)} className="group absolute bottom-0.5 right-0.5 p-0.5 bg-white/50 rounded-full hover:bg-sky-100">
-                                    {sortedStaff.every(s => typeof (schedule[s.id]?.[day]) === 'object' && (schedule[s.id]?.[day])?.locked) ? <UnlockIcon /> : <SetHolidayIcon />}
-                                </button>
-                                )}
-                            </div>
-                        );
-                    })}
-                </div>
-
-                {/* データ行 */}
-                {sortedStaff.map(s => {
-                    const isEditable = isAdmin || currentUser?.id === s.id;
-                    const defaultShift = s.defaultShift || { pattern: [], hasBreakArray: [] };
-                    
-                    return (
-                        <div key={s.id} className="flex w-max group hover:bg-slate-50 transition-colors">
-                            {/* 左側固定セル */}
-                            <div className={cellBase} style={stickyCellStyle('role')}>
-                                <EditableStaffInfoCell value={s.role} onUpdate={v => onUpdateStaffInfo(s.id, 'role', v)} disabled={!isEditable} className="border-none w-full" />
-                            </div>
-                            <div className={cellBase} style={stickyCellStyle('empId')}>
-                                <EditableStaffInfoCell value={s.employeeId} onUpdate={v => onUpdateStaffInfo(s.id, 'employeeId', v)} disabled={!isEditable} className="border-none w-full" />
-                            </div>
-                            <div className={cellBase} style={stickyCellStyle('name')}>
-                                <EditableStaffInfoCell value={s.name} onUpdate={v => onUpdateStaffInfo(s.id, 'name', v)} disabled={!isEditable} className="border-none w-full" />
-                            </div>
-                            <div className={`${cellBase} px-1`} style={stickyCellStyle('setting')}>
-                                <ScheduleShiftPatternEditor 
-                                    pattern={defaultShift.pattern} 
-                                    hasBreakArray={defaultShift.hasBreakArray} 
-                                    patterns={shiftPatterns} 
-                                    onApply={(p, hb) => onApplyStaffPattern(s.id, p, hb)} 
-                                    summary={summarizePattern(defaultShift.pattern, shiftPatterns, defaultShift.hasBreakArray)} 
-                                    disabled={!isEditable} 
-                                />
-                            </div>
-                            <div className={`${cellBase} justify-center`} style={stickyCellStyle('submit')}>
-                                <input type="checkbox" checked={s.shiftSubmitted?.[`${year}-${month}`] || false} onChange={() => onToggleShiftSubmitted(s.id)} className="h-4 w-4 rounded text-sky-600 cursor-pointer" disabled={!isEditable} />
-                            </div>
-                            <div className={`${cellBase} justify-center`} style={stickyCellStyle('remand')}>
-                                <input type="checkbox" checked={s.shiftRemanded?.[`${year}-${month}`] || false} onChange={() => onToggleShiftRemanded(s.id)} className="h-4 w-4 rounded text-red-600 cursor-pointer" disabled={!isAdmin} />
-                            </div>
-                            <div className={`${cellBase} justify-center`} style={stickyCellStyle('approve')}>
-                                <input type="checkbox" checked={s.shiftApproved?.[`${year}-${month}`] || false} onChange={() => onToggleShiftApproved(s.id)} className="h-4 w-4 rounded text-green-600 cursor-pointer" disabled={!isAdmin} />
-                            </div>
-                            <div className={`${cellBase} justify-center border-r-2`} style={stickyCellStyle('del')}>
-                                {isAdmin && <button onClick={() => onDeleteStaff(s.id)} className="p-1 hover:bg-red-50 rounded-full transition-colors"><DeleteIcon /></button>}
-                            </div>
-
-                            {/* 日付セル (スクロール) */}
-                            {safeDays.map(({ day }) => (
-                                <EditableCell 
-                                    key={day} 
-                                    value={schedule[s.id]?.[day] ?? ''} 
-                                    onUpdate={v => onUpdateSchedule(s.id, day, v)} 
-                                    isAdmin={isAdmin} 
-                                    disabled={!isEditable} 
-                                    borderClass="border-slate-200" 
-                                    isToday={new Date().getDate() === day && (new Date().getMonth()+1) === month} 
-                                />
-                            ))}
-                        </div>
-                    );
-                })}
-            </div>
-        </div>
-    </>
+          <option value="" disabled hidden>選択...</option>
+          <option value="稼働時間入力">稼働時間入力</option>
+          <optgroup label="ステータス">
+              <option value="有休">有休</option>
+              <option value="シフト休">シフト休</option>
+              <option value="通休">通院休暇</option>
+              <option value="欠勤">欠勤</option>
+          </optgroup>
+          <optgroup label="時間単位">
+              {['遅刻', '早退', '午前有休', '午後有休', '午前休', '午後休', '午前通休', '午後通休'].map(opt => (
+                  <option key={opt} value={opt}>{opt.replace('通休', '通院休暇')}</option>
+              ))}
+          </optgroup>
+          <option value="">(クリア)</option>
+        </select>
+      ) : (
+        <>
+          {editingSpecialShift && <span className="absolute left-0.5 top-1/2 -translate-y-1/2 text-[8px] text-slate-500 pointer-events-none scale-75">入力:</span>}
+          <input
+            ref={inputRef}
+            type="number"
+            step="0.5"
+            value={inputValue}
+            onChange={(e) => setInputValue(e.target.value)}
+            onBlur={commitInput}
+            onKeyDown={(e) => e.key === 'Enter' && commitInput()}
+            className="absolute inset-0 w-full h-full p-0 m-0 bg-transparent text-center text-xs outline-none"
+            style={{ paddingLeft: editingSpecialShift ? '1.5rem' : '0' }}
+          />
+        </>
+      )}
+    </div>
   );
 };
 
-export default ShiftSchedule;
+/**
+ * スタッフ情報編集セル
+ */
+export const EditableStaffInfoCell = ({ value, onUpdate, className, disabled = false }) => {
+  const [isEditing, setIsEditing] = useState(false);
+  const [currentValue, setCurrentValue] = useState(value);
+
+  useEffect(() => {
+    setCurrentValue(value);
+  }, [value]);
+
+  const handleBlur = () => {
+    if (currentValue.trim() !== value) {
+      onUpdate(currentValue.trim());
+    }
+    setIsEditing(false);
+  };
+
+  const wrapperClass = `h-10 text-[11px] border-b border-r border-slate-300 flex items-center px-1.5 overflow-hidden ${className}`;
+
+  if (isEditing) {
+    return (
+      <div className={`${wrapperClass} bg-white`}>
+        <input
+          type="text"
+          value={currentValue}
+          onChange={(e) => setCurrentValue(e.target.value)}
+          onBlur={handleBlur}
+          onKeyDown={(e) => e.key === 'Enter' && handleBlur()}
+          autoFocus
+          className="w-full h-full bg-transparent outline-none"
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div onClick={() => !disabled && setIsEditing(true)} className={`${wrapperClass} bg-white transition-colors ${disabled ? 'cursor-not-allowed text-slate-500' : 'cursor-pointer hover:bg-slate-50'}`}>
+        <div className="font-semibold truncate w-full">{value}</div>
+    </div>
+  );
+};
