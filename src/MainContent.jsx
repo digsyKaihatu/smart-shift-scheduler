@@ -2,25 +2,25 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { useOktaAuth } from '@okta/okta-react';
 
 // Hooks & Services & Utils
-import { useShiftData } from '../hooks/useShiftData';
-import { chatService } from '../services/chatService';
-import { downloadScheduleCSV } from '../utils/csvExporter';
-import { getJapaneseHolidays, formatValue } from '../utils/dateUtils';
-import { generateScheduleForMonth, summarizePattern } from '../utils/scheduleUtils';
+import { useShiftData } from './hooks/useShiftData';
+import { chatService } from './services/chatService';
+import { downloadScheduleCSV } from './utils/csvExporter';
+import { getJapaneseHolidays, formatValue } from './utils/dateUtils';
+import { generateScheduleForMonth, summarizePattern } from './utils/scheduleUtils';
 
 // Components
-import LoadingScreen from './common/LoadingScreen';
-import HelpGuideModal from './common/HelpGuideModal';
-import { ConfirmationModal, ConfirmDeleteModal } from './common/Modal';
-import Legend from './schedule/Legend';
-import ShiftSchedule from './schedule/ShiftSchedule';
-import MonthlyCalendar from './schedule/MonthlyCalendar';
-import ShiftPatternDisplay from './schedule/ShiftPatternDisplay';
-import ShiftApprovalModal from './schedule/ShiftApprovalModal';
-import TaskShortageDisplay from './tasks/TaskShortageDisplay';
-import TaskStaffMappingEditor from './tasks/TaskStaffMappingEditor';
-import MemberManagementModal from './admin/MemberManagementModal';
-import AdminSettingsModal from './admin/AdminSettingsModal';
+import LoadingScreen from './components/common/LoadingScreen';
+import HelpGuideModal from './components/common/HelpGuideModal';
+import { ConfirmationModal, ConfirmDeleteModal } from './components/common/Modal';
+import Legend from './components/schedule/Legend';
+import ShiftSchedule from './components/schedule/ShiftSchedule';
+import MonthlyCalendar from './components/schedule/MonthlyCalendar';
+import ShiftPatternDisplay from './components/schedule/ShiftPatternDisplay';
+import ShiftApprovalModal from './components/schedule/ShiftApprovalModal';
+import TaskShortageDisplay from './components/tasks/TaskShortageDisplay';
+import TaskStaffMappingEditor from './components/tasks/TaskStaffMappingEditor';
+import MemberManagementModal from './components/admin/MemberManagementModal';
+import AdminSettingsModal from './components/admin/AdminSettingsModal';
 
 const MainContent = () => {
   const { oktaAuth, authState } = useOktaAuth();
