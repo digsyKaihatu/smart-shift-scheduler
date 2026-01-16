@@ -1,9 +1,9 @@
 import React, { useRef, useMemo, useEffect } from 'react';
-import { summarizePattern } from '../../utils/scheduleUtils.js';
-import { EditableCell, EditableStaffInfoCell } from '../common/EditableCells.jsx';
-import { DeleteIcon, SetHolidayIcon, UnlockIcon } from '../common/Icons.jsx';
+import { summarizePattern } from '../../utils/scheduleUtils';
+import { EditableCell, EditableStaffInfoCell } from '../common/EditableCells';
+import { DeleteIcon, SetHolidayIcon, UnlockIcon } from '../common/Icons';
 // バージョン付きのエディタをインポート
-import ScheduleShiftPatternEditor from './ScheduleShiftPatternEditor_v1.jsx';
+import ScheduleShiftPatternEditor from './ScheduleShiftPatternEditor_v1';
 
 // -----------------------------------------------------------------------------
 // メインコンポーネント: ShiftSchedule
