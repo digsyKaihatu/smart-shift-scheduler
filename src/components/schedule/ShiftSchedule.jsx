@@ -29,6 +29,7 @@ const ShiftSchedule = ({
     onSetDayAsHolidayForAll 
 }) => {
   const containerRef = useRef(null);
+  const hasScrolledRef = useRef(false); // 初回スクロール制御用フラグ
   
   // 安全な配列を保証
   const safeDays = useMemo(() => Array.isArray(days) ? days : [], [days]);
@@ -63,15 +64,22 @@ const ShiftSchedule = ({
     return positions;
   }, [widths]);
 
-  // 「今日」へスクロールする処理
+  // 「今日」へスクロールする処理（起動時またはデータロード後の1回のみ）
   useEffect(() => {
     if (!containerRef.current) return;
+    if (safeDays.length === 0) return; // データロード待ち
+    if (hasScrolledRef.current) return; // すでに実行済みなら何もしない
+
     const today = new Date();
+    // 表示中の年月が現在の年月と一致する場合のみスクロールを実行
     if (today.getFullYear() === year && (today.getMonth() + 1) === month) {
+        hasScrolledRef.current = true; // 実行済みにセット
         setTimeout(() => {
             const container = containerRef.current;
+            if (!container) return; // 念のため再チェック
+
             const target = container.querySelector(`[data-day="${today.getDate()}"]`);
-            if (container && target) {
+            if (target) {
                 // 左側の固定列の合計幅
                 const fixedColumnsWidth = Object.values(widths).reduce((a, b) => a + b, 0);
                 
@@ -84,6 +92,10 @@ const ShiftSchedule = ({
                 container.scrollTo({ left: Math.max(0, scrollTo), behavior: 'smooth' });
             }
         }, 300);
+    } else {
+        // 現在の月ではない場合も、初期化処理としては「完了」とみなし、
+        // 後からその月に移動したときに勝手にスクロールしないようにする
+        hasScrolledRef.current = true;
     }
   }, [year, month, safeDays, widths]);
 
