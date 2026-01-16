@@ -10,7 +10,9 @@ const ScheduleShiftPatternEditor = ({ pattern, hasBreakArray, patterns, onApply,
   const [editedPattern, setEditedPattern] = useState(pattern || Array(5).fill('シフト休'));
   const [editedHasBreak, setEditedHasBreak] = useState(Array.isArray(hasBreakArray) ? [...hasBreakArray] : Array(5).fill(true));
   
+  // 9:00スタートのパターンを除外するフィルタリング（ShiftPatternDisplayと同様のロジック）
   const filteredPatterns = patterns.filter(p => p.startTime !== '9:00' && p.startTime !== '09:00');
+  
   const [bulkPatternId, setBulkPatternId] = useState(filteredPatterns[0]?.id || 'シフト休');
   const [bulkBreak, setBulkBreak] = useState(true);
 
@@ -21,6 +23,38 @@ const ScheduleShiftPatternEditor = ({ pattern, hasBreakArray, patterns, onApply,
     }
   }, [isOpen, pattern, hasBreakArray]);
 
+  // パターンIDから休憩有無を判定するヘルパー
+  const checkBreakExistence = (pid) => {
+      if (pid === 'シフト休') return false;
+      const p = patterns.find(x => x.id === pid);
+      // breakHoursが0より大きければ休憩ありとみなす
+      return p ? p.breakHours > 0 : false;
+  };
+
+  // 一括設定時のハンドラ
+  const handleBulkChange = (newPatternId) => {
+      setBulkPatternId(newPatternId);
+      setBulkBreak(checkBreakExistence(newPatternId));
+  };
+
+  // 個別設定時のハンドラ
+  const handlePatternChange = (index, newPatternId) => {
+      const np = [...editedPattern];
+      np[index] = newPatternId;
+      setEditedPattern(np);
+
+      const nb = [...editedHasBreak];
+      nb[index] = checkBreakExistence(newPatternId);
+      setEditedHasBreak(nb);
+  };
+
+  // 一括適用のハンドラ
+  const applyBulkToAll = () => {
+      const isBreak = checkBreakExistence(bulkPatternId);
+      setEditedPattern(Array(5).fill(bulkPatternId));
+      setEditedHasBreak(Array(5).fill(isBreak));
+  };
+
   const editorPopup = isOpen ? createPortal(
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[100] p-4" onMouseDown={() => setIsOpen(false)}>
         <div className="w-full max-w-md bg-white rounded-md shadow-lg border border-slate-200 p-4" onMouseDown={(e) => e.stopPropagation()}>
@@ -29,16 +63,18 @@ const ScheduleShiftPatternEditor = ({ pattern, hasBreakArray, patterns, onApply,
                 <div className="flex items-center justify-between">
                     <label className="font-bold text-xs text-orange-800">月〜金 一括設定</label>
                     <div className="flex items-center gap-2">
-                        <input type="checkbox" id="bulk-break" checked={bulkBreak} onChange={(e) => setBulkBreak(e.target.checked)} className="h-3.5 w-3.5 text-orange-600 rounded" />
-                        <label htmlFor="bulk-break" className="text-[10px] font-bold text-orange-700">休憩あり</label>
+                        {/* チェックボックスを削除し、テキスト表示に変更 */}
+                        <span className={`text-[10px] font-bold ${bulkBreak ? 'text-orange-700' : 'text-slate-400'}`}>
+                            {bulkBreak ? '休憩あり' : '休憩なし'}
+                        </span>
                     </div>
                 </div>
                 <div className="flex items-center gap-2">
-                    <select value={bulkPatternId} onChange={(e) => setBulkPatternId(e.target.value)} className="flex-grow text-xs p-1.5 border border-slate-300 rounded bg-white">
+                    <select value={bulkPatternId} onChange={(e) => handleBulkChange(e.target.value)} className="flex-grow text-xs p-1.5 border border-slate-300 rounded bg-white">
                         <option value="シフト休">シフト休</option>
                         {filteredPatterns.map(p => <option key={p.id} value={p.id}>{`${p.name} (${p.startTime}-${p.endTime})`}</option>)}
                     </select>
-                    <button onClick={() => { setEditedPattern(Array(5).fill(bulkPatternId)); setEditedHasBreak(Array(5).fill(bulkBreak)); }} className="text-xs px-3 py-1.5 bg-[#F4B896] text-white rounded font-bold hover:bg-[#E8A680]">適用</button>
+                    <button onClick={applyBulkToAll} className="text-xs px-3 py-1.5 bg-[#F4B896] text-white rounded font-bold hover:bg-[#E8A680]">適用</button>
                 </div>
             </div>
             <div className="space-y-2">
@@ -46,14 +82,16 @@ const ScheduleShiftPatternEditor = ({ pattern, hasBreakArray, patterns, onApply,
                     <div key={index} className="grid grid-cols-12 gap-2 items-center">
                         <label className="col-span-1 font-bold text-xs text-slate-600">{dayName}</label>
                         <div className="col-span-8">
-                            <select value={editedPattern[index]} onChange={(e) => { const np = [...editedPattern]; np[index] = e.target.value; setEditedPattern(np); }} className="w-full text-xs p-1.5 border border-slate-300 rounded-md bg-white">
+                            <select value={editedPattern[index]} onChange={(e) => handlePatternChange(index, e.target.value)} className="w-full text-xs p-1.5 border border-slate-300 rounded-md bg-white">
                                 <option value="シフト休">シフト休</option>
                                 {filteredPatterns.map(p => <option key={p.id} value={p.id}>{`${p.name} (${p.startTime}-${p.endTime})`}</option>)}
                             </select>
                         </div>
                         <div className="col-span-3 flex items-center gap-1 justify-end">
-                            <input type="checkbox" id={`break-${index}`} checked={editedHasBreak[index]} onChange={() => { const nb = [...editedHasBreak]; nb[index] = !nb[index]; setEditedHasBreak(nb); }} disabled={editedPattern[index] === 'シフト休'} className="h-3.5 w-3.5 text-sky-600 rounded" />
-                            <label htmlFor={`break-${index}`} className="text-[10px] whitespace-nowrap cursor-pointer">休憩</label>
+                            {/* チェックボックスを削除し、テキスト表示に変更 */}
+                            <span className={`text-[10px] whitespace-nowrap ${editedHasBreak[index] ? 'text-slate-600' : 'text-slate-300'}`}>
+                                {editedPattern[index] === 'シフト休' ? '-' : (editedHasBreak[index] ? '休憩あり' : '休憩なし')}
+                            </span>
                         </div>
                     </div>
                 ))}
