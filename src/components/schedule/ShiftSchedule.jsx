@@ -14,7 +14,7 @@ const ShiftSchedule = ({
     isAdmin, 
     schedule, 
     staff = [], 
-    days = [], // デフォルト値を追加
+    days = [],
     holidays = [], 
     shiftPatterns = [], 
     year, 
@@ -75,12 +75,7 @@ const ShiftSchedule = ({
                 // 左側の固定列の合計幅
                 const fixedColumnsWidth = Object.values(widths).reduce((a, b) => a + b, 0);
                 
-                // ターゲットが固定列に隠れないようにスクロール位置を調整
-                const containerWidth = container.clientWidth;
-                // const availableWidth = containerWidth - fixedColumnsWidth;
-                
                 const elementLeft = target.offsetLeft;
-                // const elementWidth = target.clientWidth;
                 
                 // 固定列の右端から、表示領域の中央あたりに来るように計算
                 // 簡易的に要素の左端を固定列の右端に合わせる（マージンを持たせる）
