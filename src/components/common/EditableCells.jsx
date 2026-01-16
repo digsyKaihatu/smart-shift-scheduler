@@ -111,7 +111,8 @@ export const EditableCell = ({ value, onUpdate, borderClass, disabled = false, i
     }
   };
   
-  const baseClasses = `border-b border-r ${borderClass} text-center text-xs h-10 flex items-center justify-center w-[6em] min-w-[6em] max-w-[6em]`;
+  // 修正: 幅を w-[75px] に固定してヘッダーと一致させる (元は w-[6em])
+  const baseClasses = `border-b border-r ${borderClass} text-center text-xs h-10 flex items-center justify-center w-[75px] min-w-[75px] max-w-[75px]`;
 
   if (mode === 'view') {
     return (
