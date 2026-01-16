@@ -2,10 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 
 /**
- * シフト表内での基本パターン編集コンポーネント (v1)
+ * シフト表内での基本パターン編集コンポーネント
  * 休憩の有無(hasBreakArray)も扱える点が、通常のパターンエディタと異なります。
  */
-const ScheduleShiftPatternEditor_v1 = ({ pattern, hasBreakArray, patterns, onApply, summary, disabled = false }) => {
+const ScheduleShiftPatternEditor = ({ pattern, hasBreakArray, patterns, onApply, summary, disabled = false }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [editedPattern, setEditedPattern] = useState(pattern || Array(5).fill('シフト休'));
   const [editedHasBreak, setEditedHasBreak] = useState(Array.isArray(hasBreakArray) ? [...hasBreakArray] : Array(5).fill(true));
@@ -76,4 +76,4 @@ const ScheduleShiftPatternEditor_v1 = ({ pattern, hasBreakArray, patterns, onApp
   );
 };
 
-export default ScheduleShiftPatternEditor_v1;
+export default ScheduleShiftPatternEditor;
