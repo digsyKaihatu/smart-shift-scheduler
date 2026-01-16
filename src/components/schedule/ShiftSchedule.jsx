@@ -2,6 +2,7 @@ import React, { useRef, useMemo, useEffect } from 'react';
 import { summarizePattern } from '../../utils/scheduleUtils';
 import { EditableCell, EditableStaffInfoCell } from '../common/EditableCells';
 import { DeleteIcon, SetHolidayIcon, UnlockIcon } from '../common/Icons';
+// バージョンなしのファイルをインポート
 import ScheduleShiftPatternEditor from './ScheduleShiftPatternEditor';
 
 // -----------------------------------------------------------------------------
@@ -75,15 +76,15 @@ const ShiftSchedule = ({
                 const fixedColumnsWidth = Object.values(widths).reduce((a, b) => a + b, 0);
                 
                 // ターゲットが固定列に隠れないようにスクロール位置を調整
-                // 要素の中央を画面の中央（ただし固定列の分を考慮）に持ってくる
                 const containerWidth = container.clientWidth;
-                const availableWidth = containerWidth - fixedColumnsWidth;
+                // const availableWidth = containerWidth - fixedColumnsWidth;
                 
                 const elementLeft = target.offsetLeft;
-                const elementWidth = target.clientWidth;
+                // const elementWidth = target.clientWidth;
                 
                 // 固定列の右端から、表示領域の中央あたりに来るように計算
-                const scrollTo = elementLeft - fixedColumnsWidth - (availableWidth / 2) + (elementWidth / 2);
+                // 簡易的に要素の左端を固定列の右端に合わせる（マージンを持たせる）
+                const scrollTo = elementLeft - fixedColumnsWidth - 50; 
 
                 container.scrollTo({ left: Math.max(0, scrollTo), behavior: 'smooth' });
             }
