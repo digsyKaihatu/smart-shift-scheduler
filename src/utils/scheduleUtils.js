@@ -66,10 +66,10 @@ export const summarizePattern = (pattern, patterns, hasBreakArray) => {
     const firstBreak = getBreak(0);
     const isUniform = pattern.every((id, i) => id === firstId && getBreak(i) === firstBreak);
 
-    // 一括表示（すべて同じ場合） - 以前の表記に戻す
+    // 一括表示（すべて同じ場合）
     if (isUniform) {
         if (firstId === 'シフト休') {
-            return '月〜金: シフト休';
+            return '月〜金: 休'; // 要望に合わせて「休」に短縮
         }
         const p = patterns.find(x => x.id === firstId);
         if (p) {
@@ -79,12 +79,11 @@ export const summarizePattern = (pattern, patterns, hasBreakArray) => {
     }
 
     // 設定内容を一意なキーに変換するヘルパー関数
+    // 区切り文字によるバグを防ぐため、JSON文字列化してキーにする
     const getSettingKey = (index) => {
         const pId = pattern[index];
         const isBreak = getBreak(index);
-        
-        if (pId === 'シフト休') return 'HOLIDAY';
-        return `WORK_${pId}_${isBreak}`;
+        return JSON.stringify({ pId, isBreak });
     };
 
     // グループ化のためのMap (挿入順序を保持)
@@ -105,21 +104,28 @@ export const summarizePattern = (pattern, patterns, hasBreakArray) => {
         const daysStr = days.join('、');
         let contentStr = '';
 
-        if (key === 'HOLIDAY') {
-            contentStr = 'シフト休';
-        } else {
-            // key format: WORK_{patternId}_{isBreak}
-            const parts = key.split('_');
-            const pId = parts[1];
-            const isBreak = parts[2] === 'true';
+        try {
+            const { pId, isBreak } = JSON.parse(key);
 
-            const p = patterns.find(x => x.id === pId);
-            if (p) {
-                const breakLabel = isBreak ? '休憩あり' : '休憩なし';
-                contentStr = `${p.name}：${p.startTime}～${p.endTime}　${breakLabel}`;
+            if (pId === 'シフト休') {
+                contentStr = '休'; // 要望に合わせて「休」に短縮
             } else {
-                contentStr = `?`;
+                const p = patterns.find(x => x.id === pId);
+                if (p) {
+                    const breakLabel = isBreak ? '休憩あり' : '休憩なし';
+                    contentStr = `${p.name}：${p.startTime}～${p.endTime}　${breakLabel}`;
+                } else {
+                    // フォールバック: マスタに見つからない場合
+                    // 万が一IDに「シフト休」や「休」という文字列が含まれていれば「休」とみなす（セーフティ）
+                    if (String(pId).includes('シフト休') || String(pId).includes('休')) {
+                         contentStr = '休';
+                    } else {
+                         contentStr = `?`; 
+                    }
+                }
             }
+        } catch (e) {
+            contentStr = '?';
         }
         resultLines.push(`${daysStr}　${contentStr}`);
     }
