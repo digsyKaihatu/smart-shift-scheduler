@@ -119,7 +119,8 @@ const ShiftSchedule = ({
   });
 
   const headerRowClass = "flex w-max";
-  const headerCellBase = "sticky top-0 bg-slate-200 p-1.5 border-b-2 border-r border-slate-300 font-bold text-[11px] text-center h-12 flex items-center justify-center flex-shrink-0 box-border";
+  // bg-slate-200を削除し、個別指定に変更
+  const headerCellBase = "sticky top-0 p-1.5 border-b-2 border-r border-slate-300 font-bold text-[11px] text-center h-12 flex items-center justify-center flex-shrink-0 box-border";
   const cellBase = "bg-white border-b border-r border-slate-300 flex items-center h-10 flex-shrink-0 box-border";
 
   return (
@@ -150,23 +151,35 @@ const ShiftSchedule = ({
             <div className="min-w-max">
                 {/* ヘッダー行 */}
                 <div className={`${headerRowClass} sticky top-0 z-40`}>
-                    {/* 左側固定ヘッダー */}
-                    <div className={headerCellBase} style={stickyHeaderStyle('role')}>役職</div>
-                    <div className={headerCellBase} style={stickyHeaderStyle('empId')}>社員番号</div>
-                    <div className={headerCellBase} style={stickyHeaderStyle('name')}>稼働名前</div>
-                    <div className={headerCellBase} style={stickyHeaderStyle('setting')}>基本シフト設定</div>
-                    <div className={headerCellBase} style={stickyHeaderStyle('submit')}>提出☑</div>
-                    <div className={headerCellBase} style={stickyHeaderStyle('remand')}>差戻☑</div>
-                    <div className={headerCellBase} style={stickyHeaderStyle('approve')}>承認☑</div>
-                    <div className={`${headerCellBase} border-r-2`} style={stickyHeaderStyle('del')}>削除</div>
+                    {/* 左側固定ヘッダー (bg-slate-200を追加) */}
+                    <div className={`${headerCellBase} bg-slate-200`} style={stickyHeaderStyle('role')}>役職</div>
+                    <div className={`${headerCellBase} bg-slate-200`} style={stickyHeaderStyle('empId')}>社員番号</div>
+                    <div className={`${headerCellBase} bg-slate-200`} style={stickyHeaderStyle('name')}>稼働名前</div>
+                    <div className={`${headerCellBase} bg-slate-200`} style={stickyHeaderStyle('setting')}>基本シフト設定</div>
+                    <div className={`${headerCellBase} bg-slate-200`} style={stickyHeaderStyle('submit')}>提出☑</div>
+                    <div className={`${headerCellBase} bg-slate-200`} style={stickyHeaderStyle('remand')}>差戻☑</div>
+                    <div className={`${headerCellBase} bg-slate-200`} style={stickyHeaderStyle('approve')}>承認☑</div>
+                    <div className={`${headerCellBase} bg-slate-200 border-r-2`} style={stickyHeaderStyle('del')}>削除</div>
 
                     {/* 日付ヘッダー (スクロール) */}
                     {safeDays.map(({ day, dayOfWeek }) => {
                         const isToday = new Date().getDate() === day && (new Date().getMonth()+1) === month;
+                        const isHoliday = holidays.includes(day);
+
+                        // 色分けロジック
+                        let headerColorClass = "bg-slate-200 text-slate-800"; // デフォルト
+                        if (isToday) {
+                            headerColorClass = "bg-yellow-100 text-yellow-900 border-yellow-300";
+                        } else if (dayOfWeek === '土') {
+                            headerColorClass = "bg-sky-100 text-sky-800 border-sky-200";
+                        } else if (dayOfWeek === '日' || isHoliday) {
+                            headerColorClass = "bg-pink-100 text-pink-800 border-pink-200";
+                        }
+
                         return (
                             <div 
                                 key={day} 
-                                className={`${headerCellBase} bg-slate-200 whitespace-nowrap w-[75px] min-w-[75px] max-w-[75px] flex-col ${isToday ? 'bg-yellow-100' : ''}`} 
+                                className={`${headerCellBase} ${headerColorClass} whitespace-nowrap w-[75px] min-w-[75px] max-w-[75px] flex-col`} 
                                 style={{ zIndex: 40 }} // 通常のヘッダーはz-40
                                 data-day={day}
                             >
