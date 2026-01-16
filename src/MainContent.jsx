@@ -2,6 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { useOktaAuth } from '@okta/okta-react';
 
 // Hooks & Services & Utils
+// 修正: パスから拡張子を削除
 import { useShiftData } from './hooks/useShiftData';
 import { chatService } from './services/chatService';
 import { downloadScheduleCSV } from './utils/csvExporter';
@@ -9,6 +10,7 @@ import { getJapaneseHolidays, formatValue } from './utils/dateUtils';
 import { generateScheduleForMonth, summarizePattern } from './utils/scheduleUtils';
 
 // Components
+// 修正: パスから拡張子を削除
 import LoadingScreen from './components/common/LoadingScreen';
 import HelpGuideModal from './components/common/HelpGuideModal';
 import { ConfirmationModal, ConfirmDeleteModal } from './components/common/Modal';
