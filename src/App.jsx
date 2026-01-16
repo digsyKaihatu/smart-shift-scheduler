@@ -5,8 +5,8 @@ import { OktaAuth, toRelativeUrl } from '@okta/okta-auth-js';
 import { oktaConfig } from './config/okta';
 
 // Components
-import MainContent from './MainContent';
-import LoadingScreen from './components/common/LoadingScreen';
+import MainContent from './MainContent.jsx';
+import LoadingScreen from './components/common/LoadingScreen.jsx';
 
 const oktaAuth = new OktaAuth(oktaConfig);
 
