@@ -17,6 +17,7 @@ const AddShiftPatternModal = ({ onClose, onSave, existingPatterns }) => {
       setError('記号を入力してください。');
       return;
     }
+    // 重複チェックは全パターン（非表示含む）に対して行う
     if (existingPatterns.some(p => p.id.trim().toLowerCase() === id.trim().toLowerCase())) {
       setError('この記号は既に使用されています。');
       return;
@@ -153,6 +154,9 @@ const ShiftPatternDisplay = ({ patterns, onAddPattern }) => {
         setIsAddModalOpen(false);
     };
 
+    // 9:00～を非表示にするフィルタリング
+    const visiblePatterns = patterns.filter(p => p.startTime !== '9:00' && p.startTime !== '09:00');
+
     return (
         <div className="bg-white rounded-lg shadow-md ring-1 ring-black ring-opacity-5 p-4">
             <div className="flex justify-between items-center">
@@ -193,7 +197,7 @@ const ShiftPatternDisplay = ({ patterns, onAddPattern }) => {
                             </tr>
                         </thead>
                         <tbody className="bg-white divide-y divide-slate-200">
-                            {patterns.map(pattern => (
+                            {visiblePatterns.map(pattern => (
                                 <tr key={pattern.id}>
                                     <td className="px-4 py-2 whitespace-nowrap text-sm font-medium text-slate-900">{pattern.name}</td>
                                     <td className="px-4 py-2 whitespace-nowrap text-sm text-slate-600">{pattern.startTime} - {pattern.endTime}</td>
@@ -210,7 +214,7 @@ const ShiftPatternDisplay = ({ patterns, onAddPattern }) => {
                 <AddShiftPatternModal
                     onClose={() => setIsAddModalOpen(false)}
                     onSave={handleSavePattern}
-                    existingPatterns={patterns}
+                    existingPatterns={patterns} // バリデーション用には全パターンを渡す
                 />
             )}
         </div>
