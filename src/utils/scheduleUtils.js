@@ -58,11 +58,30 @@ export const summarizePattern = (pattern, patterns, hasBreakArray) => {
     if (!pattern || pattern.length !== 5) return '未設定';
     const DAY_NAMES = ['月', '火', '水', '木', '金'];
 
+    // 休憩設定の取得ヘルパー
+    const getBreak = (i) => Array.isArray(hasBreakArray) ? hasBreakArray[i] : true;
+
+    // 5日間すべて同じ設定かどうかをチェック
+    const firstId = pattern[0];
+    const firstBreak = getBreak(0);
+    const isUniform = pattern.every((id, i) => id === firstId && getBreak(i) === firstBreak);
+
+    // 一括表示（すべて同じ場合） - 以前の表記に戻す
+    if (isUniform) {
+        if (firstId === 'シフト休') {
+            return '月〜金: シフト休';
+        }
+        const p = patterns.find(x => x.id === firstId);
+        if (p) {
+            const breakLabel = firstBreak ? '休憩あり' : '休憩なし';
+            return `月〜金 ${p.startTime}～${p.endTime} ${breakLabel}`;
+        }
+    }
+
     // 設定内容を一意なキーに変換するヘルパー関数
     const getSettingKey = (index) => {
         const pId = pattern[index];
-        // データがない場合はデフォルトtrue（休憩あり）とする
-        const isBreak = Array.isArray(hasBreakArray) ? hasBreakArray[index] : true;
+        const isBreak = getBreak(index);
         
         if (pId === 'シフト休') return 'HOLIDAY';
         return `WORK_${pId}_${isBreak}`;
