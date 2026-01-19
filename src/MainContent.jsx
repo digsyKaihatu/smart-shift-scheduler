@@ -2,7 +2,6 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { useOktaAuth } from '@okta/okta-react';
 
 // Hooks & Services & Utils
-// 修正: パスから拡張子を削除
 import { useShiftData } from './hooks/useShiftData';
 import { chatService } from './services/chatService';
 import { downloadScheduleCSV } from './utils/csvExporter';
@@ -10,7 +9,6 @@ import { getJapaneseHolidays, formatValue } from './utils/dateUtils';
 import { generateScheduleForMonth, summarizePattern } from './utils/scheduleUtils';
 
 // Components
-// 修正: パスから拡張子を削除
 import LoadingScreen from './components/common/LoadingScreen';
 import HelpGuideModal from './components/common/HelpGuideModal';
 import { ConfirmationModal, ConfirmDeleteModal } from './components/common/Modal';
@@ -337,13 +335,27 @@ const MainContent = () => {
 
   if (isLoading || !currentUser) return <LoadingScreen message={loadingMessage} />;
   if (!authState?.isAuthenticated) {
-    // App.jsxのSecurityコンポーネントでハンドリングされますが、
-    // ここでもガードを入れておきます。
     return null;
   }
   
   const currentMonthSchedule = schedule[key] || {};
   const approvalStaff = approvalModalStaffId ? staff.find(s => s.id === approvalModalStaffId) : null;
+
+  // 管理者用ボタン群（ShiftPatternDisplayに渡す）
+  const adminControls = (
+      <>
+          {isAdmin && (
+              <>
+                  <button onClick={handleAddStaff} className="px-3 py-1.5 bg-[#F4B896] text-white text-xs font-semibold rounded-md hover:bg-[#E8A680] shadow-sm whitespace-nowrap">+ メンバー</button>
+                  <button onClick={() => setTasks(prev => [...prev, { id: `t${Date.now()}`, name: '新業務', requiredPersonnel: 3 }])} className="px-3 py-1.5 bg-[#F4B896] text-white text-xs font-semibold rounded-md hover:bg-[#E8A680] shadow-sm whitespace-nowrap">+ 業務</button>
+                  <button onClick={() => setIsTaskEditorOpen(true)} className="px-3 py-1.5 bg-[#F4B896] text-white text-xs font-semibold rounded-md hover:bg-[#E8A680] shadow-sm whitespace-nowrap">業務担当</button>
+                  <button onClick={() => setIsMemberManagementOpen(true)} className="px-3 py-1.5 bg-[#F4B896] text-white text-xs font-semibold rounded-md hover:bg-[#E8A680] shadow-sm whitespace-nowrap">メンバー管理</button>
+                  <button onClick={() => setIsAdminSettingsOpen(true)} className="px-3 py-1.5 bg-slate-500 text-white text-xs font-semibold rounded-md hover:bg-slate-600 shadow-sm whitespace-nowrap">通知設定</button>
+              </>
+          )}
+          <button onClick={handleExportCSV} className="px-3 py-1.5 bg-gray-600 text-white text-xs font-semibold rounded-md hover:bg-gray-700 shadow-sm whitespace-nowrap">CSV</button>
+      </>
+  );
 
   return (
     <div className="min-h-screen bg-[#FFF9F6] text-slate-800 p-2 sm:p-4 font-sans">
@@ -358,16 +370,22 @@ const MainContent = () => {
               {Array.from({length: 12}, (_, i) => i + 1).map(m => <option key={m} value={m} className="text-black">{m}</option>)}
             </select>
             <span className="text-xl">月</span>
-            <h1 className="text-2xl font-bold tracking-wider">digsyシフト表</h1>
+            <h1 className="text-2xl font-bold tracking-wider hidden sm:block">digsyシフト表</h1>
           </div>
           <div className="flex items-center gap-4">
              <div className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-semibold w-36 justify-center ${saveStatus === 'saved' ? 'text-white/80' : 'text-yellow-300'}`}>
                 <span>{saveStatus === 'saved' ? '自動保存済み' : saveStatus === 'saving' ? '保存中...' : '編集中...'}</span>
              </div>
-             <button onClick={() => setIsHelpOpen(true)} className="px-3 py-1.5 bg-white/20 rounded hover:bg-white/30 text-sm font-bold">ガイド</button>
-             <Legend />
+             <button onClick={() => setIsHelpOpen(true)} className="px-3 py-1.5 bg-white/20 rounded hover:bg-white/30 text-sm font-bold whitespace-nowrap">ガイド</button>
+             <div className="hidden md:block">
+                <Legend />
+             </div>
           </div>
         </header>
+        
+        <div className="md:hidden mb-4">
+            <Legend />
+        </div>
 
         <main className="space-y-6">
           <ShiftSchedule 
@@ -377,7 +395,13 @@ const MainContent = () => {
             onToggleShiftApproved={handleToggleShiftApproved} onToggleShiftRemanded={handleToggleShiftRemanded}
             onSetDayAsHolidayForAll={handleSetDayAsHolidayForAll}
           />
-          <ShiftPatternDisplay patterns={shiftPatterns} onAddPattern={(p) => setShiftPatterns(prev => [...prev, p].sort((a,b)=>a.id.localeCompare(b.id)))} />
+          
+          <ShiftPatternDisplay 
+            patterns={shiftPatterns} 
+            onAddPattern={(p) => setShiftPatterns(prev => [...prev, p].sort((a,b)=>a.id.localeCompare(b.id)))} 
+            additionalControls={adminControls}
+          />
+          
           <TaskShortageDisplay 
             isAdmin={isAdmin} currentUser={currentUser} tasks={tasks} staff={staff} days={days} holidays={currentMonthHolidays} taskCountsByDay={taskCountsByDay}
             onUpdateTask={(id, name) => setTasks(prev => prev.map(t => t.id === id ? { ...t, name } : t))} onDeleteTask={handleDeleteTask}
@@ -389,18 +413,6 @@ const MainContent = () => {
             onUpdateSchedule={(staffId, d, v, ty, tm) => handleUpdateScheduleGeneric(ty || year, tm || month, staffId, d, v)}
             isAdmin={isAdmin} currentUser={currentUser}
           />
-          <div className="mt-4 flex flex-wrap gap-4 items-center">
-            {isAdmin && (
-              <>
-                <button onClick={handleAddStaff} className="px-4 py-2 bg-[#F4B896] text-white rounded hover:bg-[#E8A680]">+ メンバー追加</button>
-                <button onClick={() => setTasks(prev => [...prev, { id: `t${Date.now()}`, name: '新業務', requiredPersonnel: 3 }])} className="px-4 py-2 bg-[#F4B896] text-white rounded hover:bg-[#E8A680]">+ 業務追加</button>
-                <button onClick={() => setIsTaskEditorOpen(true)} className="px-4 py-2 bg-[#F4B896] text-white rounded hover:bg-[#E8A680]">業務担当設定</button>
-                <button onClick={() => setIsMemberManagementOpen(true)} className="px-4 py-2 bg-[#F4B896] text-white rounded hover:bg-[#E8A680]">メンバー管理</button>
-                <button onClick={() => setIsAdminSettingsOpen(true)} className="px-4 py-2 bg-slate-500 text-white rounded hover:bg-slate-600">通知設定</button>
-              </>
-            )}
-            <button onClick={handleExportCSV} className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700">CSV出力</button>
-          </div>
         </main>
 
         {isAdmin && isMemberManagementOpen && <MemberManagementModal staff={staff} onClose={() => setIsMemberManagementOpen(false)} onSave={(updated) => { setStaff(updated); setIsMemberManagementOpen(false); }} />}
@@ -413,7 +425,7 @@ const MainContent = () => {
         {remandConfirmation && <ConfirmationModal title="差戻の確認" message="本当に差し戻しますか？" onConfirm={handleConfirmRemand} onCancel={() => setRemandConfirmation(null)} />}
         {holidayConfirmation && <ConfirmationModal title={holidayConfirmation.isUnlocking ? "休日設定解除" : "休日設定"} message="全メンバーに適用しますか？" onConfirm={holidayConfirmation.onConfirm} onCancel={() => setHolidayConfirmation(null)} />}
         {absenceNotificationConfirmation && <ConfirmationModal title="欠勤の周知" message={`${absenceNotificationConfirmation.staffMember.name}さんの欠勤をチャットで周知しますか？`} onConfirm={() => handleAbsenceNotificationResponse(true)} onCancel={() => handleAbsenceNotificationResponse(false)} />}
-        <footer className="text-center mt-6 text-sm text-slate-500"><p>Powered by Gemini & React</p></footer>
+        <footer className="text-center mt-6 text-sm text-slate-500 pb-8"><p>Powered by Gemini & React</p></footer>
       </div>
     </div>
   );
