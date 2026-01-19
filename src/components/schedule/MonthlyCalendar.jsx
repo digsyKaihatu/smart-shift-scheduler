@@ -1,13 +1,14 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 
 // インポートエラー回避のため、祝日取得ロジックをここに定義
+// (実運用では src/utils/dateUtils.js からインポートすることを推奨)
 const getJapaneseHolidays = (year, month) => {
-  // 必要に応じて祝日ロジックを実装してください。現在は空配列を返します。
-  // 将来的には祝日判定ライブラリやAPIを使用することをお勧めします。
+  // 簡易的な実装、または空配列を返す
   return [];
 };
 
-// アイコンコンポーネント
+// --- アイコンコンポーネント (SVG) ---
+
 const ChevronLeft = ({ size = 24 }) => (
   <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <path d="m15 18-6-6 6-6"/>
@@ -20,13 +21,14 @@ const ChevronRight = ({ size = 24 }) => (
   </svg>
 );
 
-// 削除アイコン
+// 削除アイコン (画像からSVGへ変更)
 const Trash2 = ({ size = 24 }) => (
-  <img 
-    src="/image_498ea9.png" 
-    alt="削除" 
-    style={{ width: size, height: size, objectFit: 'contain' }} 
-  />
+  <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-current">
+    <polyline points="3 6 5 6 21 6"></polyline>
+    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+    <line x1="10" y1="11" x2="10" y2="17"></line>
+    <line x1="14" y1="11" x2="14" y2="17"></line>
+  </svg>
 );
 
 const XIcon = ({ size = 24 }) => (
@@ -88,7 +90,7 @@ const MonthlyCalendar = ({ schedule, staff, tasks, shiftPatterns, initialYear, i
     return getJapaneseHolidays(currentDate.getFullYear(), currentDate.getMonth() + 1);
   }, [currentDate]);
 
-  // 初期表示時および月変更時にスクロール位置を調整（ブラウザの縦スクロールを発生させない安全な方法）
+  // 初期表示時および月変更時にスクロール位置を調整
   useEffect(() => {
     if (!scrollContainerRef.current) return;
 
@@ -106,7 +108,6 @@ const MonthlyCalendar = ({ schedule, staff, tasks, shiftPatterns, initialYear, i
 
             const todayElement = container.querySelector(`[data-date="${todayStr}"]`);
             if (todayElement) {
-                // scrollIntoViewは使わず、コンテナのscrollLeftのみを操作する
                 const containerWidth = container.clientWidth;
                 const elementLeft = todayElement.offsetLeft;
                 const elementWidth = todayElement.clientWidth;
@@ -240,20 +241,16 @@ const MonthlyCalendar = ({ schedule, staff, tasks, shiftPatterns, initialYear, i
       }).filter(Boolean) : [];
   };
 
-  // ボディ（イベント一覧部分）の背景色を決定する関数
   const getCellBgClass = (dayOfWeekIndex, isHoliday, isToday) => {
       if (isToday) {
           return 'bg-yellow-50 hover:bg-yellow-100 ring-1 ring-inset ring-yellow-200';
       }
-      // 日曜 または 祝日: 赤系
       if (dayOfWeekIndex === 0 || isHoliday) { 
           return 'bg-pink-50 hover:bg-pink-100';
       }
-      // 土曜: 青系
       if (dayOfWeekIndex === 6) { 
           return 'bg-sky-50 hover:bg-sky-100';
       }
-      // 平日: デフォルト
       return 'bg-white hover:bg-slate-50'; 
   };
 
@@ -301,7 +298,7 @@ const MonthlyCalendar = ({ schedule, staff, tasks, shiftPatterns, initialYear, i
                     return (
                         <div 
                             key={d.toISOString()} 
-                            data-date={dateKey} // スクロールターゲット用の属性
+                            data-date={dateKey}
                             className={getDayHeaderClass(dayOfWeekIndex, isHoliday, isToday)}
                         >
                             <div>{d.getDate()}</div>
