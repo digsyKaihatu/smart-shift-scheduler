@@ -167,9 +167,48 @@ const TaskStaffSelector = ({ task, allStaff = [], assignedStaffIds = [], onUpdat
 const TaskShortageDisplay = ({
     tasks = [], staff = [], days = [], holidays = [], taskCountsByDay = {}, 
     isAdmin = false,
-    onUpdateTask, onDeleteTask, onUpdateTaskStaff, onUpdateTaskPersonnel
+    onUpdateTask, onDeleteTask, onUpdateTaskStaff, onUpdateTaskPersonnel,
+    year, month // 追加: 自動スクロール判定用
 }) => {
     const staffInfoWidth = "280px"; 
+    const scrollContainerRef = useRef(null); // スクロールコンテナ用Ref
+
+    // 追加: 自動スクロールロジック
+    useEffect(() => {
+        if (!scrollContainerRef.current) return;
+        if (!days || days.length === 0) return;
+
+        const today = new Date();
+        // 現在の年月と表示中の年月が一致する場合のみスクロールを実行
+        if (today.getFullYear() === year && (today.getMonth() + 1) === month) {
+            const todayDate = today.getDate();
+            const targetElement = scrollContainerRef.current.querySelector(`[data-day="${todayDate}"]`);
+            
+            if (targetElement) {
+                // 固定列の幅 (staffInfoWidth = 280px)
+                const fixedColumnWidth = 280;
+                
+                // 要素の位置とサイズ
+                const elementLeft = targetElement.offsetLeft;
+                const elementWidth = targetElement.offsetWidth;
+                
+                // コンテナの可視領域幅（固定列を除く）
+                const containerWidth = scrollContainerRef.current.clientWidth;
+                const visibleWidth = containerWidth - fixedColumnWidth;
+                
+                // スクロール計算：
+                // (要素の左端 - 固定列幅) = 固定列からの相対位置
+                // (visibleWidth / 2 - elementWidth / 2) = 中央寄せにするためのオフセット
+                // これらを引き算して、目標とするスクロール位置（scrollLeft）を求める
+                const scrollLeft = (elementLeft - fixedColumnWidth) - (visibleWidth / 2 - elementWidth / 2);
+                
+                scrollContainerRef.current.scrollTo({
+                    left: Math.max(0, scrollLeft),
+                    behavior: 'smooth'
+                });
+            }
+        }
+    }, [year, month, days]);
     
     const sortedStaff = useMemo(() => {
         return [...staff].sort((a, b) => {
@@ -191,12 +230,19 @@ const TaskShortageDisplay = ({
     return (
         <div className="bg-white rounded-lg shadow-md ring-1 ring-black ring-opacity-5 p-4">
             <h2 className="text-lg font-bold text-slate-800 mb-3">業務一覧</h2>
-            <div className="overflow-x-auto">
+            <div 
+                className="overflow-x-auto" 
+                ref={scrollContainerRef} // Refを設定
+            >
                  <div className="min-w-max">
                     <div className="grid" style={{ gridTemplateColumns: `${staffInfoWidth} repeat(${days.length}, minmax(70px, 1fr))`}}>
                         <div className={`${stickyHeaderCellClass} sticky left-0 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]`}>業務</div>
                          {days.map(({ day, dayOfWeek }) => (
-                            <div key={day} className={getDayHeaderClass(dayOfWeek, holidays.includes(day))}>
+                            <div 
+                                key={day} 
+                                className={getDayHeaderClass(dayOfWeek, holidays.includes(day))}
+                                data-day={day} // スクロールターゲット検索用属性を追加
+                            >
                                 <div>{day}</div>
                                 <div>{dayOfWeek}</div>
                             </div>
