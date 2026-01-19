@@ -406,7 +406,8 @@ const MainContent = () => {
             isAdmin={isAdmin} currentUser={currentUser} tasks={tasks} staff={staff} days={days} holidays={currentMonthHolidays} taskCountsByDay={taskCountsByDay}
             onUpdateTask={(id, name) => setTasks(prev => prev.map(t => t.id === id ? { ...t, name } : t))} onDeleteTask={handleDeleteTask}
             onUpdateTaskPersonnel={(id, count) => setTasks(prev => prev.map(t => t.id === id ? { ...t, requiredPersonnel: count } : t))}
-            onUpdateTaskStaff={handleUpdateSingleTaskStaff} 
+            onUpdateTaskStaff={handleUpdateSingleTaskStaff}
+            year={year} month={month}
           />
           <MonthlyCalendar
             schedule={schedule} staff={staff} tasks={tasks} shiftPatterns={shiftPatterns} initialYear={year} initialMonth={month}
