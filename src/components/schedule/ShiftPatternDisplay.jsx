@@ -179,13 +179,14 @@ const ShiftPatternDisplay = ({ patterns, onAddPattern, additionalControls }) => 
                 </button>
                 
                 <div className="flex flex-wrap items-center gap-2 w-full xl:w-auto xl:justify-end">
-                    {additionalControls}
+                    {/* ここで配置順を変更しました: [+ パターンを追加] [その他のボタン群] */}
                     <button
                         onClick={() => setIsAddModalOpen(true)}
                         className="px-3 py-1.5 bg-[#F4B896] text-white text-xs font-semibold rounded-md hover:bg-[#E8A680] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#F4B896] shadow-sm transition-colors whitespace-nowrap"
                     >
                         + パターンを追加
                     </button>
+                    {additionalControls}
                 </div>
             </div>
             
