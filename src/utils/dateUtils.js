@@ -138,3 +138,20 @@ export const formatValue = (value) => {
 
   return value;
 };
+
+/**
+ * Dateオブジェクトを YYYY-MM-DD 形式の文字列に変換
+ */
+export const formatDate = (date) => {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+};
+
+/**
+ * Dateオブジェクトから日本語の曜日を取得
+ */
+export const getDayOfWeekStr = (date) => {
+  return ['日', '月', '火', '水', '木', '金', '土'][date.getDay()];
+};
