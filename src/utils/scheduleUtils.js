@@ -12,14 +12,15 @@ export const generateScheduleForMonth = (year, month, staffData, shiftPatternsDa
 
         for (let day = 1; day <= daysInMonth; day++) {
             const date = new Date(year, month - 1, day);
-            const dayOfWeek = date.getDay(); // Sunday: 0, Monday: 1, ..., Saturday: 6
+            const dayOfWeek = date.getDay(); // 0: 日曜, 1: 月曜, ..., 6: 土曜
             const isHoliday = monthHolidays.includes(day);
 
+            // 平日以外（土日、または祝日）の場合は初期状態を「シフト休」に設定
             if (dayOfWeek === 0 || dayOfWeek === 6 || isHoliday) {
                 scheduleForMonth[staffId][day] = 'シフト休';
             } else {
-                // It's a weekday
-                const patternIndex = dayOfWeek - 1; // Monday (1) -> 0
+                // 平日の場合：基本シフトパターンがあればそれを適用
+                const patternIndex = dayOfWeek - 1; // 月曜(1) -> 0
                 if (defaultPattern && patternIndex >= 0 && patternIndex < defaultPattern.length) {
                     const patternId = defaultPattern[patternIndex];
                     if (patternId === 'シフト休') {
@@ -29,7 +30,7 @@ export const generateScheduleForMonth = (year, month, staffData, shiftPatternsDa
                         scheduleForMonth[staffId][day] = patternDetails ? patternDetails.workHours : '';
                     }
                 } else {
-                    scheduleForMonth[staffId][day] = ''; // No pattern defined for this weekday
+                    scheduleForMonth[staffId][day] = ''; // パターン未定義の場合は空欄
                 }
             }
         }
@@ -39,8 +40,8 @@ export const generateScheduleForMonth = (year, month, staffData, shiftPatternsDa
 };
 
 export const generateInitialSchedule = (staffData, shiftPatternsData) => {
-    const year = 2025;
-    const month = 12;
+    const year = new Date().getFullYear();
+    const month = new Date().getMonth() + 1;
     const key = `${year}-${month}`;
     return {
         [key]: generateScheduleForMonth(year, month, staffData, shiftPatternsData)
