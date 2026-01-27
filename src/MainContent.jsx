@@ -287,7 +287,19 @@ const MainContent = () => {
           id: newId, employeeId: 'New', name: '新規メンバー', role: 'OP', chatUserId: '', possibleTasks: [],
           defaultShift: { pattern: ['A','A','A','A','A'], hasBreak: true }, shiftSubmitted: {}, shiftRemanded: {}, shiftApproved: {}
       }]);
-      setSchedule(prev => ({ ...prev, [key]: { ...(prev[key] || {}), [newId]: {} } }));
+      
+      // 新規メンバー用のスケジュール初期化（平日以外をシフト休にする）
+      const newMemberSchedule = {};
+      for (let day = 1; day <= daysInMonth; day++) {
+          const date = new Date(year, month - 1, day);
+          const dayOfWeek = date.getDay();
+          const isHoliday = currentMonthHolidays.includes(day);
+          if (dayOfWeek === 0 || dayOfWeek === 6 || isHoliday) {
+              newMemberSchedule[day] = 'シフト休';
+          }
+      }
+
+      setSchedule(prev => ({ ...prev, [key]: { ...(prev[key] || {}), [newId]: newMemberSchedule } }));
   };
 
   const handleSetDayAsHolidayForAll = (day) => {
