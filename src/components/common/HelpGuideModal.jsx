@@ -22,7 +22,6 @@ const HelpGuideModal = ({ onClose }) => {
         </header>
 
         <main className="p-6 overflow-y-auto space-y-8">
-          {/* 1. シフトの入力・編集 (画像右配置) [cite: 2, 7] */}
           <GuideSection title="1. シフトの入力・編集">
             <div className="flex items-start gap-4">
                 <div className="flex-1 space-y-2">
@@ -30,6 +29,16 @@ const HelpGuideModal = ({ onClose }) => {
                     <p>・「稼働時間入力」を選択すると、数値を直接入力できます。（例: 8, 7.5）</p>
                     <p>・「有休」「シフト休」「通休」などのステータスも選択できます。</p>
                     <p>・<span className="font-bold text-green-600">変更は自動的に保存されます。</span>手動で保存ボタンを押す必要はありません。</p>
+                    
+                    <div className="mt-3 pt-3 border-t border-slate-100">
+                        <p className="font-bold text-slate-700 mb-1">⌨️ Excelライクなキーボード操作</p>
+                        <ul className="list-disc list-inside text-xs text-slate-600 ml-1 space-y-1">
+                            <li><span className="font-bold">矢印キー:</span> 上下左右にセルを移動</li>
+                            <li><span className="font-bold">Enter:</span> 編集開始 / 確定して下へ移動</li>
+                            <li><span className="font-bold">Delete / BS:</span> 内容を削除</li>
+                            <li><span className="font-bold">数字キー:</span> 直接入力開始 (例:「8」を押す)</li>
+                        </ul>
+                    </div>
                 </div>
                 <div className="w-1/3 border border-slate-200 rounded-md overflow-hidden shadow-sm flex-shrink-0">
                     <img src="/スマシフガイド1.png" alt="シフト入力の例" className="w-full h-auto object-contain bg-slate-100" />
@@ -37,7 +46,6 @@ const HelpGuideModal = ({ onClose }) => {
             </div>
           </GuideSection>
           
-          {/* 2. メンバー情報の編集と通知設定 [cite: 8, 12] */}
           <GuideSection title="2. メンバー情報の編集と通知設定">
             <p>・「役職」「社員番号」「稼働名前」の各セルはクリックして直接編集できます。</p>
             <p>・<span className="font-bold text-[#D9824D]">「メンバー管理」</span>ボタンからは、上記に加え<span className="font-bold">「Chat User ID」</span>を設定できます。</p>
@@ -47,7 +55,6 @@ const HelpGuideModal = ({ onClose }) => {
             </div>
           </GuideSection>
 
-          {/* 3. 提出・差戻・承認と通知機能 [cite: 13, 18] */}
           <GuideSection title="3. 提出・差戻・承認と通知機能">
             <p>以下のチェックボックス操作により、Google Chatへ通知が送信されます。</p>
             <ul className="list-disc list-inside ml-2 space-y-1">
@@ -60,7 +67,6 @@ const HelpGuideModal = ({ onClose }) => {
             </div>
           </GuideSection>
 
-          {/* 4. 基本シフトパターンの設定 [cite: 19, 22] */}
           <GuideSection title="4. 基本シフトパターンの設定">
             <p>・「基本シフト設定」のセルをクリックすると、月〜金曜のデフォルトシフトパターンを設定できます。</p>
             <p>・設定後、「基本シフトを適用」ボタンを押すと、その月のスケジュールにパターンが自動反映されます。</p>
@@ -69,7 +75,6 @@ const HelpGuideModal = ({ onClose }) => {
             </div>
           </GuideSection>
           
-          {/* 5. シフトパターン一覧及び 各種ボタン機能 [cite: 23, 30] */}
           <GuideSection title="5. シフトパターン一覧及び 各種ボタン機能">
             <div className="space-y-3">
               <p>・シフト表の下にある「シフトパターン一覧」で、登録されている全パターンを確認できます。</p>
@@ -89,7 +94,6 @@ const HelpGuideModal = ({ onClose }) => {
             </div>
           </GuideSection>
 
-         {/* 6. 業務と人員不足の確認 [cite: 31, 34] */}
           <GuideSection title="6. 業務と人員不足の確認">
             <p>・ページ下部の「業務一覧」で、日ごとの各業務の稼働人数を確認できます。</p>
             <p>・必要な人員に対して稼働人数が足りていない日は「不足」とハイライト表示されます。</p>
