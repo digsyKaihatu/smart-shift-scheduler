@@ -249,6 +249,7 @@ const ShiftSchedule = ({
                                     isToday={new Date().getDate() === day && (new Date().getMonth()+1) === month} 
                                     isHoliday={isHoliday}
                                     isWeekend={isWeekend}
+                                    dayOfWeek={dayOfWeek} 
                                 />
                                 );
                             })}
