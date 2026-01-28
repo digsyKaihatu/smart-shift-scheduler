@@ -2,7 +2,6 @@ import React, { useState, useEffect, useRef } from 'react';
 
 /**
  * 閲覧モードでの表記を短縮するヘルパー関数
- * インポートエラー回避のため、ファイル内に定義します。
  */
 const formatValue = (value) => {
   const mapping = {
@@ -18,14 +17,11 @@ const formatValue = (value) => {
     return value % 1 === 0 ? Math.floor(value) : value.toFixed(1);
   }
 
-  // オブジェクト形式（時間単位の休暇など）の場合
   if (value && typeof value === 'object' && 'type' in value) {
     let displayType = value.type;
-    // 完全一致での置換
     if (mapping[value.type]) {
       displayType = mapping[value.type];
     } else {
-      // 部分一致（午前有休 -> 午前有 など）の置換
       Object.entries(mapping).forEach(([full, short]) => {
         displayType = displayType.replace(full, short);
       });
@@ -37,7 +33,6 @@ const formatValue = (value) => {
     return `${displayType}(${value.hours})`;
   }
 
-  // 文字列の場合
   if (typeof value === 'string') {
     return mapping[value] || value;
   }
@@ -47,13 +42,15 @@ const formatValue = (value) => {
 
 /**
  * シフト入力セル
+ * キーボード操作（矢印キー、Enter、Delete）に対応
  */
-export const EditableCell = ({ value, onUpdate, borderClass, disabled = false, isAdmin = false, isToday = false, isHoliday = false, isWeekend = false, dayOfWeek }) => {
+export const EditableCell = ({ value, onUpdate, borderClass, disabled = false, isAdmin = false, isToday = false, isHoliday = false, isWeekend = false, dayOfWeek, rowIndex, colIndex }) => {
   const [mode, setMode] = useState('view');
   const [inputValue, setInputValue] = useState('');
   const [editingSpecialShift, setEditingSpecialShift] = useState(null);
   const cellRef = useRef(null);
   const inputRef = useRef(null);
+  const selectRef = useRef(null); // select用のref
 
   const isLocked = typeof value === 'object' && value !== null && 'locked' in value && value.locked;
   const isEffectivelyDisabled = disabled || (isLocked && !isAdmin);
@@ -63,7 +60,88 @@ export const EditableCell = ({ value, onUpdate, borderClass, disabled = false, i
       inputRef.current.focus();
       inputRef.current.select();
     }
+    if (mode === 'select' && selectRef.current) {
+        selectRef.current.focus();
+    }
   }, [mode]);
+
+  // フォーカス移動ロジック
+  const moveFocus = (direction) => {
+    let nextRow = rowIndex;
+    let nextCol = colIndex;
+
+    if (direction === 'ArrowUp') nextRow--;
+    if (direction === 'ArrowDown') nextRow++;
+    if (direction === 'ArrowLeft') nextCol--;
+    if (direction === 'ArrowRight') nextCol++;
+
+    // data-row, data-col 属性を持つ要素を探す
+    const target = document.querySelector(`[data-row="${nextRow}"][data-col="${nextCol}"]`);
+    if (target) {
+        target.focus();
+    }
+  };
+
+  const handleKeyDown = (e) => {
+    // 編集モード中
+    if (mode !== 'view') {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            // Enterで確定して下へ移動
+            if (mode === 'input') {
+                commitInput();
+            } else if (mode === 'select' && selectRef.current) {
+                // セレクトボックスで値を選んでいる場合はその値を適用
+                 const val = selectRef.current.value;
+                 if (val && val !== '稼働時間入力' && !['遅刻', '早退', '午前有休', '午後有休', '午前休', '午後休', '午前通休', '午後通休'].includes(val)) {
+                     onUpdate(val);
+                     setMode('view');
+                 } else if (val === '稼働時間入力') {
+                     // 時間入力へ移行
+                     return; 
+                 }
+            }
+            // 少し遅延させてフォーカス移動（DOM更新待ち）
+            setTimeout(() => moveFocus('ArrowDown'), 0);
+        }
+        if (e.key === 'Escape') {
+            setMode('view');
+            // ビューモードに戻った後、divにフォーカスを戻す
+            setTimeout(() => cellRef.current?.focus(), 0);
+        }
+        return;
+    }
+
+    // ビューモード中
+    if (isEffectivelyDisabled) return;
+
+    switch (e.key) {
+        case 'ArrowUp':
+        case 'ArrowDown':
+        case 'ArrowLeft':
+        case 'ArrowRight':
+            e.preventDefault();
+            moveFocus(e.key);
+            break;
+        case 'Enter':
+            e.preventDefault();
+            setMode('select');
+            break;
+        case 'Backspace':
+        case 'Delete':
+            e.preventDefault();
+            onUpdate('');
+            break;
+        default:
+            // 数字キーが押されたら直接入力モードへ
+            if (/^[0-9.]$/.test(e.key)) {
+                e.preventDefault();
+                setMode('input');
+                setInputValue(e.key);
+            }
+            break;
+    }
+  };
 
   const commitInput = () => {
     const hours = parseFloat(inputValue);
@@ -72,6 +150,8 @@ export const EditableCell = ({ value, onUpdate, borderClass, disabled = false, i
     }
     setMode('view');
     setEditingSpecialShift(null);
+    // 確定後、セルにフォーカスを戻す
+    setTimeout(() => cellRef.current?.focus(), 0);
   };
 
   const handleSelectChange = (e) => {
@@ -90,32 +170,24 @@ export const EditableCell = ({ value, onUpdate, borderClass, disabled = false, i
     } else {
         onUpdate(selected);
         setMode('view');
+        // 選択後、セルにフォーカスを戻す
+        setTimeout(() => cellRef.current?.focus(), 0);
     }
   };
 
   const getBackgroundColor = () => {
     const hoverClass = isEffectivelyDisabled ? '' : 'hover:bg-opacity-80';
-    
-    // ベース背景色の決定（土日祝の色付け）
-    // 値が入っていない、または特別なステータスでない場合のデフォルト色
     let baseBg = 'bg-white';
-    if (isToday && value === '') {
-        baseBg = 'bg-yellow-50';
-    } else if (isHoliday || dayOfWeek === '日') {
-        baseBg = 'bg-pink-50';
-    } else if (dayOfWeek === '土') {
-        baseBg = 'bg-sky-50';
-    }
+    if (isToday && value === '') baseBg = 'bg-yellow-50';
+    else if (isHoliday || dayOfWeek === '日') baseBg = 'bg-pink-50';
+    else if (dayOfWeek === '土') baseBg = 'bg-sky-50';
 
     if (typeof value === 'number' && value > 0) return `bg-green-100 ${hoverClass}`;
     if (typeof value === 'object' && value !== null && 'type' in value) {
         if (value.type.includes('有休')) return `bg-yellow-100 ${hoverClass}`;
-        // オブジェクト形式のシフト休の場合
         if (value.type === 'シフト休') {
-             if (!isHoliday && !isWeekend) {
-                 return `bg-white text-black ${hoverClass}`; // 平日シフト休
-             }
-             return `bg-slate-200 ${hoverClass}`; // 土日祝シフト休
+             if (!isHoliday && !isWeekend) return `bg-white text-black ${hoverClass}`;
+             return `bg-slate-200 ${hoverClass}`;
         }
         return `bg-slate-200 ${hoverClass}`;
     }
@@ -123,35 +195,42 @@ export const EditableCell = ({ value, onUpdate, borderClass, disabled = false, i
       case '有休': return `bg-yellow-100 ${hoverClass}`;
       case '通休': return `bg-blue-100 ${hoverClass}`;
       case 'シフト休': 
-          if (!isHoliday && !isWeekend) {
-              return `bg-white text-black ${hoverClass}`; // 平日シフト休
-          }
-          return `bg-slate-200 ${hoverClass}`; // 土日祝シフト休
+          if (!isHoliday && !isWeekend) return `bg-white text-black ${hoverClass}`;
+          return `bg-slate-200 ${hoverClass}`;
       case '欠勤': return `bg-red-100 ${hoverClass}`;
-      default: 
-          // 値がない、または通常表示の場合はベース背景色を使用
-          return `${baseBg} ${isEffectivelyDisabled ? '' : 'hover:bg-slate-50'}`;
+      default: return `${baseBg} ${isEffectivelyDisabled ? '' : 'hover:bg-slate-50'}`;
     }
   };
   
-  // 幅を w-[75px] に固定してヘッダーと一致させる
-  const baseClasses = `border-b border-r ${borderClass} text-center text-xs h-10 flex items-center justify-center w-[75px] min-w-[75px] max-w-[75px]`;
+  const baseClasses = `border-b border-r ${borderClass} text-center text-xs h-10 flex items-center justify-center w-[75px] min-w-[75px] max-w-[75px] outline-none focus:ring-2 focus:ring-inset focus:ring-sky-500 z-10`;
 
   if (mode === 'view') {
     return (
-      <div onClick={() => !isEffectivelyDisabled && setMode('select')} className={`relative ${baseClasses} transition-colors duration-150 ${getBackgroundColor()} ${isEffectivelyDisabled ? 'cursor-not-allowed text-slate-500' : 'cursor-pointer'}`}>
-        <span className="truncate w-full px-0.5">{formatValue(value)}</span>
+      <div 
+        ref={cellRef}
+        tabIndex={isEffectivelyDisabled ? -1 : 0}
+        onClick={() => !isEffectivelyDisabled && setMode('select')} 
+        onKeyDown={handleKeyDown}
+        className={`relative ${baseClasses} transition-colors duration-150 ${getBackgroundColor()} ${isEffectivelyDisabled ? 'cursor-not-allowed text-slate-500' : 'cursor-pointer'}`}
+        data-row={rowIndex}
+        data-col={colIndex}
+      >
+        <span className="truncate w-full px-0.5 pointer-events-none">{formatValue(value)}</span>
       </div>
     );
   }
 
   return (
-    <div ref={cellRef} className={`${baseClasses} bg-white relative`}>
+    <div className={`${baseClasses} bg-white relative`} data-row={rowIndex} data-col={colIndex}>
       {mode === 'select' ? (
         <select
-          autoFocus
+          ref={selectRef}
+          onKeyDown={handleKeyDown} // selectでもキー入力を受け付ける
           onChange={handleSelectChange}
-          onBlur={() => setMode('view')}
+          onBlur={() => {
+              // フォーカスがinputへ移動する場合はモードを変えない（ちらつき防止）
+              if (mode !== 'input') setMode('view');
+          }}
           className="absolute inset-0 w-full h-full opacity-100 bg-transparent text-center text-xs cursor-pointer appearance-none outline-none focus:ring-2 focus:ring-sky-500"
           defaultValue=""
         >
@@ -180,7 +259,13 @@ export const EditableCell = ({ value, onUpdate, borderClass, disabled = false, i
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
             onBlur={commitInput}
-            onKeyDown={(e) => e.key === 'Enter' && commitInput()}
+            onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                    commitInput();
+                    // Enterでの確定時、下へ移動
+                    setTimeout(() => moveFocus('ArrowDown'), 0);
+                }
+            }}
             className="absolute inset-0 w-full h-full p-0 m-0 bg-transparent text-center text-xs outline-none"
             style={{ paddingLeft: editingSpecialShift ? '1.5rem' : '0' }}
           />
@@ -190,9 +275,7 @@ export const EditableCell = ({ value, onUpdate, borderClass, disabled = false, i
   );
 };
 
-/**
- * スタッフ情報編集セル
- */
+// ... EditableStaffInfoCell (変更なし) ...
 export const EditableStaffInfoCell = ({ value, onUpdate, className, disabled = false }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [currentValue, setCurrentValue] = useState(value);
