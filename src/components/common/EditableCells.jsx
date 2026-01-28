@@ -43,14 +43,19 @@ const formatValue = (value) => {
 /**
  * シフト入力セル
  * キーボード操作（矢印キー、Enter、Delete）に対応
+ * 範囲選択とコンテキストメニューに対応
  */
-export const EditableCell = ({ value, onUpdate, borderClass, disabled = false, isAdmin = false, isToday = false, isHoliday = false, isWeekend = false, dayOfWeek, rowIndex, colIndex }) => {
+export const EditableCell = ({ 
+  value, onUpdate, borderClass, disabled = false, isAdmin = false, 
+  isToday = false, isHoliday = false, isWeekend = false, dayOfWeek, 
+  rowIndex, colIndex, isSelected, onMouseDown, onMouseEnter, onContextMenu 
+}) => {
   const [mode, setMode] = useState('view');
   const [inputValue, setInputValue] = useState('');
   const [editingSpecialShift, setEditingSpecialShift] = useState(null);
   const cellRef = useRef(null);
   const inputRef = useRef(null);
-  const selectRef = useRef(null); // select用のref
+  const selectRef = useRef(null);
 
   const isLocked = typeof value === 'object' && value !== null && 'locked' in value && value.locked;
   const isEffectivelyDisabled = disabled || (isLocked && !isAdmin);
@@ -75,7 +80,6 @@ export const EditableCell = ({ value, onUpdate, borderClass, disabled = false, i
     if (direction === 'ArrowLeft') nextCol--;
     if (direction === 'ArrowRight') nextCol++;
 
-    // data-row, data-col 属性を持つ要素を探す
     const target = document.querySelector(`[data-row="${nextRow}"][data-col="${nextCol}"]`);
     if (target) {
         target.focus();
@@ -87,26 +91,21 @@ export const EditableCell = ({ value, onUpdate, borderClass, disabled = false, i
     if (mode !== 'view') {
         if (e.key === 'Enter') {
             e.preventDefault();
-            // Enterで確定して下へ移動
             if (mode === 'input') {
                 commitInput();
             } else if (mode === 'select' && selectRef.current) {
-                // セレクトボックスで値を選んでいる場合はその値を適用
                  const val = selectRef.current.value;
                  if (val && val !== '稼働時間入力' && !['遅刻', '早退', '午前有休', '午後有休', '午前休', '午後休', '午前通休', '午後通休'].includes(val)) {
                      onUpdate(val);
                      setMode('view');
                  } else if (val === '稼働時間入力') {
-                     // 時間入力へ移行
                      return; 
                  }
             }
-            // 少し遅延させてフォーカス移動（DOM更新待ち）
             setTimeout(() => moveFocus('ArrowDown'), 0);
         }
         if (e.key === 'Escape') {
             setMode('view');
-            // ビューモードに戻った後、divにフォーカスを戻す
             setTimeout(() => cellRef.current?.focus(), 0);
         }
         return;
@@ -133,7 +132,6 @@ export const EditableCell = ({ value, onUpdate, borderClass, disabled = false, i
             onUpdate('');
             break;
         default:
-            // 数字キーが押されたら直接入力モードへ
             if (/^[0-9.]$/.test(e.key)) {
                 e.preventDefault();
                 setMode('input');
@@ -150,7 +148,6 @@ export const EditableCell = ({ value, onUpdate, borderClass, disabled = false, i
     }
     setMode('view');
     setEditingSpecialShift(null);
-    // 確定後、セルにフォーカスを戻す
     setTimeout(() => cellRef.current?.focus(), 0);
   };
 
@@ -170,12 +167,16 @@ export const EditableCell = ({ value, onUpdate, borderClass, disabled = false, i
     } else {
         onUpdate(selected);
         setMode('view');
-        // 選択後、セルにフォーカスを戻す
         setTimeout(() => cellRef.current?.focus(), 0);
     }
   };
 
   const getBackgroundColor = () => {
+    // 選択状態の場合は最優先でスタイル適用
+    if (isSelected) {
+        return `bg-sky-200 ring-2 ring-inset ring-sky-500 z-20 ${isEffectivelyDisabled ? '' : 'hover:bg-sky-300'}`;
+    }
+
     const hoverClass = isEffectivelyDisabled ? '' : 'hover:bg-opacity-80';
     let baseBg = 'bg-white';
     if (isToday && value === '') baseBg = 'bg-yellow-50';
@@ -202,6 +203,7 @@ export const EditableCell = ({ value, onUpdate, borderClass, disabled = false, i
     }
   };
   
+  // スタイルのベースに z-10 を設定して選択時の枠線が隠れないようにする
   const baseClasses = `border-b border-r ${borderClass} text-center text-xs h-10 flex items-center justify-center w-[75px] min-w-[75px] max-w-[75px] outline-none focus:ring-2 focus:ring-inset focus:ring-sky-500 z-10`;
 
   if (mode === 'view') {
@@ -209,8 +211,17 @@ export const EditableCell = ({ value, onUpdate, borderClass, disabled = false, i
       <div 
         ref={cellRef}
         tabIndex={isEffectivelyDisabled ? -1 : 0}
-        onClick={() => !isEffectivelyDisabled && setMode('select')} 
+        onClick={(e) => {
+            if (!isEffectivelyDisabled) {
+                // 通常クリック時は選択開始とみなして親に通知
+                if (onMouseDown) onMouseDown(e);
+                setMode('select');
+            }
+        }}
         onKeyDown={handleKeyDown}
+        onMouseDown={(e) => !isEffectivelyDisabled && onMouseDown && onMouseDown(e)}
+        onMouseEnter={() => !isEffectivelyDisabled && onMouseEnter && onMouseEnter()}
+        onContextMenu={(e) => !isEffectivelyDisabled && onContextMenu && onContextMenu(e)}
         className={`relative ${baseClasses} transition-colors duration-150 ${getBackgroundColor()} ${isEffectivelyDisabled ? 'cursor-not-allowed text-slate-500' : 'cursor-pointer'}`}
         data-row={rowIndex}
         data-col={colIndex}
@@ -225,10 +236,9 @@ export const EditableCell = ({ value, onUpdate, borderClass, disabled = false, i
       {mode === 'select' ? (
         <select
           ref={selectRef}
-          onKeyDown={handleKeyDown} // selectでもキー入力を受け付ける
+          onKeyDown={handleKeyDown}
           onChange={handleSelectChange}
           onBlur={() => {
-              // フォーカスがinputへ移動する場合はモードを変えない（ちらつき防止）
               if (mode !== 'input') setMode('view');
           }}
           className="absolute inset-0 w-full h-full opacity-100 bg-transparent text-center text-xs cursor-pointer appearance-none outline-none focus:ring-2 focus:ring-sky-500"
@@ -262,7 +272,6 @@ export const EditableCell = ({ value, onUpdate, borderClass, disabled = false, i
             onKeyDown={(e) => {
                 if (e.key === 'Enter') {
                     commitInput();
-                    // Enterでの確定時、下へ移動
                     setTimeout(() => moveFocus('ArrowDown'), 0);
                 }
             }}
