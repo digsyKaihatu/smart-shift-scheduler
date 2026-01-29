@@ -60,6 +60,7 @@ export const EditableCell = ({
   const isLocked = typeof value === 'object' && value !== null && 'locked' in value && value.locked;
   const isEffectivelyDisabled = disabled || (isLocked && !isAdmin);
 
+  // フォーカス制御
   useEffect(() => {
     if (mode === 'input' && inputRef.current) {
       inputRef.current.focus();
