@@ -5,7 +5,7 @@ const HelpGuideModal = ({ onClose }) => {
   const GuideSection = ({ title, children }) => (
     <div className="mb-4">
       <h3 className="text-md font-bold text-[#D9824D] mb-1 border-l-4 border-[#F4B896] pl-2">{title}</h3>
-      <div className="text-sm text-slate-600 space-y-1 ml-2">{children}</div>
+      <div className="text-sm text-slate-600 space-y-2 ml-2">{children}</div>
     </div>
   );
 
@@ -21,50 +21,84 @@ const HelpGuideModal = ({ onClose }) => {
           </button>
         </header>
 
-        <main className="p-6 overflow-y-auto space-y-6">
+        <main className="p-6 overflow-y-auto space-y-8">
           <GuideSection title="1. シフトの入力・編集">
-            <p>・シフト表の各セルをクリックすると、メニューが表示されます。</p>
-            <p>・「稼働時間入力」を選択すると、数値を直接入力できます。（例: 8, 7.5）</p>
-            <p>・「有」「休」「通」などのステータスも選択できます。</p>
-            <p>・<span className="font-bold text-green-600">変更は自動的に保存されます。</span>手動で保存ボタンを押す必要はありません。</p>
+            <div className="flex items-start gap-4">
+                <div className="flex-1 space-y-2">
+                    <p>・シフト表の各セルをクリックすると、メニューが表示されます。</p>
+                    <p>・「稼働時間入力」を選択すると、数値を直接入力できます。（例: 8, 7.5）</p>
+                    <p>・「有休」「シフト休」「通休」などのステータスも選択できます。</p>
+                    <p>・<span className="font-bold text-green-600">変更は自動的に保存されます。</span>手動で保存ボタンを押す必要はありません。</p>
+                    
+                    <div className="mt-3 pt-3 border-t border-slate-100">
+                        <p className="font-bold text-slate-700 mb-1">⌨️ Excel風キーボード操作</p>
+                        <ul className="list-disc list-inside text-xs text-slate-600 ml-1 space-y-1">
+                            <li><span className="font-bold">矢印キー:</span> 上下左右にセルを移動</li>
+                            <li><span className="font-bold">Enter:</span> 編集開始 / 確定して下へ移動</li>
+                            <li><span className="font-bold">Delete / BS:</span> 内容を削除</li>
+                            <li><span className="font-bold">数字キー:</span> 直接入力開始 (例:「8」を押す)</li>
+                        </ul>
+                    </div>
+                </div>
+                <div className="w-1/3 border border-slate-200 rounded-md overflow-hidden shadow-sm flex-shrink-0">
+                    <img src="/スマシフガイド1.png" alt="シフト入力の例" className="w-full h-auto object-contain bg-slate-100" />
+                </div>
+            </div>
           </GuideSection>
           
           <GuideSection title="2. メンバー情報の編集と通知設定">
             <p>・「役職」「社員番号」「稼働名前」の各セルはクリックして直接編集できます。</p>
             <p>・<span className="font-bold text-[#D9824D]">「メンバー管理」</span>ボタンからは、上記に加え<span className="font-bold">「Chat User ID」</span>を設定できます。</p>
-            <p>・<span className="text-xs text-slate-500">※Chat User IDを設定すると、Google Chatの通知でそのメンバー宛にメンションが飛びます。</span></p>
+            <p className="text-xs text-slate-500">※Chat User IDを設定すると、Google Chatの通知でそのメンバー宛にメンションが飛びます。</p>
+            <div className="mt-2 border border-slate-200 rounded-md overflow-hidden shadow-sm">
+                <img src="/スマシフガイド2.png" alt="メンバー編集の例" className="w-full h-auto object-contain bg-slate-100" />
+            </div>
           </GuideSection>
 
           <GuideSection title="3. 提出・差戻・承認と通知機能">
             <p>以下のチェックボックス操作により、Google Chatへ通知が送信されます。</p>
-            <ul className="list-disc list-inside ml-2 mt-1 space-y-1">
+            <ul className="list-disc list-inside ml-2 space-y-1">
               <li><span className="font-bold text-sky-600">提出☑:</span> メンバーがチェックすると、管理者（通知設定で指定したID）へ通知が飛びます。</li>
               <li><span className="font-bold text-red-600">差戻☑ (管理者のみ):</span> 管理者がチェックすると確認画面が出ます。「はい」を押すと、対象メンバーへ<span className="font-bold text-red-600">差戻通知</span>が飛びます。</li>
               <li><span className="font-bold text-green-600">承認☑ (管理者のみ):</span> 管理者がチェックすると確認画面が出ます。「はい」を押すと、対象メンバーへ<span className="font-bold text-green-600">承認通知</span>が飛びます。</li>
             </ul>
+            <div className="mt-2 border border-slate-200 rounded-md overflow-hidden shadow-sm">
+                <img src="/スマシフガイド3.png" alt="通知機能の例" className="w-full h-auto object-contain bg-slate-100" />
+            </div>
           </GuideSection>
 
           <GuideSection title="4. 基本シフトパターンの設定">
             <p>・「基本シフト設定」のセルをクリックすると、月〜金曜のデフォルトシフトパターンを設定できます。</p>
             <p>・設定後、「基本シフトを適用」ボタンを押すと、その月のスケジュールにパターンが自動反映されます。</p>
+            <div className="mt-2 border border-slate-200 rounded-md overflow-hidden shadow-sm">
+                <img src="/スマシフガイド4.png" alt="基本シフト設定の例" className="w-full h-auto object-contain bg-slate-100" />
+            </div>
           </GuideSection>
           
-          <GuideSection title="5. シフトパターン一覧">
-            <p>・シフト表の下にある「シフトパターン一覧」で、登録されている全パターンを確認できます。</p>
-            <p>・「+ パターンを追加」ボタンから、新しい勤務時間パターンを自由に追加できます。</p>
+          <GuideSection title="5. シフトパターン一覧及び 各種ボタン機能">
+            <div className="space-y-3">
+              <p>・シフト表の下にある「シフトパターン一覧」で、登録されている全パターンを確認できます。</p>
+              <p>・「+ パターンを追加」ボタンから、新しい勤務時間パターンを自由に追加できます。</p>
+              
+              <hr className="border-slate-200 my-2" />
+              
+              <div className="space-y-2">
+                <p>・<span className="font-bold text-slate-700">通知設定:</span> メンバーが提出した際に通知を受け取る管理者のChat User IDを設定します。</p>
+                <p>・<span className="font-bold text-[#D9824D]">業務担当を設定:</span> 誰がどの業務を担当できるかを一括で設定します。</p>
+                <p>・<span className="font-bold text-[#D9824D]">+ メンバー/業務を追加:</span> 新しい行を追加します。</p>
+                <p>・<span className="font-bold text-gray-600">CSVエクスポート:</span> 表示されているシフト表（差戻状況含む）をCSVファイルとしてダウンロードします。</p>
+              </div>
+            </div>
+            <div className="mt-2 border border-slate-200 rounded-md overflow-hidden shadow-sm">
+                <img src="/スマシフガイド用8.png" alt="シフトパターンと各種ボタンの例" className="w-full h-auto object-contain bg-slate-100" />
+            </div>
           </GuideSection>
 
           <GuideSection title="6. 業務と人員不足の確認">
             <p>・ページ下部の「業務一覧」で、日ごとの各業務の稼働人数を確認できます。</p>
             <p>・必要な人員に対して稼働人数が足りていない日は「不足」とハイライト表示されます。</p>
-          </GuideSection>
-          
-          <GuideSection title="7. 各種ボタン機能">
-            <div className="space-y-2 mt-2">
-              <p>・<span className="font-bold text-slate-700">通知設定:</span> メンバーが提出した際に通知を受け取る管理者のChat User IDを設定します。</p>
-              <p>・<span className="font-bold text-[#D9824D]">業務担当を設定:</span> 誰がどの業務を担当できるかを一括で設定します。</p>
-              <p>・<span className="font-bold text-[#D9824D]">+ メンバー/業務を追加:</span> 新しい行を追加します。</p>
-              <p>・<span className="font-bold text-gray-600">CSVエクスポート:</span> 表示されているシフト表（差戻状況含む）をCSVファイルとしてダウンロードします。</p>
+            <div className="mt-2 border border-slate-200 rounded-md overflow-hidden shadow-sm">
+                <img src="/スマシフガイド6.png" alt="業務一覧の例" className="w-full h-auto object-contain bg-slate-100" />
             </div>
           </GuideSection>
 

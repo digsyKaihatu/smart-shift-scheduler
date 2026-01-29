@@ -5,8 +5,8 @@ import React, { useState } from 'react';
 // -----------------------------------------------------------------------------
 const AddShiftPatternModal = ({ onClose, onSave, existingPatterns }) => {
   const [id, setId] = useState('');
-  const [startTime, setStartTime] = useState('09:00');
-  const [endTime, setEndTime] = useState('18:00');
+  const [startTime, setStartTime] = useState('09:30');
+  const [endTime, setEndTime] = useState('18:30');
   const [breakHours, setBreakHours] = useState('1.0');
   const [error, setError] = useState('');
 
@@ -17,6 +17,7 @@ const AddShiftPatternModal = ({ onClose, onSave, existingPatterns }) => {
       setError('記号を入力してください。');
       return;
     }
+    // 重複チェック
     if (existingPatterns.some(p => p.id.trim().toLowerCase() === id.trim().toLowerCase())) {
       setError('この記号は既に使用されています。');
       return;
@@ -142,7 +143,7 @@ const AddShiftPatternModal = ({ onClose, onSave, existingPatterns }) => {
 // -----------------------------------------------------------------------------
 // ShiftPatternDisplay: パターン一覧表示コンポーネント
 // -----------------------------------------------------------------------------
-const ShiftPatternDisplay = ({ patterns, onAddPattern }) => {
+const ShiftPatternDisplay = ({ patterns, onAddPattern, additionalControls }) => {
     const [isOpen, setIsOpen] = useState(false);
     const [isAddModalOpen, setIsAddModalOpen] = useState(false);
 
@@ -153,12 +154,15 @@ const ShiftPatternDisplay = ({ patterns, onAddPattern }) => {
         setIsAddModalOpen(false);
     };
 
+    // 9:00～を非表示にするフィルタリング
+    const visiblePatterns = patterns.filter(p => p.startTime !== '9:00' && p.startTime !== '09:00');
+
     return (
         <div className="bg-white rounded-lg shadow-md ring-1 ring-black ring-opacity-5 p-4">
-            <div className="flex justify-between items-center">
+            <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4">
                 <button 
                     onClick={toggleOpen}
-                    className="flex-grow flex justify-between items-center text-left"
+                    className="flex justify-start items-center text-left gap-2 min-w-max"
                     aria-expanded={isOpen}
                     aria-controls="shift-pattern-table"
                 >
@@ -173,12 +177,17 @@ const ShiftPatternDisplay = ({ patterns, onAddPattern }) => {
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                     </svg>
                 </button>
-                <button
-                    onClick={() => setIsAddModalOpen(true)}
-                    className="ml-4 px-3 py-1.5 bg-[#F4B896] text-white text-xs font-semibold rounded-md hover:bg-[#E8A680] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#F4B896] shadow-sm transition-colors"
-                >
-                    + パターンを追加
-                </button>
+                
+                <div className="flex flex-wrap items-center gap-2 w-full xl:w-auto xl:justify-end">
+                    {/* ここで配置順を変更しました: [+ パターンを追加] [その他のボタン群] */}
+                    <button
+                        onClick={() => setIsAddModalOpen(true)}
+                        className="px-3 py-1.5 bg-[#F4B896] text-white text-xs font-semibold rounded-md hover:bg-[#E8A680] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#F4B896] shadow-sm transition-colors whitespace-nowrap"
+                    >
+                        + パターンを追加
+                    </button>
+                    {additionalControls}
+                </div>
             </div>
             
             {isOpen && (
@@ -193,7 +202,7 @@ const ShiftPatternDisplay = ({ patterns, onAddPattern }) => {
                             </tr>
                         </thead>
                         <tbody className="bg-white divide-y divide-slate-200">
-                            {patterns.map(pattern => (
+                            {visiblePatterns.map(pattern => (
                                 <tr key={pattern.id}>
                                     <td className="px-4 py-2 whitespace-nowrap text-sm font-medium text-slate-900">{pattern.name}</td>
                                     <td className="px-4 py-2 whitespace-nowrap text-sm text-slate-600">{pattern.startTime} - {pattern.endTime}</td>

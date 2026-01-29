@@ -2,10 +2,13 @@ import { summarizePattern } from './scheduleUtils';
 
 const escapeCsvCell = (cellData) => {
   if (typeof cellData === 'object' && cellData !== null) {
-    if ('type' in cellData && cellData.type === '休') return '休';
+    if ('type' in cellData && cellData.type === 'シフト休') return '休'; // ここを修正: "シフト休" -> "休"
     if ('type' in cellData && 'hours' in cellData) return `${cellData.type}(${cellData.hours})`;
   }
   const stringData = String(cellData ?? '');
+  // 文字列の場合もチェックして置換（念のため）
+  if (stringData === 'シフト休') return '休';
+  
   return stringData.includes(',') ? `"${stringData}"` : stringData;
 };
 
@@ -21,7 +24,8 @@ export const downloadScheduleCSV = ({ staff, tasks, schedule, shiftPatterns, tas
       s.role,
       s.employeeId,
       s.name,
-      summarizePattern(s.defaultShift.pattern, shiftPatterns).replace(/\n/g, ' '),
+      // 休憩設定(hasBreakArray)も渡してフォーマットする
+      summarizePattern(s.defaultShift.pattern, shiftPatterns, s.defaultShift.hasBreakArray).replace(/\n/g, ' '),
       s.shiftSubmitted?.[key] ? '☑' : '',
       s.shiftRemanded?.[key] ? '☑' : '',
       s.shiftApproved?.[key] ? '☑' : '',

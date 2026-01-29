@@ -1,13 +1,13 @@
 import React, { useState, useEffect } from 'react';
 
-const TaskStaffMappingEditor = ({ staff, tasks, onClose, onSave }) => {
+const TaskStaffMappingEditor = ({ staff = [], tasks = [], onClose, onSave }) => {
   const [taskStaffMap, setTaskStaffMap] = useState({});
 
   useEffect(() => {
     const initialMap = {};
     tasks.forEach(task => {
       initialMap[task.id] = staff
-        .filter(s => s.possibleTasks.includes(task.id))
+        .filter(s => (s.possibleTasks || []).includes(task.id))
         .map(s => s.id);
     });
     setTaskStaffMap(initialMap);
@@ -64,7 +64,7 @@ const TaskStaffMappingEditor = ({ staff, tasks, onClose, onSave }) => {
                     <label key={member.id} className="flex items-center space-x-2 p-1 rounded hover:bg-slate-100 cursor-pointer">
                       <input
                         type="checkbox"
-                        checked={taskStaffMap[task.id]?.includes(member.id) || false}
+                        checked={(taskStaffMap[task.id] || []).includes(member.id)}
                         onChange={() => handleStaffToggle(task.id, member.id)}
                         className="form-checkbox h-4 w-4 text-[#D9824D] rounded border-slate-300 focus:ring-[#F4B896]"
                       />

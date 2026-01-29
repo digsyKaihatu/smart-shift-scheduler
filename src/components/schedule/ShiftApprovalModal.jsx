@@ -7,8 +7,12 @@ const ShiftApprovalModal = ({ staffMember, schedule, shiftPatterns, holidays, ye
 
     // 基本シフトパターンの要約テキスト生成
     const patternSummary = useMemo(() => {
-        return summarizePattern(staffMember.defaultShift.pattern, shiftPatterns);
-    }, [staffMember.defaultShift.pattern, shiftPatterns]);
+        return summarizePattern(
+            staffMember.defaultShift.pattern, 
+            shiftPatterns, 
+            staffMember.defaultShift.hasBreakArray // 休憩設定も渡す
+        );
+    }, [staffMember.defaultShift.pattern, staffMember.defaultShift.hasBreakArray, shiftPatterns]);
 
     // イレギュラー勤務（基本パターンと異なる日）の抽出ロジック
     const irregularPatterns = useMemo(() => {
@@ -24,13 +28,13 @@ const ShiftApprovalModal = ({ staffMember, schedule, shiftPatterns, holidays, ye
             let expectedValue = '';
             
             if (isWeekend || isHoliday) {
-                expectedValue = '休';
+                expectedValue = 'シフト休';
             } else {
                 const patternIndex = dayOfWeek - 1; // 0 = Monday
                 if (patternIndex >= 0 && patternIndex < 5) {
                     const patternId = staffMember.defaultShift.pattern[patternIndex];
-                    if (patternId === '休') {
-                        expectedValue = '休';
+                    if (patternId === 'シフト休') {
+                        expectedValue = 'シフト休';
                     } else if (patternId) {
                         const pattern = shiftPatterns.find(p => p.id === patternId);
                         expectedValue = pattern ? pattern.workHours : '';
