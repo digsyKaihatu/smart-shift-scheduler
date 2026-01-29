@@ -31,7 +31,7 @@ const HelpGuideModal = ({ onClose }) => {
                     <p>・<span className="font-bold text-green-600">変更は自動的に保存されます。</span>手動で保存ボタンを押す必要はありません。</p>
                     
                     <div className="mt-3 pt-3 border-t border-slate-100">
-                        <p className="font-bold text-slate-700 mb-1">⌨️ Excel風キーボード操作</p>
+                        <p className="font-bold text-slate-700 mb-1">⌨️ Excelのようなキーボード操作</p>
                         <ul className="list-disc list-inside text-xs text-slate-600 ml-1 space-y-1">
                             <li><span className="font-bold">矢印キー:</span> 上下左右にセルを移動</li>
                             <li><span className="font-bold">Enter:</span> 編集開始 / 確定して下へ移動</li>
