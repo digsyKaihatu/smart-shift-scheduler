@@ -203,7 +203,6 @@ export const EditableCell = ({
     }
   };
   
-  // スタイルのベースに z-10 を設定して選択時の枠線が隠れないようにする
   const baseClasses = `border-b border-r ${borderClass} text-center text-xs h-10 flex items-center justify-center w-[75px] min-w-[75px] max-w-[75px] outline-none focus:ring-2 focus:ring-inset focus:ring-sky-500 z-10`;
 
   if (mode === 'view') {
@@ -213,8 +212,8 @@ export const EditableCell = ({
         tabIndex={isEffectivelyDisabled ? -1 : 0}
         onClick={(e) => {
             if (!isEffectivelyDisabled) {
-                // 通常クリック時は選択開始とみなして親に通知
-                if (onMouseDown) onMouseDown(e);
+                // onMouseDown(e); の呼び出しを削除しました
+                // これによりクリック後に選択状態が解除されないバグが解消されます
                 setMode('select');
             }
         }}
@@ -284,7 +283,6 @@ export const EditableCell = ({
   );
 };
 
-// ... EditableStaffInfoCell (変更なし) ...
 export const EditableStaffInfoCell = ({ value, onUpdate, className, disabled = false }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [currentValue, setCurrentValue] = useState(value);
