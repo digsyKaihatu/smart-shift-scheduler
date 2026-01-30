@@ -162,6 +162,15 @@ export const identifyShiftPattern = (monthlyShifts, patterns, year, month) => {
   return null; // 一致なし
 };
 
+// シフトパターンの概要を取得（CSVエクスポートなどで使用）
+export const summarizePattern = (monthlyShifts, patterns, year, month) => {
+  const patternId = identifyShiftPattern(monthlyShifts, patterns, year, month);
+  if (patternId && patterns[patternId]) {
+    return patterns[patternId].name;
+  }
+  return 'カスタム';
+};
+
 // データのCSVエクスポート用フォーマット
 export const formatShiftDataForExport = (staffList, scheduleData, year, month) => {
   // 実装は省略（csvExporter.js側で処理するため、ここはヘルパー的に使う想定）
