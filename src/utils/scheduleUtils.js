@@ -1,135 +1,130 @@
-import { getJapaneseHolidays } from './dateUtils';
+import { format, getDay, getDaysInMonth, isWeekend as isWeekendFns, eachDayOfInterval, startOfMonth, endOfMonth, parseISO, isValid, isSameDay } from 'date-fns';
+import { ja } from 'date-fns/locale';
+import { HOLIDAYS } from '../constants/initialData';
 
-export const generateScheduleForMonth = (year, month, staffData, shiftPatternsData) => {
-    const scheduleForMonth = {};
-    const daysInMonth = new Date(year, month, 0).getDate();
-    const monthHolidays = getJapaneseHolidays(year, month);
-
-    staffData.forEach(staffMember => {
-        const staffId = staffMember.id;
-        scheduleForMonth[staffId] = {};
-        const defaultPattern = staffMember.defaultShift?.pattern;
-
-        for (let day = 1; day <= daysInMonth; day++) {
-            const date = new Date(year, month - 1, day);
-            const dayOfWeek = date.getDay(); // 0: 日曜, 1: 月曜, ..., 6: 土曜
-            const isHoliday = monthHolidays.includes(day);
-
-            // 平日以外（土日、または祝日）の場合は初期状態を「シフト休」に設定
-            if (dayOfWeek === 0 || dayOfWeek === 6 || isHoliday) {
-                scheduleForMonth[staffId][day] = 'シフト休';
-            } else {
-                // 平日の場合：基本シフトパターンがあればそれを適用
-                const patternIndex = dayOfWeek - 1; // 月曜(1) -> 0
-                if (defaultPattern && patternIndex >= 0 && patternIndex < defaultPattern.length) {
-                    const patternId = defaultPattern[patternIndex];
-                    if (patternId === 'シフト休') {
-                        scheduleForMonth[staffId][day] = 'シフト休';
-                    } else {
-                        const patternDetails = shiftPatternsData.find(p => p.id === patternId);
-                        scheduleForMonth[staffId][day] = patternDetails ? patternDetails.workHours : '';
-                    }
-                } else {
-                    scheduleForMonth[staffId][day] = ''; // パターン未定義の場合は空欄
-                }
-            }
-        }
-    });
-
-    return scheduleForMonth;
+// 祝日判定
+export const isHoliday = (date) => {
+  if (!date) return false;
+  const dateStr = format(date, 'yyyy-MM-dd');
+  return Object.prototype.hasOwnProperty.call(HOLIDAYS, dateStr);
 };
 
-export const generateInitialSchedule = (staffData, shiftPatternsData) => {
-    const year = new Date().getFullYear();
-    const month = new Date().getMonth() + 1;
-    const key = `${year}-${month}`;
-    return {
-        [key]: generateScheduleForMonth(year, month, staffData, shiftPatternsData)
-    };
+// 土日判定
+export const isWeekend = (date) => {
+  if (!date) return false;
+  const day = getDay(date);
+  return day === 0 || day === 6;
+};
+
+// 土日祝判定
+export const isHolidayOrWeekend = (date) => {
+  return isWeekend(date) || isHoliday(date);
+};
+
+// 月の日付配列を取得
+export const getDaysInMonthArray = (year, month) => {
+  const start = startOfMonth(new Date(year, month - 1));
+  const end = endOfMonth(new Date(year, month - 1));
+  return eachDayOfInterval({ start, end });
+};
+
+// 時間計算（休憩時間を考慮）
+export const calculateHours = (startTime, endTime, breakTime = '01:00') => {
+  if (!startTime || !endTime) return 0;
+
+  const [startH, startM] = startTime.split(':').map(Number);
+  const [endH, endM] = endTime.split(':').map(Number);
+  const [breakH, breakM] = breakTime.split(':').map(Number);
+
+  let startMin = startH * 60 + startM;
+  let endMin = endH * 60 + endM;
+  const breakMin = breakH * 60 + breakM;
+
+  if (endMin < startMin) {
+    endMin += 24 * 60; // 日またぎ対応
+  }
+
+  const durationMin = endMin - startMin - breakMin;
+  return Math.max(0, durationMin / 60);
 };
 
 /**
- * シフトパターンのサマリーを生成する関数
- * 同じ設定（パターンIDと休憩有無）の曜日をまとめて表示します。
- * @param {Array} pattern - ['A', 'A', 'B', 'A', 'A'] のようなパターンの配列
- * @param {Array} patterns - シフトパターンの定義データ
- * @param {Array} hasBreakArray - [true, true, false, true, true] のような休憩有無の配列
+ * シフトパターンを判定する
+ * 修正: 休暇系ステータス（有給、通院など）がある場合は、パターン不一致とせず許容する
  */
-export const summarizePattern = (pattern, patterns, hasBreakArray) => {
-    if (!pattern || pattern.length !== 5) return '未設定';
-    const DAY_NAMES = ['月', '火', '水', '木', '金'];
+export const identifyShiftPattern = (monthlyShifts, patterns, year, month) => {
+  if (!monthlyShifts || !patterns) return null;
 
-    // 休憩設定の取得ヘルパー
-    const getBreak = (i) => Array.isArray(hasBreakArray) ? hasBreakArray[i] : true;
+  const days = getDaysInMonthArray(year, month);
+  
+  // 休暇として許容するキーワード
+  const ALLOWED_EXCEPTIONS = ['有給', '有休', '通院', '半休', '特休', '慶弔', '欠勤', '忌引', '産休', '育休', '介護'];
 
-    // 5日間すべて同じ設定かどうかをチェック
-    const firstId = pattern[0];
-    const firstBreak = getBreak(0);
-    const isUniform = pattern.every((id, i) => id === firstId && getBreak(i) === firstBreak);
+  // 各パターンについて適合度をチェック
+  for (const [patternId, pattern] of Object.entries(patterns)) {
+    let isMatch = true;
 
-    // 一括表示（すべて同じ場合）
-    if (isUniform) {
-        if (firstId === 'シフト休') {
-            return '月〜金: シフト休';
+    for (const date of days) {
+      const dateKey = format(date, 'yyyy-MM-dd');
+      const shift = monthlyShifts[dateKey];
+      const isOffDay = isHolidayOrWeekend(date);
+
+      if (isOffDay) {
+        // 土日祝の場合
+        // シフトが入っていない、または「公休」「休」などの場合はOK
+        // パターンとしては「何もない」ことが期待値だが、明示的な休日も許容
+        if (shift && shift.trim() !== '' && shift !== '公休' && shift !== '休' && !ALLOWED_EXCEPTIONS.some(ex => shift.includes(ex))) {
+          // 土日祝に勤務時間が入っている場合は不一致
+           // ただし、時間の形式（00:00-00:00）でなければ許容（メモ書きなど）
+           if (/\d{1,2}:\d{2}/.test(shift)) {
+             isMatch = false;
+             break;
+           }
         }
-        const p = patterns.find(x => x.id === firstId);
-        if (p) {
-            const breakLabel = firstBreak ? '休憩あり' : '休憩なし';
-            return `月〜金 ${p.startTime}～${p.endTime} ${breakLabel}`;
+      } else {
+        // 平日の場合
+        if (!shift) {
+          // 平日にシフトが空の場合は不一致
+          isMatch = false;
+          break;
         }
+
+        // 休暇系キーワードが含まれている場合は、勤務時間が一致していなくてもOKとする（ここが修正点）
+        if (ALLOWED_EXCEPTIONS.some(ex => shift.includes(ex))) {
+          continue;
+        }
+
+        // 通常の勤務チェック
+        const patternTime = `${pattern.start}-${pattern.end}`;
+        // 時間が完全に一致するか、あるいは入力された文字列に時間が含まれているか
+        if (shift !== patternTime && !shift.includes(patternTime)) {
+          isMatch = false;
+          break;
+        }
+      }
     }
 
-    // 設定内容を一意なキーに変換するヘルパー関数
-    // 区切り文字によるバグを防ぐため、JSON文字列化してキーにする
-    const getSettingKey = (index) => {
-        const pId = pattern[index];
-        const isBreak = getBreak(index);
-        return JSON.stringify({ pId, isBreak });
-    };
-
-    // グループ化のためのMap (挿入順序を保持)
-    const groups = new Map();
-
-    for (let i = 0; i < 5; i++) {
-        const key = getSettingKey(i);
-        if (!groups.has(key)) {
-            groups.set(key, { key, days: [] });
-        }
-        groups.get(key).days.push(DAY_NAMES[i]);
+    if (isMatch) {
+      return patternId; // 一致するパターンIDを返す
     }
+  }
 
-    const resultLines = [];
+  return null; // 一致なし
+};
 
-    for (const group of groups.values()) {
-        const { key, days } = group;
-        const daysStr = days.join('、');
-        let contentStr = '';
+// データのCSVエクスポート用フォーマット
+export const formatShiftDataForExport = (staffList, scheduleData, year, month) => {
+  // 実装は省略（csvExporter.js側で処理するため、ここはヘルパー的に使う想定）
+  return [];
+};
 
-        try {
-            const { pId, isBreak } = JSON.parse(key);
-
-            if (pId === 'シフト休') {
-                contentStr = 'シフト休';
-            } else {
-                const p = patterns.find(x => x.id === pId);
-                if (p) {
-                    const breakLabel = isBreak ? '休憩あり' : '休憩なし';
-                    contentStr = `${p.name}：${p.startTime}～${p.endTime}　${breakLabel}`;
-                } else {
-                    // フォールバック: マスタに見つからない場合
-                    // 万が一IDに「シフト休」や「休」という文字列が含まれていれば「シフト休」とみなす（セーフティ）
-                    if (String(pId).includes('シフト休') || String(pId).includes('休')) {
-                         contentStr = 'シフト休';
-                    } else {
-                         contentStr = `?`; 
-                    }
-                }
-            }
-        } catch (e) {
-            contentStr = '?';
-        }
-        resultLines.push(`${daysStr}　${contentStr}`);
-    }
-
-    return resultLines.join('\n');
+// カレンダー表示用の日付ごとのクラス名取得
+export const getDateCellClass = (date) => {
+  if (isHoliday(date)) return 'bg-red-50 text-red-600';
+  if (isWeekend(date)) {
+    const day = getDay(date);
+    if (day === 0) return 'bg-red-50 text-red-600'; // 日曜
+    if (day === 6) return 'bg-blue-50 text-blue-600'; // 土曜
+  }
+  return '';
 };
