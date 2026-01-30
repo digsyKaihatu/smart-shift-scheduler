@@ -295,14 +295,26 @@ export const identifyShiftPattern = (monthlyShifts, patterns, year, month) => {
 };
 
 // シフトパターンの概要を取得（CSVエクスポートなどで使用）
-export const summarizePattern = (monthlyShifts, patterns, year, month) => {
-  const patternId = identifyShiftPattern(monthlyShifts, patterns, year, month);
-  if (patternId && patterns[patternId]) {
-    // 修正: 名前だけでなく時間も含めて返す (例: "A勤務 (09:00-18:00)")
-    const p = patterns[patternId];
-    return `${p.name} (${p.start}-${p.end})`;
+export const summarizePattern = (pattern, patterns, hasBreakArray) => {
+  // 配列でない場合（予期しない呼び出し）は未設定を返す
+  if (!pattern || !Array.isArray(pattern)) return '未設定';
+
+  // 全て同じパターンかチェック
+  const firstId = pattern[0];
+  const isUniform = pattern.every(id => id === firstId);
+
+  if (isUniform) {
+    if (firstId === 'シフト休') {
+        return '月〜金: シフト休';
+    }
+    const p = patterns.find(x => x.id === firstId);
+    if (p) {
+        // 名前だけでなく時間も含めて返す (例: "A勤務 (09:00-18:00)")
+        return `${p.name} (${p.startTime}-${p.endTime})`;
+    }
   }
-  return '特記事項';
+  // 曜日ごとに異なる場合
+  return 'カスタム';
 };
 
 // データのCSVエクスポート用フォーマット
