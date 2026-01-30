@@ -169,7 +169,9 @@ export const identifyShiftPattern = (monthlyShifts, patterns, year, month) => {
 export const summarizePattern = (monthlyShifts, patterns, year, month) => {
   const patternId = identifyShiftPattern(monthlyShifts, patterns, year, month);
   if (patternId && patterns[patternId]) {
-    return patterns[patternId].name;
+    // 修正: 名前だけでなく時間も含めて返す (例: "A勤務 (09:00-18:00)")
+    const p = patterns[patternId];
+    return `${p.name} (${p.start}-${p.end})`;
   }
   return 'カスタム';
 };
