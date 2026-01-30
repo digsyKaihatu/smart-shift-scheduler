@@ -87,6 +87,17 @@ export const calculateHours = (startTime, endTime, breakTime = '01:00') => {
   return Math.max(0, durationMin / 60);
 };
 
+// 初期スケジュールデータの生成
+export const generateInitialSchedule = (year, month) => {
+  const schedule = {};
+  const days = getDaysInMonthArray(year, month);
+  days.forEach((day) => {
+    const dateStr = formatDate(day);
+    schedule[dateStr] = {};
+  });
+  return schedule;
+};
+
 /**
  * シフトパターンを判定する
  * 修正: 休暇系ステータス（有給、通院など）がある場合は、パターン不一致とせず許容する
