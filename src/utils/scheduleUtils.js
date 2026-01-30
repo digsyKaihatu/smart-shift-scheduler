@@ -98,6 +98,9 @@ export const generateInitialSchedule = (year, month) => {
   return schedule;
 };
 
+// MainContent.jsx等で使用される関数（generateInitialScheduleのエイリアス）
+export const generateScheduleForMonth = generateInitialSchedule;
+
 /**
  * シフトパターンを判定する
  * 修正: 休暇系ステータス（有給、通院など）がある場合は、パターン不一致とせず許容する
