@@ -1,19 +1,30 @@
-import { format, getDay, getDaysInMonth, isWeekend as isWeekendFns, eachDayOfInterval, startOfMonth, endOfMonth, parseISO, isValid, isSameDay } from 'date-fns';
-import { ja } from 'date-fns/locale';
 import { HOLIDAYS } from '../constants/initialData';
+
+// --- Helper Functions (date-fnsの代替) ---
+
+// 日付を yyyy-MM-dd 形式の文字列に変換
+const formatDate = (date) => {
+  if (!date) return '';
+  const d = new Date(date);
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+// 土日判定 (Native)
+export const isWeekend = (date) => {
+  if (!date) return false;
+  const d = new Date(date);
+  const day = d.getDay();
+  return day === 0 || day === 6;
+};
 
 // 祝日判定
 export const isHoliday = (date) => {
   if (!date) return false;
-  const dateStr = format(date, 'yyyy-MM-dd');
+  const dateStr = formatDate(date);
   return Object.prototype.hasOwnProperty.call(HOLIDAYS, dateStr);
-};
-
-// 土日判定
-export const isWeekend = (date) => {
-  if (!date) return false;
-  const day = getDay(date);
-  return day === 0 || day === 6;
 };
 
 // 土日祝判定
@@ -21,11 +32,18 @@ export const isHolidayOrWeekend = (date) => {
   return isWeekend(date) || isHoliday(date);
 };
 
-// 月の日付配列を取得
+// 月の日付配列を取得 (Native)
 export const getDaysInMonthArray = (year, month) => {
-  const start = startOfMonth(new Date(year, month - 1));
-  const end = endOfMonth(new Date(year, month - 1));
-  return eachDayOfInterval({ start, end });
+  const days = [];
+  // month argument is 1-based (1=January), Date constructor takes 0-based month for the second argument
+  const date = new Date(year, month - 1, 1);
+  
+  // 月が変わるまでループ
+  while (date.getMonth() === month - 1) {
+    days.push(new Date(date));
+    date.setDate(date.getDate() + 1);
+  }
+  return days;
 };
 
 // 時間計算（休憩時間を考慮）
@@ -65,7 +83,7 @@ export const identifyShiftPattern = (monthlyShifts, patterns, year, month) => {
     let isMatch = true;
 
     for (const date of days) {
-      const dateKey = format(date, 'yyyy-MM-dd');
+      const dateKey = formatDate(date);
       const shift = monthlyShifts[dateKey];
       const isOffDay = isHolidayOrWeekend(date);
 
@@ -89,7 +107,7 @@ export const identifyShiftPattern = (monthlyShifts, patterns, year, month) => {
           break;
         }
 
-        // 休暇系キーワードが含まれている場合は、勤務時間が一致していなくてもOKとする（ここが修正点）
+        // 休暇系キーワードが含まれている場合は、勤務時間が一致していなくてもOKとする
         if (ALLOWED_EXCEPTIONS.some(ex => shift.includes(ex))) {
           continue;
         }
@@ -122,7 +140,8 @@ export const formatShiftDataForExport = (staffList, scheduleData, year, month) =
 export const getDateCellClass = (date) => {
   if (isHoliday(date)) return 'bg-red-50 text-red-600';
   if (isWeekend(date)) {
-    const day = getDay(date);
+    const d = new Date(date);
+    const day = d.getDay();
     if (day === 0) return 'bg-red-50 text-red-600'; // 日曜
     if (day === 6) return 'bg-blue-50 text-blue-600'; // 土曜
   }
