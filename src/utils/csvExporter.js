@@ -24,13 +24,23 @@ export const downloadScheduleCSV = (staffList, scheduleData, shiftPatterns, year
   
   const csvRows = [headerRow.map(escapeCsvCell).join(',')];
 
+  // staffListの安全性チェック
+  // 配列でない場合は空配列として扱う
+  const safeStaffList = Array.isArray(staffList) ? staffList : [];
+  
+  // shiftPatternsの安全性チェック
+  const safeShiftPatterns = Array.isArray(shiftPatterns) ? shiftPatterns : [];
+
   // データ行の作成
-  staffList.forEach(staff => {
+  safeStaffList.forEach(staff => {
     // 基本シフトパターン名の取得
+    // staff.defaultShift がない場合の対策
+    const defaultShift = staff.defaultShift || {};
+    
     const patternName = summarizePattern(
-        staff.defaultShift.pattern, 
-        shiftPatterns, 
-        staff.defaultShift.hasBreakArray
+        defaultShift.pattern, 
+        safeShiftPatterns, 
+        defaultShift.hasBreakArray
     );
 
     const row = [
@@ -49,7 +59,6 @@ export const downloadScheduleCSV = (staffList, scheduleData, shiftPatterns, year
       const val = daySchedule[staff.id];
       
       // 表示形式に合わせて変換 (formatValueを使用)
-      // ここで「有休」→「有」、「通休」→「通」などの変換が行われます
       const formattedVal = formatValue(val || '');
       
       row.push(formattedVal);
