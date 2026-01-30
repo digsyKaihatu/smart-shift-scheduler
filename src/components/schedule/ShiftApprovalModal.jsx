@@ -14,7 +14,7 @@ const ShiftApprovalModal = ({ staffMember, schedule, shiftPatterns, holidays, ye
         );
     }, [staffMember.defaultShift.pattern, staffMember.defaultShift.hasBreakArray, shiftPatterns]);
 
-    // イレギュラー勤務（基本パターンと異なる日）の抽出ロジック
+    // 特記事項（基本パターンと異なる日）の抽出ロジック
     const irregularPatterns = useMemo(() => {
         const irregularities = [];
         const daysInMonth = new Date(year, month, 0).getDate();
