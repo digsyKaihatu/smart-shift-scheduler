@@ -173,7 +173,7 @@ export const summarizePattern = (monthlyShifts, patterns, year, month) => {
     const p = patterns[patternId];
     return `${p.name} (${p.start}-${p.end})`;
   }
-  return 'カスタム';
+  return '特記事項';
 };
 
 // データのCSVエクスポート用フォーマット
