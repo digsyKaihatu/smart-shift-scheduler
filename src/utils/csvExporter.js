@@ -1,4 +1,4 @@
-import { summarizePattern } from './scheduleUtils';
+import { summarizePattern, generateScheduleForMonth } from './scheduleUtils';
 import { formatValue } from './dateUtils';
 
 const escapeCsvCell = (cellData) => {
@@ -57,6 +57,10 @@ export const downloadScheduleCSV = (staffList, scheduleData, shiftPatterns, year
   // shiftPatternsの安全性チェック
   const safeShiftPatterns = Array.isArray(shiftPatterns) ? shiftPatterns : [];
 
+  // ★重要: 基本シフトに基づいたベーススケジュールを生成する
+  // これにより、手入力していない日の「A勤務」なども値として取得できる
+  const baseSchedule = generateScheduleForMonth(year, month, safeStaffList, safeShiftPatterns);
+
   // データ行の作成
   safeStaffList.forEach(staff => {
     // 基本シフトパターン名の取得
@@ -78,12 +82,21 @@ export const downloadScheduleCSV = (staffList, scheduleData, shiftPatterns, year
       // 日付キーの生成 (YYYY-MM-DD)
       const dateKey = `${year}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
       
-      // スケジュールデータの取得
+      // 1. 手入力データの取得
       const daySchedule = scheduleData[dateKey] || {};
-      const val = daySchedule[staff.id];
+      const userVal = daySchedule[staff.id];
+
+      // 2. 基本パターンデータの取得 (baseScheduleは { staffId: { day: value } } の形式)
+      const baseVal = baseSchedule[staff.id]?.[d];
+
+      // 3. マージ: 手入力があればそれを優先、なければ基本パターンを使用
+      // (userValが空文字でない場合は手入力を採用)
+      const finalVal = (userVal !== undefined && userVal !== null && userVal !== '') 
+                       ? userVal 
+                       : baseVal;
       
-      // CSV用の変換を適用 (formatForCsvを使用)
-      const formattedVal = formatForCsv(val || '');
+      // CSV用の変換を適用
+      const formattedVal = formatForCsv(finalVal || '');
       
       row.push(formattedVal);
     }
