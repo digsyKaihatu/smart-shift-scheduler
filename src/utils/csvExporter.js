@@ -91,6 +91,11 @@ export const downloadScheduleCSV = (staffList, scheduleData, arg3, arg4, arg5) =
   // 基本シフトに基づいたベーススケジュールを生成
   const baseSchedule = generateScheduleForMonth(year, month, safeStaffList, safeShiftPatterns);
 
+  // データ取得用のキーを生成 (YYYY-M 形式)
+  // MainContent.jsxなどの保存ロジックと形式を合わせる必要があります
+  const monthKey = `${year}-${month}`;
+  const currentMonthData = scheduleData[monthKey] || {};
+
   // データ行の作成
   safeStaffList.forEach(staff => {
     // 基本シフトパターン名の取得
@@ -109,19 +114,15 @@ export const downloadScheduleCSV = (staffList, scheduleData, arg3, arg4, arg5) =
     ];
 
     for (let d = 1; d <= daysInMonth; d++) {
-      // 日付キーの生成 (YYYY-MM-DD)
-      const dateKey = `${year}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-      
       // 1. 手入力データの取得
-      const daySchedule = scheduleData[dateKey] || {};
-      const userVal = daySchedule[staff.id];
+      // scheduleData -> monthKey -> staffId -> day (数値) の順でアクセス
+      const staffMonthData = currentMonthData[staff.id] || {};
+      const userVal = staffMonthData[d];
 
       // 2. 基本パターンデータの取得
       const baseVal = baseSchedule[staff.id]?.[d];
 
-      // 3. マージ: 修正箇所
-      // userValが undefined でない限り（空文字であっても）手入力を優先する
-      // これにより、意図的に空欄にした場合も正しく反映される
+      // 3. マージ: 手入力があればそれを優先 (空文字も有効な入力として扱う)
       const finalVal = (userVal !== undefined) 
                        ? userVal 
                        : baseVal;
