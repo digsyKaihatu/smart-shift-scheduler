@@ -40,7 +40,41 @@ const formatForCsv = (value) => {
   return formatted;
 };
 
-export const downloadScheduleCSV = (staffList, scheduleData, shiftPatterns, year, month) => {
+/**
+ * CSVダウンロード関数
+ * @param {Array} staffList - スタッフリスト
+ * @param {Object} scheduleData - スケジュールデータ
+ * @param {Array|Number} arg3 - shiftPatterns または year (互換性対応)
+ * @param {Number} arg4 - year または month (互換性対応)
+ * @param {Number} [arg5] - month (arg3がshiftPatternsの場合)
+ */
+export const downloadScheduleCSV = (staffList, scheduleData, arg3, arg4, arg5) => {
+  let shiftPatterns = [];
+  let year, month;
+
+  // 引数の互換性対応
+  // 呼び出し元が (staffList, scheduleData, year, month) で呼んでいる場合と
+  // (staffList, scheduleData, shiftPatterns, year, month) で呼んでいる場合の両方に対応
+  if (Array.isArray(arg3)) {
+      // 新仕様: (staffList, scheduleData, shiftPatterns, year, month)
+      shiftPatterns = arg3;
+      year = arg4;
+      month = arg5;
+  } else {
+      // 旧仕様: (staffList, scheduleData, year, month)
+      // shiftPatternsは空配列とする（基本シフト名が正しく出ない可能性があるが、ファイル生成とデータ出力は可能にする）
+      shiftPatterns = []; 
+      year = arg3;
+      month = arg4;
+  }
+
+  // year, month の安全性チェック
+  if (!year || !month) {
+      console.error('CSV export failed: year or month is missing/undefined.', { year, month });
+      alert('CSV出力エラー: 年月が正しく指定されていません。');
+      return;
+  }
+
   const daysInMonth = new Date(year, month, 0).getDate();
   
   // ヘッダー行の作成
