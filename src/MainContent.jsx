@@ -207,7 +207,7 @@ const MainContent = () => {
     }
     setIsLoading(true);
     setLoadingMessage('承認通知を送信中...');
-    try { await chatService.sendApproval(s, year, month, summarizePattern(s.defaultShift.pattern, shiftPatterns), irregularities.join('\n') || 'なし', remarks); } catch (e) { alert('通知送信に失敗しました'); }
+    try { await chatService.sendApproval(s, year, month, summarizePattern(s.defaultShift.pattern, shiftPatterns, s.defaultShift.hasBreakArray), irregularities.join('\n') || 'なし', remarks); } catch (e) { alert('通知送信に失敗しました'); }
     setIsLoading(false);
     setStaff(prev => prev.map(x => x.id === approvalModalStaffId ? { ...x, shiftApproved: { ...x.shiftApproved, [key]: true } } : x));
     setApprovalModalStaffId(null);
@@ -225,8 +225,11 @@ const MainContent = () => {
   const handleUpdateStaffInfo = (id, field, val) => setStaff(prev => prev.map(s => s.id === id ? { ...s, [field]: val } : s));
   const handleDeleteStaff = (id) => setConfirmDelete({ type: 'staff', id, name: staff.find(s => s.id === id)?.name });
   const handleDeleteTask = (id) => setConfirmDelete({ type: 'task', id, name: tasks.find(t => t.id === id)?.name });
-  const handleExportCSV = () => downloadScheduleCSV({ staff, tasks, schedule, shiftPatterns, taskCountsByDay, days, year, month });
   
+  // ★重要修正: CSVエクスポートの呼び出し引数を新仕様に修正
+  // (staff, schedule, shiftPatterns, year, month) の順で渡す
+  const handleExportCSV = () => downloadScheduleCSV(staff, schedule, shiftPatterns, year, month);
+   
   const handleBulkUpdateStaffTasks = (taskStaffMap) => {
       const staffTaskMap = {};
       staff.forEach(s => staffTaskMap[s.id] = []);
@@ -245,7 +248,7 @@ const MainContent = () => {
       return { ...s, possibleTasks: newTasks };
     }));
   };
-  
+   
   const handleApplyStaffPattern = (staffId, newPattern, hasBreak) => {
     setStaff(prevStaff => prevStaff.map(s => s.id === staffId ? { ...s, defaultShift: { pattern: newPattern, hasBreak } } : s));
     const newMonthScheduleForStaff = {};
@@ -385,13 +388,13 @@ const MainContent = () => {
             <h1 className="text-2xl font-bold tracking-wider hidden sm:block">digsyシフト表</h1>
           </div>
           <div className="flex items-center gap-4">
-             <div className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-semibold w-36 justify-center ${saveStatus === 'saved' ? 'text-white/80' : 'text-yellow-300'}`}>
+              <div className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-semibold w-36 justify-center ${saveStatus === 'saved' ? 'text-white/80' : 'text-yellow-300'}`}>
                 <span>{saveStatus === 'saved' ? '自動保存済み' : saveStatus === 'saving' ? '保存中...' : '編集中...'}</span>
-             </div>
-             <button onClick={() => setIsHelpOpen(true)} className="px-3 py-1.5 bg-white/20 rounded hover:bg-white/30 text-sm font-bold whitespace-nowrap">ガイド</button>
-             <div className="hidden md:block">
-                <Legend />
-             </div>
+              </div>
+              <button onClick={() => setIsHelpOpen(true)} className="px-3 py-1.5 bg-white/20 rounded hover:bg-white/30 text-sm font-bold whitespace-nowrap">ガイド</button>
+              <div className="hidden md:block">
+                 <Legend />
+              </div>
           </div>
         </header>
         
