@@ -85,11 +85,18 @@ export const downloadScheduleCSV = (staffList, scheduleData, arg3, arg4, arg5) =
   // staffListの安全性チェック
   const safeStaffList = Array.isArray(staffList) ? staffList : [];
   
+  // 社員番号順にソート (数値的な順序を考慮: 1, 2, 10...)
+  const sortedStaffList = [...safeStaffList].sort((a, b) => {
+    const idA = a.employeeId || '';
+    const idB = b.employeeId || '';
+    return idA.localeCompare(idB, undefined, { numeric: true, sensitivity: 'base' });
+  });
+  
   // shiftPatternsの安全性チェック
   const safeShiftPatterns = Array.isArray(shiftPatterns) ? shiftPatterns : [];
 
   // 基本シフトに基づいたベーススケジュールを生成
-  const baseSchedule = generateScheduleForMonth(year, month, safeStaffList, safeShiftPatterns);
+  const baseSchedule = generateScheduleForMonth(year, month, sortedStaffList, safeShiftPatterns);
 
   // データ取得用のキーを生成 (YYYY-M 形式)
   // MainContent.jsxなどの保存ロジックと形式を合わせる必要があります
@@ -97,7 +104,7 @@ export const downloadScheduleCSV = (staffList, scheduleData, arg3, arg4, arg5) =
   const currentMonthData = scheduleData[monthKey] || {};
 
   // データ行の作成
-  safeStaffList.forEach(staff => {
+  sortedStaffList.forEach(staff => {
     // 基本シフトパターン名の取得
     const defaultShift = staff.defaultShift || {};
     
