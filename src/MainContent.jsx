@@ -24,15 +24,21 @@ import AdminSettingsModal from './components/admin/AdminSettingsModal';
 
 const MainContent = () => {
   const { oktaAuth, authState } = useOktaAuth();
-  const {
-    staff, setStaff, schedule, setSchedule, tasks, setTasks,
-    shiftPatterns, setShiftPatterns, adminConfig, setAdminConfig,
-    isLoading, loadingMessage, setLoadingMessage, setIsLoading, saveStatus, initialDataLoaded
-  } = useShiftData();
 
-  const [currentUser, setCurrentUser] = useState(null);
+  // スケーラビリティ対応: useShiftDataに渡すために先にStateを定義
   const [year, setYear] = useState(new Date().getFullYear());
   const [month, setMonth] = useState(new Date().getMonth() + 1);
+
+  const {
+    staff, setStaff, 
+    schedule, setSchedule, updateSchedule, // 履歴付き更新用
+    undo, redo, canUndo, canRedo,          // Undo/Redo操作用
+    tasks, setTasks,
+    shiftPatterns, setShiftPatterns, adminConfig, setAdminConfig,
+    isLoading, loadingMessage, setLoadingMessage, setIsLoading, saveStatus, initialDataLoaded
+  } = useShiftData(year, month);
+
+  const [currentUser, setCurrentUser] = useState(null);
   const [taskCountsByDay, setTaskCountsByDay] = useState({});
   const [isTaskEditorOpen, setIsTaskEditorOpen] = useState(false);
   const [isHelpOpen, setIsHelpOpen] = useState(false);
@@ -44,6 +50,35 @@ const MainContent = () => {
   const [holidayConfirmation, setHolidayConfirmation] = useState(null);
   const [absenceNotificationConfirmation, setAbsenceNotificationConfirmation] = useState(null);
   const [remandConfirmation, setRemandConfirmation] = useState(null);
+
+  // ショートカットキーの設定 (Undo/Redo)
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      // 入力フォーム内などで誤爆しないようにチェック
+      if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) return;
+
+      const isCmdOrCtrl = e.metaKey || e.ctrlKey;
+      
+      if (isCmdOrCtrl && e.key === 'z') {
+        e.preventDefault();
+        if (e.shiftKey) {
+          // Ctrl + Shift + Z : Redo
+          if (canRedo) redo();
+        } else {
+          // Ctrl + Z : Undo
+          if (canUndo) undo();
+        }
+      }
+      // Ctrl + Y : Redo (Windows標準)
+      if (isCmdOrCtrl && e.key === 'y') {
+        e.preventDefault();
+        if (canRedo) redo();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [undo, redo, canUndo, canRedo]);
 
   useEffect(() => {
     const identifyUser = async () => {
@@ -82,7 +117,7 @@ const MainContent = () => {
   }), [year, month, daysInMonth]);
 
   useEffect(() => {
-    if (!schedule[key] && initialDataLoaded) {
+    if (initialDataLoaded && !schedule[key]) {
       setSchedule(prev => ({ ...prev, [key]: generateScheduleForMonth(year, month, staff, shiftPatterns) }));
     }
   }, [year, month, schedule, staff, shiftPatterns, initialDataLoaded]);
@@ -105,9 +140,10 @@ const MainContent = () => {
     setTaskCountsByDay(counts);
   }, [schedule, year, month, staff, tasks, daysInMonth, initialDataLoaded]);
 
+  // 履歴付き更新を使用
   const handleUpdateScheduleGeneric = (targetYear, targetMonth, staffId, day, value) => {
     const targetKey = `${targetYear}-${targetMonth}`;
-    setSchedule(prev => {
+    updateSchedule(prev => {
       const newMonth = { ...(prev[targetKey] || {}) };
       const newStaff = { ...(newMonth[staffId] || {}) };
       newStaff[day] = value;
@@ -226,8 +262,6 @@ const MainContent = () => {
   const handleDeleteStaff = (id) => setConfirmDelete({ type: 'staff', id, name: staff.find(s => s.id === id)?.name });
   const handleDeleteTask = (id) => setConfirmDelete({ type: 'task', id, name: tasks.find(t => t.id === id)?.name });
   
-  // ★重要修正: CSVエクスポートの呼び出し引数を新仕様に修正
-  // (staff, schedule, shiftPatterns, year, month) の順で渡す
   const handleExportCSV = () => downloadScheduleCSV(staff, schedule, shiftPatterns, year, month);
    
   const handleBulkUpdateStaffTasks = (taskStaffMap) => {
@@ -269,14 +303,16 @@ const MainContent = () => {
         }
         newMonthScheduleForStaff[day] = shiftValue;
     }
-    setSchedule(prev => ({ ...prev, [key]: { ...(prev[key] || {}), [staffId]: newMonthScheduleForStaff } }));
+    // 履歴付き更新
+    updateSchedule(prev => ({ ...prev, [key]: { ...(prev[key] || {}), [staffId]: newMonthScheduleForStaff } }));
   };
 
   const executeDelete = () => {
     if (!confirmDelete) return;
     if (confirmDelete.type === 'staff') {
         setStaff(prev => prev.filter(s => s.id !== confirmDelete.id));
-        setSchedule(prev => { const next = { ...prev }; Object.keys(next).forEach(k => delete next[k][confirmDelete.id]); return next; });
+        // スケジュール削除も履歴付き
+        updateSchedule(prev => { const next = { ...prev }; Object.keys(next).forEach(k => delete next[k][confirmDelete.id]); return next; });
     } else {
         setTasks(prev => prev.filter(t => t.id !== confirmDelete.id));
         setStaff(prev => prev.map(s => ({ ...s, possibleTasks: s.possibleTasks.filter(tid => tid !== confirmDelete.id) })));
@@ -291,7 +327,6 @@ const MainContent = () => {
           defaultShift: { pattern: ['A','A','A','A','A'], hasBreak: true }, shiftSubmitted: {}, shiftRemanded: {}, shiftApproved: {}
       }]);
       
-      // 新規メンバー用のスケジュール初期化（平日以外をシフト休にする）
       const newMemberSchedule = {};
       for (let day = 1; day <= daysInMonth; day++) {
           const date = new Date(year, month - 1, day);
@@ -302,7 +337,8 @@ const MainContent = () => {
           }
       }
 
-      setSchedule(prev => ({ ...prev, [key]: { ...(prev[key] || {}), [newId]: newMemberSchedule } }));
+      // 履歴付き更新
+      updateSchedule(prev => ({ ...prev, [key]: { ...(prev[key] || {}), [newId]: newMemberSchedule } }));
   };
 
   const handleSetDayAsHolidayForAll = (day) => {
@@ -314,7 +350,7 @@ const MainContent = () => {
 
       if (isAlreadyLockedHoliday) {
         setHolidayConfirmation({ day, isUnlocking: true, onConfirm: () => {
-                setSchedule(prev => {
+                updateSchedule(prev => {
                     const newSchedule = JSON.parse(JSON.stringify(prev));
                     const newMonthSchedule = newSchedule[key] || {};
                     staff.forEach(s => {
@@ -335,7 +371,7 @@ const MainContent = () => {
         });
     } else {
         setHolidayConfirmation({ day, isUnlocking: false, onConfirm: () => {
-                setSchedule(prev => {
+                updateSchedule(prev => {
                     const newSchedule = { ...prev };
                     const newMonthSchedule = JSON.parse(JSON.stringify(newSchedule[key] || {}));
                     staff.forEach(s => { if (!newMonthSchedule[s.id]) newMonthSchedule[s.id] = {}; newMonthSchedule[s.id][day] = { type: 'シフト休', locked: true }; });
@@ -356,7 +392,6 @@ const MainContent = () => {
   const currentMonthSchedule = schedule[key] || {};
   const approvalStaff = approvalModalStaffId ? staff.find(s => s.id === approvalModalStaffId) : null;
 
-  // 管理者用ボタン群（ShiftPatternDisplayに渡す）
   const adminControls = (
       <>
           {isAdmin && (
