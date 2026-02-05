@@ -42,7 +42,7 @@ const formatValue = (value) => {
 
 /**
  * シフト入力セル
- * キーボード操作（矢印キー、Enter、Delete）に対応
+ * キーボード操作（矢印キー、Enter、Delete、Tab、F2）に対応
  * 範囲選択とコンテキストメニューに対応
  */
 export const EditableCell = ({ 
@@ -72,7 +72,7 @@ export const EditableCell = ({
   }, [mode]);
 
   // フォーカス移動ロジック
-  const moveFocus = (direction) => {
+  const moveFocus = (direction, e) => {
     let nextRow = rowIndex;
     let nextCol = colIndex;
 
@@ -80,9 +80,19 @@ export const EditableCell = ({
     if (direction === 'ArrowDown') nextRow++;
     if (direction === 'ArrowLeft') nextCol--;
     if (direction === 'ArrowRight') nextCol++;
+    
+    // Tabキー対応
+    if (direction === 'Tab') {
+        if (e && e.shiftKey) {
+            nextCol--; // Shift+Tabで左へ
+        } else {
+            nextCol++; // Tabで右へ
+        }
+    }
 
     const target = document.querySelector(`[data-row="${nextRow}"][data-col="${nextCol}"]`);
     if (target) {
+        if (e) e.preventDefault(); // ブラウザ標準のフォーカス移動をキャンセル
         target.focus();
     }
   };
@@ -90,7 +100,8 @@ export const EditableCell = ({
   const handleKeyDown = (e) => {
     // 編集モード中
     if (mode !== 'view') {
-        if (e.key === 'Enter') {
+        // EnterまたはTabで確定して移動
+        if (e.key === 'Enter' || e.key === 'Tab') {
             e.preventDefault();
             if (mode === 'input') {
                 commitInput();
@@ -103,8 +114,9 @@ export const EditableCell = ({
                      return; 
                  }
             }
-            // 編集完了後に下へ移動
-            setTimeout(() => moveFocus('ArrowDown'), 0);
+            // 編集完了後に移動 (Enterなら下へ、Tabなら右へ)
+            const moveDir = e.key === 'Tab' ? 'Tab' : 'ArrowDown';
+            setTimeout(() => moveFocus(moveDir, e), 0);
         }
         if (e.key === 'Escape') {
             setMode('view');
@@ -114,12 +126,10 @@ export const EditableCell = ({
     }
 
     // ビューモード中
-    // ロックされていてもフォーカス移動は許可するが、編集操作はブロック
-    const isNavigationKey = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key);
+    const isNavigationKey = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Tab'].includes(e.key);
     
     if (isNavigationKey) {
-        e.preventDefault();
-        moveFocus(e.key);
+        moveFocus(e.key, e);
         return;
     }
 
@@ -127,6 +137,7 @@ export const EditableCell = ({
 
     switch (e.key) {
         case 'Enter':
+        case 'F2': // F2キーで編集開始
             e.preventDefault();
             setMode('select');
             break;
@@ -215,9 +226,12 @@ export const EditableCell = ({
         ref={cellRef}
         tabIndex={isEffectivelyDisabled ? -1 : 0}
         onClick={(e) => {
+            // シングルクリック時は何もしない（フォーカスのみ）
+            // これにより誤って編集メニューが開くのを防ぎ、Deleteキー操作などがスムーズになります
+        }}
+        onDoubleClick={(e) => {
+             // ダブルクリックで編集モードへ
             if (!isEffectivelyDisabled) {
-                // onMouseDown(e); の呼び出しを削除しました
-                // これによりクリック後に選択状態が解除されないバグが解消されます
                 setMode('select');
             }
         }}
@@ -273,9 +287,12 @@ export const EditableCell = ({
             onChange={(e) => setInputValue(e.target.value)}
             onBlur={commitInput}
             onKeyDown={(e) => {
-                if (e.key === 'Enter') {
+                // EnterまたはTabで確定して移動
+                if (e.key === 'Enter' || e.key === 'Tab') {
+                    e.preventDefault();
                     commitInput();
-                    setTimeout(() => moveFocus('ArrowDown'), 0);
+                    const moveDir = e.key === 'Tab' ? 'Tab' : 'ArrowDown';
+                    setTimeout(() => moveFocus(moveDir, e), 0);
                 }
             }}
             className="absolute inset-0 w-full h-full p-0 m-0 bg-transparent text-center text-xs outline-none"
