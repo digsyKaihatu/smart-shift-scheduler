@@ -1,9 +1,9 @@
 import React, { useRef, useMemo, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { summarizePattern } from '../../utils/scheduleUtils.js';
-import { EditableCell, EditableStaffInfoCell } from '../common/EditableCells.jsx';
-import { DeleteIcon, SetHolidayIcon, UnlockIcon, XIcon } from '../common/Icons.jsx';
-import ScheduleShiftPatternEditor from './ScheduleShiftPatternEditor.jsx';
+import { summarizePattern } from '../../utils/scheduleUtils';
+import { EditableCell, EditableStaffInfoCell } from '../common/EditableCells';
+import { DeleteIcon, SetHolidayIcon, UnlockIcon } from '../common/Icons';
+import ScheduleShiftPatternEditor from './ScheduleShiftPatternEditor';
 
 // -----------------------------------------------------------------------------
 // Context Menu Component
@@ -129,6 +129,14 @@ const ShiftSchedule = ({
   const handleCellMouseEnter = (row, col) => {
       if (isSelecting) {
           setSelection(prev => ({ ...prev, end: { row, col } }));
+      }
+  };
+
+  // 追加: フォーカス移動時（矢印キー等）に選択状態を同期する
+  const handleCellFocus = (row, col) => {
+      // マウスでの範囲選択中は更新しない（ドラッグ操作を優先）
+      if (!isSelecting) {
+          setSelection({ start: { row, col }, end: { row, col } });
       }
   };
 
@@ -283,6 +291,7 @@ const ShiftSchedule = ({
                                     isSelected={selected}
                                     onMouseDown={(e) => handleCellMouseDown(rowIndex, colIndex, e)}
                                     onMouseEnter={() => handleCellMouseEnter(rowIndex, colIndex)}
+                                    onFocus={() => handleCellFocus(rowIndex, colIndex)} // 追加: フォーカス移動時の同期
                                     onContextMenu={(e) => handleCellContextMenu(rowIndex, colIndex, e)}
                                 />
                                 );
