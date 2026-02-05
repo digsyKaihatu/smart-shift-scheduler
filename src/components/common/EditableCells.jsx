@@ -103,6 +103,7 @@ export const EditableCell = ({
                      return; 
                  }
             }
+            // 編集完了後に下へ移動
             setTimeout(() => moveFocus('ArrowDown'), 0);
         }
         if (e.key === 'Escape') {
@@ -113,16 +114,18 @@ export const EditableCell = ({
     }
 
     // ビューモード中
+    // ロックされていてもフォーカス移動は許可するが、編集操作はブロック
+    const isNavigationKey = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key);
+    
+    if (isNavigationKey) {
+        e.preventDefault();
+        moveFocus(e.key);
+        return;
+    }
+
     if (isEffectivelyDisabled) return;
 
     switch (e.key) {
-        case 'ArrowUp':
-        case 'ArrowDown':
-        case 'ArrowLeft':
-        case 'ArrowRight':
-            e.preventDefault();
-            moveFocus(e.key);
-            break;
         case 'Enter':
             e.preventDefault();
             setMode('select');
