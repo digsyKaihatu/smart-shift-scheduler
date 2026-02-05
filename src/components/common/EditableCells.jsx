@@ -48,7 +48,7 @@ const formatValue = (value) => {
 export const EditableCell = ({ 
   value, onUpdate, borderClass, disabled = false, isAdmin = false, 
   isToday = false, isHoliday = false, isWeekend = false, dayOfWeek, 
-  rowIndex, colIndex, isSelected, onMouseDown, onMouseEnter, onContextMenu 
+  rowIndex, colIndex, isSelected, onMouseDown, onMouseEnter, onContextMenu, onFocus // onFocusを受け取る
 }) => {
   const [mode, setMode] = useState('view');
   const [inputValue, setInputValue] = useState('');
@@ -92,7 +92,7 @@ export const EditableCell = ({
 
     const target = document.querySelector(`[data-row="${nextRow}"][data-col="${nextCol}"]`);
     if (target) {
-        if (e) e.preventDefault(); // ブラウザ標準のフォーカス移動をキャンセル
+        if (e) e.preventDefault();
         target.focus();
     }
   };
@@ -114,7 +114,7 @@ export const EditableCell = ({
                      return; 
                  }
             }
-            // 編集完了後に移動 (Enterなら下へ、Tabなら右へ)
+            // 編集完了後に移動
             const moveDir = e.key === 'Tab' ? 'Tab' : 'ArrowDown';
             setTimeout(() => moveFocus(moveDir, e), 0);
         }
@@ -225,14 +225,12 @@ export const EditableCell = ({
       <div 
         ref={cellRef}
         tabIndex={isEffectivelyDisabled ? -1 : 0}
-        onClick={(e) => {
-            // シングルクリック時は何もしない（フォーカスのみ）
-            // これにより誤って編集メニューが開くのを防ぎ、Deleteキー操作などがスムーズになります
-        }}
-        onDoubleClick={(e) => {
-             // ダブルクリックで編集モードへ
-            if (!isEffectivelyDisabled) {
-                setMode('select');
+        onClick={() => {}} // シングルクリックは何もしない（フォーカスのみ）
+        onDoubleClick={() => { if (!isEffectivelyDisabled) setMode('select'); }}
+        onFocus={(e) => {
+            // フォーカス時に親に通知して選択状態を同期
+            if (!isEffectivelyDisabled && onFocus) {
+                onFocus(e);
             }
         }}
         onKeyDown={handleKeyDown}
