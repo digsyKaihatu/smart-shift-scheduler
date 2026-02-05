@@ -73,7 +73,7 @@ const ShiftApprovalModal = ({ staffMember, schedule, shiftPatterns, holidays, ye
                         <p className="whitespace-pre-wrap">{patternSummary}</p>
                     </InfoSection>
 
-                    <InfoSection title="イレギュラー勤務">
+                    <InfoSection title="特記事項">
                         {irregularPatterns.length > 0 ? (
                             <ul className="list-disc list-inside space-y-1">
                                 {irregularPatterns.map((item, index) => <li key={index}>{item}</li>)}

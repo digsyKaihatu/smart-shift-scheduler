@@ -155,3 +155,27 @@ export const formatDate = (date) => {
 export const getDayOfWeekStr = (date) => {
   return ['日', '月', '火', '水', '木', '金', '土'][date.getDay()];
 };
+
+// 土日判定 (Native)
+export const isWeekend = (date) => {
+  if (!date) return false;
+  const d = new Date(date);
+  const day = d.getDay();
+  return day === 0 || day === 6;
+};
+
+// 祝日判定
+export const isHoliday = (date) => {
+  if (!date) return false;
+  const d = new Date(date);
+  const year = d.getFullYear();
+  const month = d.getMonth() + 1;
+  const day = d.getDate();
+  const holidays = getJapaneseHolidays(year, month);
+  return holidays.includes(day);
+};
+
+// 土日祝判定
+export const isHolidayOrWeekend = (date) => {
+  return isWeekend(date) || isHoliday(date);
+};
