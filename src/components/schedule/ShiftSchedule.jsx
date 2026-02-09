@@ -62,12 +62,10 @@ const ShiftSchedule = ({
   const containerRef = useRef(null);
   const hasScrolledRef = useRef(false);
   
-  // 選択範囲管理用ステート
-  const [selection, setSelection] = useState(null); // { start: {row, col}, end: {row, col} }
+  const [selection, setSelection] = useState(null);
   const [isSelecting, setIsSelecting] = useState(false);
-  const [contextMenu, setContextMenu] = useState(null); // { x, y }
+  const [contextMenu, setContextMenu] = useState(null);
 
-  // マウスアップで選択終了
   useEffect(() => {
       const handleWindowMouseUp = () => setIsSelecting(false);
       window.addEventListener('mouseup', handleWindowMouseUp);
@@ -80,10 +78,20 @@ const ShiftSchedule = ({
     return [...staff].sort((a, b) => String(a.employeeId || '').localeCompare(String(b.employeeId || ''), undefined, { numeric: true }));
   }, [staff]);
   
+  // 文字サイズ拡大に伴い、列幅を調整
   const widths = { 
-    role: 60, empId: 90, name: 120, setting: 170, 
-    submit: 65, remand: 65, approve: 65, del: 45 
+    role: 70,   // 60 -> 70
+    empId: 100, // 90 -> 100
+    name: 140,  // 120 -> 140
+    setting: 190, // 170 -> 190
+    submit: 70, // 65 -> 70
+    remand: 70, // 65 -> 70
+    approve: 70, // 65 -> 70
+    del: 50     // 45 -> 50
   };
+  
+  // 日付セルの幅も調整 (CSSクラスで使用するためここでは変数定義しないが、render内で w-[80px] を使用)
+  const DAY_CELL_WIDTH = '80px'; 
 
   const stickyPositions = useMemo(() => {
     let currentLeft = 0;
@@ -118,9 +126,8 @@ const ShiftSchedule = ({
     }
   }, [year, month, safeDays, widths]);
 
-  // セル選択ロジック
   const handleCellMouseDown = (row, col, e) => {
-      if (e.button !== 0) return; // 左クリックのみ
+      if (e.button !== 0) return;
       setSelection({ start: { row, col }, end: { row, col } });
       setIsSelecting(true);
       setContextMenu(null);
@@ -132,9 +139,7 @@ const ShiftSchedule = ({
       }
   };
 
-  // 追加: フォーカス移動時（矢印キー等）に選択状態を同期する
   const handleCellFocus = (row, col) => {
-      // マウスでの範囲選択中は更新しない（ドラッグ操作を優先）
       if (!isSelecting) {
           setSelection({ start: { row, col }, end: { row, col } });
       }
@@ -142,7 +147,6 @@ const ShiftSchedule = ({
 
   const handleCellContextMenu = (row, col, e) => {
       e.preventDefault();
-      // 選択範囲外を右クリックした場合、そのセルだけを選択状態にする
       if (!isCellSelected(row, col)) {
           setSelection({ start: { row, col }, end: { row, col } });
       }
@@ -173,7 +177,6 @@ const ShiftSchedule = ({
           for (let c = minCol; c <= maxCol; c++) {
               const dayObj = safeDays[c];
               if (!dayObj) continue;
-              // 権限チェック
               if (isAdmin || currentUser?.id === staffMember.id) {
                   onUpdateSchedule(staffMember.id, dayObj.day, value);
               }
@@ -188,8 +191,10 @@ const ShiftSchedule = ({
   const stickyCellStyle = (key) => ({
     position: 'sticky', left: stickyPositions[key], width: widths[key], minWidth: widths[key], maxWidth: widths[key], zIndex: 30 
   });
+  
+  // 文字サイズ変更: ヘッダーを text-sm に変更 (以前は text-[11px])
   const headerRowClass = "flex w-max";
-  const headerCellBase = "sticky top-0 p-1.5 border-b-2 border-r border-slate-300 font-bold text-[11px] text-center h-12 flex items-center justify-center flex-shrink-0 box-border";
+  const headerCellBase = "sticky top-0 p-1.5 border-b-2 border-r border-slate-300 font-bold text-sm text-center h-12 flex items-center justify-center flex-shrink-0 box-border";
   const cellBase = "bg-white border-b border-r border-slate-300 flex items-center h-10 flex-shrink-0 box-border";
 
   return (
@@ -224,10 +229,11 @@ const ShiftSchedule = ({
                         else if (dayOfWeek === '土') headerColorClass = "bg-sky-100 text-sky-800 border-sky-200";
                         else if (dayOfWeek === '日' || isHoliday) headerColorClass = "bg-pink-100 text-pink-800 border-pink-200";
 
+                        // 日付セルの幅を w-[80px] に拡大、文字サイズも調整
                         return (
-                            <div key={day} className={`${headerCellBase} ${headerColorClass} whitespace-nowrap w-[75px] min-w-[75px] max-w-[75px] flex-col`} style={{ zIndex: 40 }} data-day={day}>
-                                <div className="text-[9px] opacity-70 mb-1">{dayOfWeek}</div>
-                                <div className="text-sm font-bold">{day}</div>
+                            <div key={day} className={`${headerCellBase} ${headerColorClass} whitespace-nowrap w-[${DAY_CELL_WIDTH}] min-w-[${DAY_CELL_WIDTH}] max-w-[${DAY_CELL_WIDTH}] flex-col`} style={{ zIndex: 40 }} data-day={day}>
+                                <div className="text-xs opacity-70 mb-1">{dayOfWeek}</div> {/* 9px -> xs */}
+                                <div className="text-base font-bold">{day}</div> {/* sm -> base */}
                                 {isAdmin && (
                                 <button onClick={() => onSetDayAsHolidayForAll(day)} className="group absolute bottom-0.5 right-0.5 p-0.5 bg-white/50 rounded-full hover:bg-sky-100">
                                     {sortedStaff.every(s => typeof (schedule[s.id]?.[day]) === 'object' && (schedule[s.id]?.[day])?.locked) ? <UnlockIcon /> : <SetHolidayIcon />}
@@ -274,26 +280,28 @@ const ShiftSchedule = ({
                                 const isWeekend = dayOfWeek === '土' || dayOfWeek === '日';
                                 const selected = isCellSelected(rowIndex, colIndex);
 
+                                // 渡す幅を w-[80px] に拡大
                                 return (
-                                <EditableCell 
-                                    key={day} 
-                                    value={schedule[s.id]?.[day] ?? ''} 
-                                    onUpdate={v => onUpdateSchedule(s.id, day, v)} 
-                                    isAdmin={isAdmin} 
-                                    disabled={!isEditable} 
-                                    borderClass="border-slate-200" 
-                                    isToday={new Date().getDate() === day && (new Date().getMonth()+1) === month} 
-                                    isHoliday={isHoliday}
-                                    isWeekend={isWeekend}
-                                    dayOfWeek={dayOfWeek}
-                                    rowIndex={rowIndex}
-                                    colIndex={colIndex}
-                                    isSelected={selected}
-                                    onMouseDown={(e) => handleCellMouseDown(rowIndex, colIndex, e)}
-                                    onMouseEnter={() => handleCellMouseEnter(rowIndex, colIndex)}
-                                    onFocus={() => handleCellFocus(rowIndex, colIndex)} // 追加: フォーカス移動時の同期
-                                    onContextMenu={(e) => handleCellContextMenu(rowIndex, colIndex, e)}
-                                />
+                                <div key={day} className={`w-[${DAY_CELL_WIDTH}] min-w-[${DAY_CELL_WIDTH}] max-w-[${DAY_CELL_WIDTH}]`}>
+                                    <EditableCell 
+                                        value={schedule[s.id]?.[day] ?? ''} 
+                                        onUpdate={v => onUpdateSchedule(s.id, day, v)} 
+                                        isAdmin={isAdmin} 
+                                        disabled={!isEditable} 
+                                        borderClass="border-slate-200" 
+                                        isToday={new Date().getDate() === day && (new Date().getMonth()+1) === month} 
+                                        isHoliday={isHoliday}
+                                        isWeekend={isWeekend}
+                                        dayOfWeek={dayOfWeek}
+                                        rowIndex={rowIndex}
+                                        colIndex={colIndex}
+                                        isSelected={selected}
+                                        onMouseDown={(e) => handleCellMouseDown(rowIndex, colIndex, e)}
+                                        onMouseEnter={() => handleCellMouseEnter(rowIndex, colIndex)}
+                                        onFocus={() => handleCellFocus(rowIndex, colIndex)}
+                                        onContextMenu={(e) => handleCellContextMenu(rowIndex, colIndex, e)}
+                                    />
+                                </div>
                                 );
                             })}
                         </div>
