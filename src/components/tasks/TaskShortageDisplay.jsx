@@ -61,7 +61,7 @@ const EditableTaskName = ({ value, onUpdate, disabled = false }) => {
         onChange={(e) => setCurrentValue(e.target.value)}
         onBlur={handleBlur}
         onKeyDown={handleKeyDown}
-        className="text-xs font-semibold text-slate-600 bg-white border border-sky-500 rounded p-1 w-full"
+        className="text-sm font-bold text-slate-700 bg-white border border-sky-500 rounded p-1 w-full"
       />
     );
   }
@@ -69,7 +69,7 @@ const EditableTaskName = ({ value, onUpdate, disabled = false }) => {
   return (
     <div
       onClick={() => !disabled && setIsEditing(true)}
-      className={`text-xs font-semibold text-slate-600 p-1 rounded ${disabled ? 'cursor-not-allowed' : 'cursor-pointer hover:bg-slate-200'}`}
+      className={`text-sm font-bold text-slate-700 p-1 rounded ${disabled ? 'cursor-not-allowed' : 'cursor-pointer hover:bg-slate-200'}`}
     >
       {value || '名称未設定'}
     </div>
@@ -256,7 +256,7 @@ const TaskShortageDisplay = ({
         // モーダル表示用のデータをセット
         setSelectedDetail({
             date: new Date(year, month - 1, day),
-            title: `${task.name} - 出勤者リスト`, // モーダルタイトル用（DailyShiftDetailModal側で対応が必要だが、簡易的に既存プロップを使う）
+            title: `${task.name} - 出勤者リスト`, // モーダルタイトル用
             events: workingMembers
         });
     };
