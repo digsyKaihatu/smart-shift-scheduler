@@ -42,13 +42,13 @@ const formatValue = (value) => {
 
 /**
  * シフト入力セル
- * キーボード操作（矢印キー、Enter、Delete、Tab、F2）に対応
+ * キーボード操作（矢印キー、Enter、Delete）に対応
  * 範囲選択とコンテキストメニューに対応
  */
 export const EditableCell = ({ 
   value, onUpdate, borderClass, disabled = false, isAdmin = false, 
   isToday = false, isHoliday = false, isWeekend = false, dayOfWeek, 
-  rowIndex, colIndex, isSelected, onMouseDown, onMouseEnter, onContextMenu, onFocus
+  rowIndex, colIndex, isSelected, onMouseDown, onMouseEnter, onContextMenu 
 }) => {
   const [mode, setMode] = useState('view');
   const [inputValue, setInputValue] = useState('');
@@ -72,7 +72,7 @@ export const EditableCell = ({
   }, [mode]);
 
   // フォーカス移動ロジック
-  const moveFocus = (direction, e) => {
+  const moveFocus = (direction) => {
     let nextRow = rowIndex;
     let nextCol = colIndex;
 
@@ -80,19 +80,9 @@ export const EditableCell = ({
     if (direction === 'ArrowDown') nextRow++;
     if (direction === 'ArrowLeft') nextCol--;
     if (direction === 'ArrowRight') nextCol++;
-    
-    // Tabキー対応
-    if (direction === 'Tab') {
-        if (e && e.shiftKey) {
-            nextCol--; // Shift+Tabで左へ
-        } else {
-            nextCol++; // Tabで右へ
-        }
-    }
 
     const target = document.querySelector(`[data-row="${nextRow}"][data-col="${nextCol}"]`);
     if (target) {
-        if (e) e.preventDefault();
         target.focus();
     }
   };
@@ -100,8 +90,7 @@ export const EditableCell = ({
   const handleKeyDown = (e) => {
     // 編集モード中
     if (mode !== 'view') {
-        // EnterまたはTabで確定して移動
-        if (e.key === 'Enter' || e.key === 'Tab') {
+        if (e.key === 'Enter') {
             e.preventDefault();
             if (mode === 'input') {
                 commitInput();
@@ -114,9 +103,7 @@ export const EditableCell = ({
                      return; 
                  }
             }
-            // 編集完了後に移動
-            const moveDir = e.key === 'Tab' ? 'Tab' : 'ArrowDown';
-            setTimeout(() => moveFocus(moveDir, e), 0);
+            setTimeout(() => moveFocus('ArrowDown'), 0);
         }
         if (e.key === 'Escape') {
             setMode('view');
@@ -126,18 +113,17 @@ export const EditableCell = ({
     }
 
     // ビューモード中
-    const isNavigationKey = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Tab'].includes(e.key);
-    
-    if (isNavigationKey) {
-        moveFocus(e.key, e);
-        return;
-    }
-
     if (isEffectivelyDisabled) return;
 
     switch (e.key) {
+        case 'ArrowUp':
+        case 'ArrowDown':
+        case 'ArrowLeft':
+        case 'ArrowRight':
+            e.preventDefault();
+            moveFocus(e.key);
+            break;
         case 'Enter':
-        case 'F2': // F2キーで編集開始
             e.preventDefault();
             setMode('select');
             break;
@@ -187,6 +173,7 @@ export const EditableCell = ({
   };
 
   const getBackgroundColor = () => {
+    // 選択状態の場合は最優先でスタイル適用
     if (isSelected) {
         return `bg-sky-200 ring-2 ring-inset ring-sky-500 z-20 ${isEffectivelyDisabled ? '' : 'hover:bg-sky-300'}`;
     }
@@ -217,18 +204,20 @@ export const EditableCell = ({
     }
   };
   
-  // 文字サイズを text-sm に変更 (以前は text-xs)
-  // 幅は親側で制御するが、クラスとしては w-[80px] 程度を想定
-  const baseClasses = `border-b border-r ${borderClass} text-center text-sm h-10 flex items-center justify-center w-full min-w-full max-w-full outline-none focus:ring-2 focus:ring-inset focus:ring-sky-500 z-10`;
+  const baseClasses = `border-b border-r ${borderClass} text-center text-xs h-10 flex items-center justify-center w-[75px] min-w-[75px] max-w-[75px] outline-none focus:ring-2 focus:ring-inset focus:ring-sky-500 z-10`;
 
   if (mode === 'view') {
     return (
       <div 
         ref={cellRef}
         tabIndex={isEffectivelyDisabled ? -1 : 0}
-        onClick={() => {}}
-        onDoubleClick={() => { if (!isEffectivelyDisabled) setMode('select'); }}
-        onFocus={(e) => { if (!isEffectivelyDisabled && onFocus) onFocus(e); }}
+        onClick={(e) => {
+            if (!isEffectivelyDisabled) {
+                // onMouseDown(e); の呼び出しを削除しました
+                // これによりクリック後に選択状態が解除されないバグが解消されます
+                setMode('select');
+            }
+        }}
         onKeyDown={handleKeyDown}
         onMouseDown={(e) => !isEffectivelyDisabled && onMouseDown && onMouseDown(e)}
         onMouseEnter={() => !isEffectivelyDisabled && onMouseEnter && onMouseEnter()}
@@ -252,7 +241,7 @@ export const EditableCell = ({
           onBlur={() => {
               if (mode !== 'input') setMode('view');
           }}
-          className="absolute inset-0 w-full h-full opacity-100 bg-transparent text-center text-sm cursor-pointer appearance-none outline-none focus:ring-2 focus:ring-sky-500"
+          className="absolute inset-0 w-full h-full opacity-100 bg-transparent text-center text-xs cursor-pointer appearance-none outline-none focus:ring-2 focus:ring-sky-500"
           defaultValue=""
         >
           <option value="" disabled hidden>選択...</option>
@@ -272,7 +261,7 @@ export const EditableCell = ({
         </select>
       ) : (
         <>
-          {editingSpecialShift && <span className="absolute left-0.5 top-1/2 -translate-y-1/2 text-[10px] text-slate-500 pointer-events-none scale-75">入力:</span>}
+          {editingSpecialShift && <span className="absolute left-0.5 top-1/2 -translate-y-1/2 text-[8px] text-slate-500 pointer-events-none scale-75">入力:</span>}
           <input
             ref={inputRef}
             type="number"
@@ -281,14 +270,12 @@ export const EditableCell = ({
             onChange={(e) => setInputValue(e.target.value)}
             onBlur={commitInput}
             onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === 'Tab') {
-                    e.preventDefault();
+                if (e.key === 'Enter') {
                     commitInput();
-                    const moveDir = e.key === 'Tab' ? 'Tab' : 'ArrowDown';
-                    setTimeout(() => moveFocus(moveDir, e), 0);
+                    setTimeout(() => moveFocus('ArrowDown'), 0);
                 }
             }}
-            className="absolute inset-0 w-full h-full p-0 m-0 bg-transparent text-center text-sm outline-none"
+            className="absolute inset-0 w-full h-full p-0 m-0 bg-transparent text-center text-xs outline-none"
             style={{ paddingLeft: editingSpecialShift ? '1.5rem' : '0' }}
           />
         </>
@@ -312,8 +299,7 @@ export const EditableStaffInfoCell = ({ value, onUpdate, className, disabled = f
     setIsEditing(false);
   };
 
-  // 文字サイズを text-sm に変更 (以前は text-[11px])
-  const wrapperClass = `h-10 text-sm border-b border-r border-slate-300 flex items-center px-2 overflow-hidden ${className}`;
+  const wrapperClass = `h-10 text-[11px] border-b border-r border-slate-300 flex items-center px-1.5 overflow-hidden ${className}`;
 
   if (isEditing) {
     return (
