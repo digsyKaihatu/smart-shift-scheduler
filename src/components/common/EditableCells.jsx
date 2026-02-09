@@ -48,7 +48,7 @@ const formatValue = (value) => {
 export const EditableCell = ({ 
   value, onUpdate, borderClass, disabled = false, isAdmin = false, 
   isToday = false, isHoliday = false, isWeekend = false, dayOfWeek, 
-  rowIndex, colIndex, isSelected, onMouseDown, onMouseEnter, onContextMenu, onFocus // onFocusを受け取る
+  rowIndex, colIndex, isSelected, onMouseDown, onMouseEnter, onContextMenu, onFocus
 }) => {
   const [mode, setMode] = useState('view');
   const [inputValue, setInputValue] = useState('');
@@ -187,7 +187,6 @@ export const EditableCell = ({
   };
 
   const getBackgroundColor = () => {
-    // 選択状態の場合は最優先でスタイル適用
     if (isSelected) {
         return `bg-sky-200 ring-2 ring-inset ring-sky-500 z-20 ${isEffectivelyDisabled ? '' : 'hover:bg-sky-300'}`;
     }
@@ -218,21 +217,18 @@ export const EditableCell = ({
     }
   };
   
-  const baseClasses = `border-b border-r ${borderClass} text-center text-xs h-10 flex items-center justify-center w-[75px] min-w-[75px] max-w-[75px] outline-none focus:ring-2 focus:ring-inset focus:ring-sky-500 z-10`;
+  // 文字サイズを text-sm に変更 (以前は text-xs)
+  // 幅は親側で制御するが、クラスとしては w-[80px] 程度を想定
+  const baseClasses = `border-b border-r ${borderClass} text-center text-sm h-10 flex items-center justify-center w-full min-w-full max-w-full outline-none focus:ring-2 focus:ring-inset focus:ring-sky-500 z-10`;
 
   if (mode === 'view') {
     return (
       <div 
         ref={cellRef}
         tabIndex={isEffectivelyDisabled ? -1 : 0}
-        onClick={() => {}} // シングルクリックは何もしない（フォーカスのみ）
+        onClick={() => {}}
         onDoubleClick={() => { if (!isEffectivelyDisabled) setMode('select'); }}
-        onFocus={(e) => {
-            // フォーカス時に親に通知して選択状態を同期
-            if (!isEffectivelyDisabled && onFocus) {
-                onFocus(e);
-            }
-        }}
+        onFocus={(e) => { if (!isEffectivelyDisabled && onFocus) onFocus(e); }}
         onKeyDown={handleKeyDown}
         onMouseDown={(e) => !isEffectivelyDisabled && onMouseDown && onMouseDown(e)}
         onMouseEnter={() => !isEffectivelyDisabled && onMouseEnter && onMouseEnter()}
@@ -256,7 +252,7 @@ export const EditableCell = ({
           onBlur={() => {
               if (mode !== 'input') setMode('view');
           }}
-          className="absolute inset-0 w-full h-full opacity-100 bg-transparent text-center text-xs cursor-pointer appearance-none outline-none focus:ring-2 focus:ring-sky-500"
+          className="absolute inset-0 w-full h-full opacity-100 bg-transparent text-center text-sm cursor-pointer appearance-none outline-none focus:ring-2 focus:ring-sky-500"
           defaultValue=""
         >
           <option value="" disabled hidden>選択...</option>
@@ -276,7 +272,7 @@ export const EditableCell = ({
         </select>
       ) : (
         <>
-          {editingSpecialShift && <span className="absolute left-0.5 top-1/2 -translate-y-1/2 text-[8px] text-slate-500 pointer-events-none scale-75">入力:</span>}
+          {editingSpecialShift && <span className="absolute left-0.5 top-1/2 -translate-y-1/2 text-[10px] text-slate-500 pointer-events-none scale-75">入力:</span>}
           <input
             ref={inputRef}
             type="number"
@@ -285,7 +281,6 @@ export const EditableCell = ({
             onChange={(e) => setInputValue(e.target.value)}
             onBlur={commitInput}
             onKeyDown={(e) => {
-                // EnterまたはTabで確定して移動
                 if (e.key === 'Enter' || e.key === 'Tab') {
                     e.preventDefault();
                     commitInput();
@@ -293,7 +288,7 @@ export const EditableCell = ({
                     setTimeout(() => moveFocus(moveDir, e), 0);
                 }
             }}
-            className="absolute inset-0 w-full h-full p-0 m-0 bg-transparent text-center text-xs outline-none"
+            className="absolute inset-0 w-full h-full p-0 m-0 bg-transparent text-center text-sm outline-none"
             style={{ paddingLeft: editingSpecialShift ? '1.5rem' : '0' }}
           />
         </>
@@ -317,7 +312,8 @@ export const EditableStaffInfoCell = ({ value, onUpdate, className, disabled = f
     setIsEditing(false);
   };
 
-  const wrapperClass = `h-10 text-[11px] border-b border-r border-slate-300 flex items-center px-1.5 overflow-hidden ${className}`;
+  // 文字サイズを text-sm に変更 (以前は text-[11px])
+  const wrapperClass = `h-10 text-sm border-b border-r border-slate-300 flex items-center px-2 overflow-hidden ${className}`;
 
   if (isEditing) {
     return (
