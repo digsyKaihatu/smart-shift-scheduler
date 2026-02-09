@@ -97,6 +97,7 @@ const HelpGuideModal = ({ onClose }) => {
           <GuideSection title="6. 業務と人員不足の確認">
             <p>・ページ下部の「業務一覧」で、日ごとの各業務の稼働人数を確認できます。</p>
             <p>・必要な人員に対して稼働人数が足りていない日は「不足」とハイライト表示されます。</p>
+            <p>・人数の書かれたセルをクリックすると、その日のその案件に絞った出勤者リストが表示されます。</p>
             <div className="mt-2 border border-slate-200 rounded-md overflow-hidden shadow-sm">
                 <img src="/スマシフガイド6.png" alt="業務一覧の例" className="w-full h-auto object-contain bg-slate-100" />
             </div>
