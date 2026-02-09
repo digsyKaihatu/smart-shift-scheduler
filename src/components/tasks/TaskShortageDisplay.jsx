@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
+import DailyShiftDetailModal from '../schedule/DailyShiftDetailModal';
+import { formatValue } from '../../utils/dateUtils';
 
 // -----------------------------------------------------------------------------
 // インライン定義: 内部コンポーネントも安全に修正
@@ -168,10 +170,12 @@ const TaskShortageDisplay = ({
     tasks = [], staff = [], days = [], holidays = [], taskCountsByDay = {}, 
     isAdmin = false,
     onUpdateTask, onDeleteTask, onUpdateTaskStaff, onUpdateTaskPersonnel,
-    year, month // 追加: 自動スクロール判定用
+    year, month,
+    schedule // MainContentから渡されるスケジュールデータ
 }) => {
     const staffInfoWidth = "280px"; 
-    const scrollContainerRef = useRef(null); // スクロールコンテナ用Ref
+    const scrollContainerRef = useRef(null); 
+    const [selectedDetail, setSelectedDetail] = useState(null);
 
     // 追加: 自動スクロールロジック
     useEffect(() => {
@@ -185,21 +189,11 @@ const TaskShortageDisplay = ({
             const targetElement = scrollContainerRef.current.querySelector(`[data-day="${todayDate}"]`);
             
             if (targetElement) {
-                // 固定列の幅 (staffInfoWidth = 280px)
                 const fixedColumnWidth = 280;
-                
-                // 要素の位置とサイズ
                 const elementLeft = targetElement.offsetLeft;
                 const elementWidth = targetElement.offsetWidth;
-                
-                // コンテナの可視領域幅（固定列を除く）
                 const containerWidth = scrollContainerRef.current.clientWidth;
                 const visibleWidth = containerWidth - fixedColumnWidth;
-                
-                // スクロール計算：
-                // (要素の左端 - 固定列幅) = 固定列からの相対位置
-                // (visibleWidth / 2 - elementWidth / 2) = 中央寄せにするためのオフセット
-                // これらを引き算して、目標とするスクロール位置（scrollLeft）を求める
                 const scrollLeft = (elementLeft - fixedColumnWidth) - (visibleWidth / 2 - elementWidth / 2);
                 
                 scrollContainerRef.current.scrollTo({
@@ -218,6 +212,55 @@ const TaskShortageDisplay = ({
         });
     }, [staff]);
     
+    const handleCellClick = (day, task) => {
+        // スケジュールデータがなければ処理中断
+        if (!schedule) return;
+
+        // そのタスクを担当している（possibleTasksに含まれる）スタッフIDリスト
+        const possibleStaffIds = staff
+            .filter(s => (s.possibleTasks || []).includes(task.id))
+            .map(s => s.id);
+
+        const workingMembers = [];
+
+        // 全スタッフをループして、出勤判定を行う
+        staff.forEach(s => {
+            // 担当可能でなければスキップ
+            if (!possibleStaffIds.includes(s.id)) return;
+
+            const entry = schedule[s.id]?.[day];
+            
+            // 出勤判定（MainContent等のロジックと同様）
+            const isWorking = (typeof entry === 'number' && entry > 0) || (typeof entry === 'object' && entry?.hours > 0);
+
+            if (isWorking) {
+                // 表示用のデータを構築
+                let displayText = '';
+                if (typeof entry === 'object' && entry.type) {
+                    displayText = entry.type === 'シフト休' ? 'シフト休' : `${entry.type}${entry.hours ? `(${entry.hours})` : ''}`;
+                } else if (typeof entry === 'number') {
+                    displayText = `${entry}h`;
+                }
+
+                workingMembers.push({
+                    id: `${s.id}-${day}`,
+                    staffId: s.id,
+                    date: `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`,
+                    userName: s.name,
+                    type: displayText,
+                    rawValue: entry
+                });
+            }
+        });
+
+        // モーダル表示用のデータをセット
+        setSelectedDetail({
+            date: new Date(year, month - 1, day),
+            title: `${task.name} - 出勤者リスト`, // モーダルタイトル用（DailyShiftDetailModal側で対応が必要だが、簡易的に既存プロップを使う）
+            events: workingMembers
+        });
+    };
+
     const getDayHeaderClass = (dayOfWeek, isHoliday) => {
         let baseClasses = "sticky top-0 z-30 p-2 text-xs font-semibold text-center border-b-2 border-r whitespace-nowrap";
         if (dayOfWeek === '土') return `${baseClasses} bg-sky-100 text-sky-800 border-sky-200`;
@@ -232,7 +275,7 @@ const TaskShortageDisplay = ({
             <h2 className="text-lg font-bold text-slate-800 mb-3">業務一覧</h2>
             <div 
                 className="overflow-x-auto" 
-                ref={scrollContainerRef} // Refを設定
+                ref={scrollContainerRef} 
             >
                  <div className="min-w-max">
                     <div className="grid" style={{ gridTemplateColumns: `${staffInfoWidth} repeat(${days.length}, minmax(70px, 1fr))`}}>
@@ -241,7 +284,7 @@ const TaskShortageDisplay = ({
                             <div 
                                 key={day} 
                                 className={getDayHeaderClass(dayOfWeek, holidays.includes(day))}
-                                data-day={day} // スクロールターゲット検索用属性を追加
+                                data-day={day} 
                             >
                                 <div>{day}</div>
                                 <div>{dayOfWeek}</div>
@@ -249,7 +292,6 @@ const TaskShortageDisplay = ({
                         ))}
 
                         {tasks.map((task) => {
-                             // 防御的コーディング: possibleTasks が undefined の場合を考慮
                              const staffForTaskIds = staff
                                 .filter(s => (s.possibleTasks || []).includes(task.id))
                                 .map(s => s.id);
@@ -305,6 +347,8 @@ const TaskShortageDisplay = ({
                                         const count = taskCountsByDay?.[day]?.[task.id];
                                         let content;
                                         let className = "p-2 border-b text-center text-xs font-bold z-10 flex items-center justify-center border-r ";
+                                        // クリック可能なセルにはカーソルポインターを追加
+                                        let isClickable = false;
 
                                         if (isHoliday || dayOfWeek === '日' || dayOfWeek === '土') {
                                             content = '-';
@@ -313,16 +357,25 @@ const TaskShortageDisplay = ({
                                             content = '-';
                                             className += 'text-slate-400 bg-slate-50 border-slate-300';
                                         } else {
+                                            isClickable = true;
                                             if (count >= required) {
                                                 content = `${count}人`;
-                                                className += 'text-slate-800 bg-slate-50 border-slate-300';
+                                                className += 'text-slate-800 bg-slate-50 border-slate-300 hover:bg-slate-100 cursor-pointer';
                                             } else {
                                                 content = `不足 (${count}/${required})`;
-                                                className += count/required <= 0.3 ? 'text-red-600 bg-red-100' : count/required <= 0.6 ? 'text-orange-600 bg-orange-100' : 'text-yellow-600 bg-yellow-100';
-                                                className += ' border-slate-300';
+                                                className += count/required <= 0.3 ? 'text-red-600 bg-red-100 hover:bg-red-200' : count/required <= 0.6 ? 'text-orange-600 bg-orange-100 hover:bg-orange-200' : 'text-yellow-600 bg-yellow-100 hover:bg-yellow-200';
+                                                className += ' border-slate-300 cursor-pointer';
                                             }
                                         }
-                                        return <div key={`${task.id}-${day}`} className={className}>{content}</div>;
+                                        return (
+                                            <div 
+                                                key={`${task.id}-${day}`} 
+                                                className={className}
+                                                onClick={() => isClickable && handleCellClick(day, task)}
+                                            >
+                                                {content}
+                                            </div>
+                                        );
                                     })}
                                 </React.Fragment>
                             )
@@ -330,6 +383,15 @@ const TaskShortageDisplay = ({
                     </div>
                 </div>
             </div>
+
+            {/* 詳細表示モーダル */}
+            <DailyShiftDetailModal 
+                detail={selectedDetail}
+                viewMode="active_shifts"
+                onClose={() => setSelectedDetail(null)}
+                onDelete={() => {}} // 削除機能は無効化（または必要に応じて実装）
+                canDelete={() => false}
+            />
         </div>
     );
 };
