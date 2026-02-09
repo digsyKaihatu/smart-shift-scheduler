@@ -458,6 +458,7 @@ const MainContent = () => {
             onUpdateTaskPersonnel={(id, count) => setTasks(prev => prev.map(t => t.id === id ? { ...t, requiredPersonnel: count } : t))}
             onUpdateTaskStaff={handleUpdateSingleTaskStaff}
             year={year} month={month}
+            schedule={currentMonthSchedule} // 案件詳細表示用
           />
           <MonthlyCalendar
             schedule={schedule} staff={staff} tasks={tasks} shiftPatterns={shiftPatterns} initialYear={year} initialMonth={month}
