@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 
 // エラー回避のため、styleUtilsからインポートせずここで定義します
 const getColorForName = (name) => {
@@ -25,23 +25,25 @@ const getColorForName = (name) => {
 
 /**
  * MonthlyCalendar Component
- * * 機能:
- * - タイムライン形式でのメンバー表示
- * - 出勤日/休暇日の切り替え
- * - 実データ(schedule, staff)への接続
+ * - タイムライン形式でのメンバー稼働状況表示
+ * - 出勤日/休暇日の切り替え機能
  * - 有休・通休・欠勤のステータス表示対応
  */
-
 const MonthlyCalendar = ({ 
-  year, 
-  month, 
   schedule, 
   staff, 
+  tasks, 
+  shiftPatterns, 
+  initialYear, 
+  initialMonth,
   onUpdateSchedule, 
   isAdmin 
 }) => {
-  // viewMode: 'work' (出勤日) or 'holiday' (休暇日)
-  const [viewMode, setViewMode] = useState('work'); 
+  const [viewMode, setViewMode] = useState('work'); // 'work' or 'holiday'
+  
+  // 親コンポーネントからの年月変更を反映
+  const year = initialYear;
+  const month = initialMonth;
 
   // ステータス定義
   const STATUS = {
@@ -54,32 +56,30 @@ const MonthlyCalendar = ({
 
   // スケジュールデータから値を取得・正規化するヘルパー
   const getStatus = (staffId, day) => {
-    // scheduleオブジェクトが存在しない場合のガード
     if (!schedule) return '';
     
     const monthKey = `${year}-${month}`;
     const val = schedule[monthKey]?.[staffId]?.[day];
 
-    // 値がない場合は空文字
     if (val === undefined || val === null || val === '') return '';
 
-    // オブジェクト型 ({ type: '有休', hours: 0 } など) の場合
+    // オブジェクト型 ({ type: '有休', hours: 0 } など)
     if (typeof val === 'object' && val.type) {
       return val.type;
     }
 
-    // 数値（稼働時間）の場合
+    // 数値（稼働時間）
     if (typeof val === 'number') {
       return val > 0 ? STATUS.WORK : '';
     }
 
-    // 文字列の場合
+    // 文字列
     return val;
   };
 
-  // 休暇（または出勤していない）判定ロジック
+  // 休暇（または未出勤）判定ロジック
   const isHolidayStatus = (status) => {
-    if (!status) return true; // 未入力は休み扱い
+    if (!status) return true; // 未入力は休み扱いとする場合
     
     const s = String(status);
     return (
@@ -95,8 +95,8 @@ const MonthlyCalendar = ({
   // 出勤判定ロジック
   const isWorkStatus = (status, val) => {
     if (status === STATUS.WORK) return true;
-    // 数値が入っている、または特定のパターン文字（A, Bなど）が入っている場合
-    // ただし 'シフト休' などの文字列は除外
+    
+    // シフト休等の文字列でなければ出勤とみなす
     if (!isHolidayStatus(status) && status !== '') return true;
     
     // オブジェクトでhours > 0なら出勤
@@ -144,7 +144,7 @@ const MonthlyCalendar = ({
         <div className="flex flex-col w-24 flex-shrink-0 border-r bg-slate-50 z-10">
           <div className="h-10 border-b flex items-center justify-center font-bold text-slate-600 text-xs bg-slate-100">日付</div>
           <div className="flex-1 flex items-center justify-center font-bold text-slate-400 text-xs tracking-widest bg-slate-50" style={{ writingMode: 'vertical-rl' }}>
-            {viewMode === 'work' ? '出勤者' : '休日者'}
+            メンバー一覧
           </div>
         </div>
 
@@ -155,7 +155,6 @@ const MonthlyCalendar = ({
               const dayOfWeek = getDayOfWeek(day);
               const isWeekend = dayOfWeek === '日' || dayOfWeek === '土';
               
-              // 今日の日付ハイライト用
               const today = new Date();
               const isToday = today.getFullYear() === year && (today.getMonth() + 1) === month && today.getDate() === day;
 
@@ -167,12 +166,12 @@ const MonthlyCalendar = ({
                 if (viewMode === 'work') {
                   return isWorkStatus(status, rawVal);
                 } else {
-                  // 休暇モード: シフト休、有休、欠勤、通休などを表示
+                  // 休暇モード: ステータスがあり、かつ休暇ステータスの人を表示
                   return isHolidayStatus(status) && status !== '';
                 }
               });
 
-              // 社員番号順などでソート
+              // 表示用にソート
               const sortedMembers = dayMembers.sort((a, b) => 
                 String(a.employeeId || '').localeCompare(String(b.employeeId || ''), undefined, { numeric: true })
               );
@@ -192,7 +191,7 @@ const MonthlyCalendar = ({
                       sortedMembers.map((m) => {
                         const colors = getColorForName(m.name);
                         const status = getStatus(m.id, day);
-                        // 休暇モードのときだけステータスを表示
+                        // 休暇モードのときはステータス詳細を表示
                         const showStatus = viewMode === 'holiday' && status !== STATUS.SHIFT_OFF;
 
                         return (
@@ -207,7 +206,7 @@ const MonthlyCalendar = ({
                           >
                             <span className="truncate">{m.name}</span>
                             {showStatus && (
-                              <span className="text-[9px] bg-white/50 px-1 rounded ml-1 font-bold whitespace-nowrap">
+                              <span className="text-[9px] bg-white/50 px-1 rounded ml-1 font-bold whitespace-nowrap text-slate-600">
                                 {status.replace('有休', '有').replace('欠勤', '欠').replace('通休', '通')}
                               </span>
                             )}
