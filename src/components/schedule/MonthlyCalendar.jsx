@@ -1,85 +1,137 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState } from 'react';
+
+// エラー回避のため、styleUtilsからインポートせずここで定義します
+const getColorForName = (name) => {
+  const colors = [
+    { bg: '#fee2e2', border: '#ef4444', text: '#991b1b' }, // Red
+    { bg: '#ffedd5', border: '#f97316', text: '#9a3412' }, // Orange
+    { bg: '#fef9c3', border: '#eab308', text: '#854d0e' }, // Yellow
+    { bg: '#dcfce7', border: '#22c55e', text: '#166534' }, // Green
+    { bg: '#dbeafe', border: '#3b82f6', text: '#1e40af' }, // Blue
+    { bg: '#e0e7ff', border: '#6366f1', text: '#3730a3' }, // Indigo
+    { bg: '#f3e8ff', border: '#a855f7', text: '#6b21a8' }, // Purple
+    { bg: '#fce7f3', border: '#ec4899', text: '#9d174d' }, // Pink
+  ];
+  
+  if (!name) return colors[0];
+
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) {
+    hash = name.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  
+  return colors[Math.abs(hash) % colors.length];
+};
 
 /**
  * MonthlyCalendar Component
- * * 不具合修正: 
- * - 「出勤日/休暇日」の切り替えロジックを実装。
- * - 有休・通休・欠勤のメンバーを「休暇日」表示時に正しく抽出。
- * * デザイン再現:
- * - スクリーンショットに基づいた横スクロール・タイムライン形式。
- * - 左側ラベルを「メンバー一覧」に変更。
+ * * 機能:
+ * - タイムライン形式でのメンバー表示
+ * - 出勤日/休暇日の切り替え
+ * - 実データ(schedule, staff)への接続
+ * - 有休・通休・欠勤のステータス表示対応
  */
 
-const MonthlyCalendar = () => {
-  const [currentDate, setCurrentDate] = useState(new Date(2026, 1, 10)); // 画像に合わせて2026年2月に設定
-  const [viewMode, setViewMode] = useState('work'); // 'work' (出勤日) or 'holiday' (休暇日)
+const MonthlyCalendar = ({ 
+  year, 
+  month, 
+  schedule, 
+  staff, 
+  onUpdateSchedule, 
+  isAdmin 
+}) => {
+  // viewMode: 'work' (出勤日) or 'holiday' (休暇日)
+  const [viewMode, setViewMode] = useState('work'); 
 
-  // メンバーとステータスのモックデータ
-  const membersList = [
-    { id: 1, name: '中村有志', color: 'bg-yellow-100 border-yellow-200 text-yellow-800' },
-    { id: 2, name: '小林勇稀', color: 'bg-orange-100 border-orange-200 text-orange-800' },
-    { id: 3, name: '池田学司', color: 'bg-yellow-100 border-yellow-200 text-yellow-800' },
-    { id: 4, name: '中村理緒', color: 'bg-pink-100 border-pink-200 text-pink-800' },
-    { id: 5, name: '安田絢美', color: 'bg-green-100 border-green-200 text-green-800' },
-    { id: 6, name: '渡部翔太', color: 'bg-blue-100 border-blue-200 text-blue-800' },
-    { id: 7, name: '竹内瑞保', color: 'bg-green-100 border-green-200 text-green-800' },
-    { id: 8, name: '鈴木健大', color: 'bg-purple-100 border-purple-200 text-purple-800' },
-    { id: 9, name: '山下大空', color: 'bg-blue-100 border-blue-200 text-blue-800' },
-    { id: 10, name: '工藤大生', color: 'bg-pink-100 border-pink-200 text-pink-800' },
-    { id: 11, name: '神前匠', color: 'bg-orange-100 border-orange-200 text-orange-800' },
-    { id: 12, name: '市田進也', color: 'bg-green-100 border-green-200 text-green-800' },
-    { id: 13, name: '坂井剛', color: 'bg-red-100 border-red-200 text-red-800' },
-  ];
-
+  // ステータス定義
   const STATUS = {
     WORK: '出勤',
+    SHIFT_OFF: 'シフト休',
     PAID_LEAVE: '有休',
     SPECIAL_LEAVE: '通休',
     ABSENCE: '欠勤',
   };
 
-  // 特定の日付のシフトデータを生成
-  const getDailyData = (day) => {
-    return membersList.map(member => {
-      let status = STATUS.WORK;
-      if (day % 11 === 0 && member.id === 1) status = STATUS.PAID_LEAVE;
-      if (day === 11 && member.id === 2) status = STATUS.SPECIAL_LEAVE;
-      if (day === 15 && member.id === 4) status = STATUS.ABSENCE;
-      
-      return { ...member, status };
-    });
+  // スケジュールデータから値を取得・正規化するヘルパー
+  const getStatus = (staffId, day) => {
+    // scheduleオブジェクトが存在しない場合のガード
+    if (!schedule) return '';
+    
+    const monthKey = `${year}-${month}`;
+    const val = schedule[monthKey]?.[staffId]?.[day];
+
+    // 値がない場合は空文字
+    if (val === undefined || val === null || val === '') return '';
+
+    // オブジェクト型 ({ type: '有休', hours: 0 } など) の場合
+    if (typeof val === 'object' && val.type) {
+      return val.type;
+    }
+
+    // 数値（稼働時間）の場合
+    if (typeof val === 'number') {
+      return val > 0 ? STATUS.WORK : '';
+    }
+
+    // 文字列の場合
+    return val;
   };
 
-  const year = currentDate.getFullYear();
-  const month = currentDate.getMonth();
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  // 休暇（または出勤していない）判定ロジック
+  const isHolidayStatus = (status) => {
+    if (!status) return true; // 未入力は休み扱い
+    
+    const s = String(status);
+    return (
+      s === STATUS.SHIFT_OFF || 
+      s.includes(STATUS.PAID_LEAVE) || 
+      s.includes(STATUS.SPECIAL_LEAVE) || 
+      s.includes(STATUS.ABSENCE) ||
+      s === '遅刻' ||
+      s === '早退'
+    );
+  };
+
+  // 出勤判定ロジック
+  const isWorkStatus = (status, val) => {
+    if (status === STATUS.WORK) return true;
+    // 数値が入っている、または特定のパターン文字（A, Bなど）が入っている場合
+    // ただし 'シフト休' などの文字列は除外
+    if (!isHolidayStatus(status) && status !== '') return true;
+    
+    // オブジェクトでhours > 0なら出勤
+    if (typeof val === 'object' && val?.hours > 0) return true;
+
+    return false;
+  };
+
+  const daysInMonth = new Date(year, month, 0).getDate();
   const daysArray = Array.from({ length: daysInMonth }, (_, i) => i + 1);
 
   const getDayOfWeek = (day) => {
-    const d = new Date(year, month, day);
+    const d = new Date(year, month - 1, day);
     return ['日', '月', '火', '水', '木', '金', '土'][d.getDay()];
   };
 
   return (
-    <div className="flex flex-col h-screen bg-gray-50 p-4 overflow-hidden font-sans">
+    <div className="flex flex-col bg-white rounded-lg shadow-md ring-1 ring-black ring-opacity-5 p-4 font-sans mt-6">
       {/* Header */}
-      <div className="flex items-center justify-between mb-4 bg-white p-2 rounded-lg shadow-sm border">
-        <div className="flex items-center gap-4 ml-2">
-          <button className="p-1 hover:bg-gray-100 rounded">&lt;</button>
-          <h1 className="text-lg font-bold">{year}年 {month + 1}月</h1>
-          <button className="p-1 hover:bg-gray-100 rounded">&gt;</button>
-        </div>
+      <div className="flex items-center justify-between mb-4 pb-2 border-b border-slate-100">
+        <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+          {year}年 {month}月
+          <span className="text-sm font-normal text-slate-500 ml-2">メンバー稼働状況</span>
+        </h2>
         
-        <div className="flex bg-gray-100 p-1 rounded-lg">
+        <div className="flex bg-slate-100 p-1 rounded-lg">
           <button 
             onClick={() => setViewMode('work')}
-            className={`px-4 py-1 text-xs rounded-md transition-all ${viewMode === 'work' ? 'bg-white shadow-sm text-orange-600 font-bold' : 'text-gray-500'}`}
+            className={`px-4 py-1.5 text-xs rounded-md transition-all font-bold ${viewMode === 'work' ? 'bg-white shadow-sm text-orange-600' : 'text-slate-500 hover:text-slate-700'}`}
           >
             出勤日
           </button>
           <button 
             onClick={() => setViewMode('holiday')}
-            className={`px-4 py-1 text-xs rounded-md transition-all ${viewMode === 'holiday' ? 'bg-white shadow-sm text-orange-600 font-bold' : 'text-gray-500'}`}
+            className={`px-4 py-1.5 text-xs rounded-md transition-all font-bold ${viewMode === 'holiday' ? 'bg-white shadow-sm text-orange-600' : 'text-slate-500 hover:text-slate-700'}`}
           >
             休暇日
           </button>
@@ -87,50 +139,83 @@ const MonthlyCalendar = () => {
       </div>
 
       {/* Main Content Area */}
-      <div className="flex-1 flex overflow-hidden border rounded-xl bg-white shadow-sm">
+      <div className="flex border rounded-xl bg-white shadow-sm overflow-hidden h-[500px]">
         {/* Fixed Sidebar */}
-        <div className="flex flex-col w-24 flex-shrink-0 border-r bg-gray-50">
-          <div className="h-10 border-b flex items-center justify-center font-bold text-gray-600 text-xs">日付</div>
-          <div className="flex-1 flex items-center justify-center font-bold text-gray-600 text-xs tracking-widest" style={{ writingMode: 'vertical-rl' }}>
-            メンバー一覧
+        <div className="flex flex-col w-24 flex-shrink-0 border-r bg-slate-50 z-10">
+          <div className="h-10 border-b flex items-center justify-center font-bold text-slate-600 text-xs bg-slate-100">日付</div>
+          <div className="flex-1 flex items-center justify-center font-bold text-slate-400 text-xs tracking-widest bg-slate-50" style={{ writingMode: 'vertical-rl' }}>
+            {viewMode === 'work' ? '出勤者' : '休日者'}
           </div>
         </div>
 
         {/* Scrollable Timeline */}
-        <div className="flex-1 overflow-x-auto overflow-y-hidden scrollbar-thin scrollbar-thumb-gray-300">
+        <div className="flex-1 overflow-x-auto overflow-y-hidden scrollbar-thin scrollbar-thumb-slate-300">
           <div className="flex min-w-max h-full">
             {daysArray.map(day => {
               const dayOfWeek = getDayOfWeek(day);
               const isWeekend = dayOfWeek === '日' || dayOfWeek === '土';
-              const isToday = day === 10;
+              
+              // 今日の日付ハイライト用
+              const today = new Date();
+              const isToday = today.getFullYear() === year && (today.getMonth() + 1) === month && today.getDate() === day;
 
-              const allData = getDailyData(day);
-              const filteredMembers = allData.filter(m => {
-                const isLeaver = m.status === STATUS.PAID_LEAVE || m.status === STATUS.SPECIAL_LEAVE || m.status === STATUS.ABSENCE;
-                return viewMode === 'work' ? !isLeaver : isLeaver;
+              // メンバーの抽出
+              const dayMembers = staff.filter(member => {
+                const rawVal = schedule?.[`${year}-${month}`]?.[member.id]?.[day];
+                const status = getStatus(member.id, day);
+                
+                if (viewMode === 'work') {
+                  return isWorkStatus(status, rawVal);
+                } else {
+                  // 休暇モード: シフト休、有休、欠勤、通休などを表示
+                  return isHolidayStatus(status) && status !== '';
+                }
               });
 
+              // 社員番号順などでソート
+              const sortedMembers = dayMembers.sort((a, b) => 
+                String(a.employeeId || '').localeCompare(String(b.employeeId || ''), undefined, { numeric: true })
+              );
+
               return (
-                <div key={day} className={`w-32 border-r flex flex-col ${isToday ? 'bg-yellow-50' : ''}`}>
+                <div key={day} className={`w-36 border-r flex flex-col ${isToday ? 'bg-yellow-50/30' : ''}`}>
                   {/* Date Header */}
-                  <div className={`h-10 border-b flex items-center justify-center text-xs font-bold ${isToday ? 'bg-yellow-200 border-yellow-300' : isWeekend ? 'bg-pink-50 text-pink-600' : 'bg-blue-50/30'}`}>
+                  <div className={`h-10 border-b flex items-center justify-center text-xs font-bold 
+                    ${isToday ? 'bg-yellow-100 text-yellow-800 border-yellow-200' : 
+                      isWeekend ? 'bg-pink-50 text-pink-600' : 'bg-slate-50 text-slate-700'}`}>
                     {day} ({dayOfWeek})
                   </div>
 
                   {/* Members List */}
-                  <div className="flex-1 p-2 flex flex-col gap-1 overflow-y-auto overflow-x-hidden">
-                    {filteredMembers.length > 0 ? (
-                      filteredMembers.map((m, i) => (
-                        <div 
-                          key={`${day}-${m.id}`} 
-                          className={`flex-shrink-0 px-2 py-1 rounded text-[10px] border shadow-sm truncate font-medium ${m.color}`}
-                        >
-                          {m.name}
-                          {viewMode === 'holiday' && <span className="ml-1 opacity-70">[{m.status}]</span>}
-                        </div>
-                      ))
+                  <div className="flex-1 p-2 flex flex-col gap-1.5 overflow-y-auto overflow-x-hidden content-start">
+                    {sortedMembers.length > 0 ? (
+                      sortedMembers.map((m) => {
+                        const colors = getColorForName(m.name);
+                        const status = getStatus(m.id, day);
+                        // 休暇モードのときだけステータスを表示
+                        const showStatus = viewMode === 'holiday' && status !== STATUS.SHIFT_OFF;
+
+                        return (
+                          <div 
+                            key={`${day}-${m.id}`} 
+                            className="flex-shrink-0 px-2 py-1 rounded text-[11px] border shadow-sm truncate font-medium flex justify-between items-center"
+                            style={{ 
+                              backgroundColor: colors.bg, 
+                              borderColor: colors.border, 
+                              color: colors.text 
+                            }}
+                          >
+                            <span className="truncate">{m.name}</span>
+                            {showStatus && (
+                              <span className="text-[9px] bg-white/50 px-1 rounded ml-1 font-bold whitespace-nowrap">
+                                {status.replace('有休', '有').replace('欠勤', '欠').replace('通休', '通')}
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })
                     ) : (
-                      <div className="text-[10px] text-gray-300 text-center mt-4">なし</div>
+                      <div className="text-[10px] text-slate-300 text-center mt-4">-</div>
                     )}
                   </div>
                 </div>
@@ -141,8 +226,8 @@ const MonthlyCalendar = () => {
       </div>
       
       {/* Footer Scroll Indicator */}
-      <div className="mt-2 h-2 bg-gray-200 rounded-full overflow-hidden">
-        <div className="h-full bg-gray-400 w-1/3 rounded-full"></div>
+      <div className="mt-2 h-1.5 bg-slate-100 rounded-full overflow-hidden w-full">
+        <div className="h-full bg-slate-300 w-1/3 rounded-full opacity-50"></div>
       </div>
     </div>
   );
