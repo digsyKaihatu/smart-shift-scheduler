@@ -9,7 +9,7 @@ const XIcon = ({ size = 24 }) => (
   </svg>
 );
 
-// ゴミ箱アイコン（削除機能用）
+// ゴミ箱アイコン
 const TrashIcon = ({ size = 20, className = "" }) => (
   <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
     <polyline points="3 6 5 6 21 6"></polyline>
@@ -19,7 +19,7 @@ const TrashIcon = ({ size = 20, className = "" }) => (
   </svg>
 );
 
-// 色生成ロジック (MonthlyCalendarと共通化すべきですが、依存回避のため内包)
+// 色生成ロジック
 const getColorForName = (name) => {
   const colors = [
     { bg: '#fee2e2', border: '#ef4444', text: '#991b1b' },
