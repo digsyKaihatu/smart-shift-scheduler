@@ -1,5 +1,4 @@
-import React, { useState, useEffect } from 'react';
-// DailyShiftDetailModalをインポート
+import React, { useState } from 'react';
 import DailyShiftDetailModal from './DailyShiftDetailModal';
 
 // エラー回避のため、styleUtilsからインポートせずここで定義します
@@ -37,17 +36,13 @@ const MonthlyCalendar = ({
   staff, 
   tasks, 
   shiftPatterns, 
-  initialYear, 
-  initialMonth,
+  year, // MainContentからのprops名を修正
+  month, // MainContentからのprops名を修正
   onUpdateSchedule, 
   isAdmin 
 }) => {
   const [viewMode, setViewMode] = useState('work'); // 'work' or 'holiday'
   const [selectedDateDetail, setSelectedDateDetail] = useState(null); // モーダル表示用データ
-  
-  // 親コンポーネントからの年月変更を反映
-  const year = initialYear;
-  const month = initialMonth;
 
   // ステータス定義
   const STATUS = {
@@ -83,7 +78,7 @@ const MonthlyCalendar = ({
 
   // 休暇（または未出勤）判定ロジック
   const isHolidayStatus = (status) => {
-    if (!status) return true; // 未入力は休み扱いとする場合
+    if (!status) return false; // statusが空の場合は判定不能なので一旦false (コンテキストによる)
     
     const s = String(status);
     return (
@@ -96,20 +91,29 @@ const MonthlyCalendar = ({
     );
   };
 
-  // 出勤判定ロジック
+  // 出勤判定ロジック (不具合修正: 休暇ステータスなら絶対に出勤扱いにしない)
   const isWorkStatus = (status, val) => {
+    // 1. まず休暇ステータスかどうかをチェックし、休暇なら即座に false を返す
+    if (isHolidayStatus(status)) {
+        return false;
+    }
+
+    // 2. 出勤ステータスなら true
     if (status === STATUS.WORK) return true;
     
-    // シフト休等の文字列でなければ出勤とみなす
-    if (!isHolidayStatus(status) && status !== '') return true;
+    // 3. 文字列が入っていて、かつ休暇ステータスでないなら出勤とみなす
+    if (status !== '') return true;
     
-    // オブジェクトでhours > 0なら出勤
+    // 4. オブジェクトでhours > 0なら出勤
     if (typeof val === 'object' && val?.hours > 0) return true;
+
+    // 5. 数値で0より大きければ出勤
+    if (typeof val === 'number' && val > 0) return true;
 
     return false;
   };
 
-  // 指定した日のメンバーリストを取得する関数（カレンダー表示とモーダル詳細の両方で使用）
+  // 指定した日のメンバーリストを取得する関数
   const getMembersForDay = (day) => {
     return staff.filter(member => {
       const rawVal = schedule?.[`${year}-${month}`]?.[member.id]?.[day];
@@ -119,6 +123,7 @@ const MonthlyCalendar = ({
         return isWorkStatus(status, rawVal);
       } else {
         // 休暇モード: ステータスがあり、かつ休暇ステータスの人を表示
+        // ステータスが空文字でないことを確認して、未入力者を除外
         return isHolidayStatus(status) && status !== '';
       }
     }).sort((a, b) => 
@@ -214,12 +219,11 @@ const MonthlyCalendar = ({
                   </div>
 
                   {/* Members List */}
-                  <div className="flex-1 p-2 flex flex-col gap-1.5 overflow-y-auto overflow-x-hidden content-start pointer-events-none"> {/* 子要素でのクリックイベント発火を防ぐ */}
+                  <div className="flex-1 p-2 flex flex-col gap-1.5 overflow-y-auto overflow-x-hidden content-start pointer-events-none">
                     {sortedMembers.length > 0 ? (
                       sortedMembers.map((m) => {
                         const colors = getColorForName(m.name);
                         const status = getStatus(m.id, day);
-                        // 休暇モードのときはステータス詳細を表示
                         const showStatus = viewMode === 'holiday' && status !== STATUS.SHIFT_OFF;
 
                         return (
@@ -260,9 +264,9 @@ const MonthlyCalendar = ({
       {/* 詳細表示モーダル */}
       <DailyShiftDetailModal 
         detail={selectedDateDetail}
-        viewMode={viewMode === 'work' ? 'active_shifts' : 'holiday_shifts'} // モーダル内でのタイトル切り替え用
+        viewMode={viewMode === 'work' ? 'active_shifts' : 'holiday_shifts'}
         onClose={() => setSelectedDateDetail(null)}
-        onDelete={() => {}} // 削除機能はここでは不要なため空関数
+        onDelete={() => {}}
         canDelete={() => false}
       />
     </div>
