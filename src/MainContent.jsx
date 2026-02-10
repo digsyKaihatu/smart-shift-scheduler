@@ -25,18 +25,19 @@ import AdminSettingsModal from './components/admin/AdminSettingsModal';
 const MainContent = () => {
   const { oktaAuth, authState } = useOktaAuth();
 
-  // スケーラビリティ対応: useShiftDataに渡すために先にStateを定義
+  // ★重要: useShiftData に渡す year/month を先に定義する必要があります。
+  // 元のコードでは useShiftData() の後に useState があり、データ取得時に undefined になるバグがありました。
   const [year, setYear] = useState(new Date().getFullYear());
   const [month, setMonth] = useState(new Date().getMonth() + 1);
 
   const {
     staff, setStaff, 
-    schedule, setSchedule, updateSchedule, // 履歴付き更新用
-    undo, redo, canUndo, canRedo,          // Undo/Redo操作用
+    schedule, setSchedule, 
     tasks, setTasks,
-    shiftPatterns, setShiftPatterns, adminConfig, setAdminConfig,
+    shiftPatterns, setShiftPatterns, 
+    adminConfig, setAdminConfig,
     isLoading, loadingMessage, setLoadingMessage, setIsLoading, saveStatus, initialDataLoaded
-  } = useShiftData(year, month);
+  } = useShiftData(year, month); // year, month を渡す
 
   const [currentUser, setCurrentUser] = useState(null);
   const [taskCountsByDay, setTaskCountsByDay] = useState({});
@@ -50,35 +51,6 @@ const MainContent = () => {
   const [holidayConfirmation, setHolidayConfirmation] = useState(null);
   const [absenceNotificationConfirmation, setAbsenceNotificationConfirmation] = useState(null);
   const [remandConfirmation, setRemandConfirmation] = useState(null);
-
-  // ショートカットキーの設定 (Undo/Redo)
-  useEffect(() => {
-    const handleKeyDown = (e) => {
-      // 入力フォーム内などで誤爆しないようにチェック
-      if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) return;
-
-      const isCmdOrCtrl = e.metaKey || e.ctrlKey;
-      
-      if (isCmdOrCtrl && e.key === 'z') {
-        e.preventDefault();
-        if (e.shiftKey) {
-          // Ctrl + Shift + Z : Redo
-          if (canRedo) redo();
-        } else {
-          // Ctrl + Z : Undo
-          if (canUndo) undo();
-        }
-      }
-      // Ctrl + Y : Redo (Windows標準)
-      if (isCmdOrCtrl && e.key === 'y') {
-        e.preventDefault();
-        if (canRedo) redo();
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [undo, redo, canUndo, canRedo]);
 
   useEffect(() => {
     const identifyUser = async () => {
@@ -117,7 +89,7 @@ const MainContent = () => {
   }), [year, month, daysInMonth]);
 
   useEffect(() => {
-    if (initialDataLoaded && !schedule[key]) {
+    if (!schedule[key] && initialDataLoaded) {
       setSchedule(prev => ({ ...prev, [key]: generateScheduleForMonth(year, month, staff, shiftPatterns) }));
     }
   }, [year, month, schedule, staff, shiftPatterns, initialDataLoaded]);
@@ -140,10 +112,9 @@ const MainContent = () => {
     setTaskCountsByDay(counts);
   }, [schedule, year, month, staff, tasks, daysInMonth, initialDataLoaded]);
 
-  // 履歴付き更新を使用
   const handleUpdateScheduleGeneric = (targetYear, targetMonth, staffId, day, value) => {
     const targetKey = `${targetYear}-${targetMonth}`;
-    updateSchedule(prev => {
+    setSchedule(prev => {
       const newMonth = { ...(prev[targetKey] || {}) };
       const newStaff = { ...(newMonth[staffId] || {}) };
       newStaff[day] = value;
@@ -303,16 +274,14 @@ const MainContent = () => {
         }
         newMonthScheduleForStaff[day] = shiftValue;
     }
-    // 履歴付き更新
-    updateSchedule(prev => ({ ...prev, [key]: { ...(prev[key] || {}), [staffId]: newMonthScheduleForStaff } }));
+    setSchedule(prev => ({ ...prev, [key]: { ...(prev[key] || {}), [staffId]: newMonthScheduleForStaff } }));
   };
 
   const executeDelete = () => {
     if (!confirmDelete) return;
     if (confirmDelete.type === 'staff') {
         setStaff(prev => prev.filter(s => s.id !== confirmDelete.id));
-        // スケジュール削除も履歴付き
-        updateSchedule(prev => { const next = { ...prev }; Object.keys(next).forEach(k => delete next[k][confirmDelete.id]); return next; });
+        setSchedule(prev => { const next = { ...prev }; Object.keys(next).forEach(k => delete next[k][confirmDelete.id]); return next; });
     } else {
         setTasks(prev => prev.filter(t => t.id !== confirmDelete.id));
         setStaff(prev => prev.map(s => ({ ...s, possibleTasks: s.possibleTasks.filter(tid => tid !== confirmDelete.id) })));
@@ -337,8 +306,7 @@ const MainContent = () => {
           }
       }
 
-      // 履歴付き更新
-      updateSchedule(prev => ({ ...prev, [key]: { ...(prev[key] || {}), [newId]: newMemberSchedule } }));
+      setSchedule(prev => ({ ...prev, [key]: { ...(prev[key] || {}), [newId]: newMemberSchedule } }));
   };
 
   const handleSetDayAsHolidayForAll = (day) => {
@@ -350,7 +318,7 @@ const MainContent = () => {
 
       if (isAlreadyLockedHoliday) {
         setHolidayConfirmation({ day, isUnlocking: true, onConfirm: () => {
-                updateSchedule(prev => {
+                setSchedule(prev => {
                     const newSchedule = JSON.parse(JSON.stringify(prev));
                     const newMonthSchedule = newSchedule[key] || {};
                     staff.forEach(s => {
@@ -371,7 +339,7 @@ const MainContent = () => {
         });
     } else {
         setHolidayConfirmation({ day, isUnlocking: false, onConfirm: () => {
-                updateSchedule(prev => {
+                setSchedule(prev => {
                     const newSchedule = { ...prev };
                     const newMonthSchedule = JSON.parse(JSON.stringify(newSchedule[key] || {}));
                     staff.forEach(s => { if (!newMonthSchedule[s.id]) newMonthSchedule[s.id] = {}; newMonthSchedule[s.id][day] = { type: 'シフト休', locked: true }; });
@@ -461,11 +429,9 @@ const MainContent = () => {
             schedule={currentMonthSchedule} // 案件詳細表示用
           />
           <MonthlyCalendar
-            schedule={schedule} 
-            staff={staff} 
-            year={year} 
-            month={month}
-            isAdmin={isAdmin} 
+            schedule={schedule} staff={staff} tasks={tasks} shiftPatterns={shiftPatterns} initialYear={year} initialMonth={month}
+            onUpdateSchedule={(staffId, d, v, ty, tm) => handleUpdateScheduleGeneric(ty || year, tm || month, staffId, d, v)}
+            isAdmin={isAdmin} currentUser={currentUser}
           />
         </main>
 
