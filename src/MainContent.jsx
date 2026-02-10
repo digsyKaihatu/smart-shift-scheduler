@@ -461,9 +461,11 @@ const MainContent = () => {
             schedule={currentMonthSchedule} // 案件詳細表示用
           />
           <MonthlyCalendar
-            schedule={schedule} staff={staff} tasks={tasks} shiftPatterns={shiftPatterns} initialYear={year} initialMonth={month}
-            onUpdateSchedule={(staffId, d, v, ty, tm) => handleUpdateScheduleGeneric(ty || year, tm || month, staffId, d, v)}
-            isAdmin={isAdmin} currentUser={currentUser}
+            schedule={schedule} 
+            staff={staff} 
+            year={year} 
+            month={month}
+            isAdmin={isAdmin} 
           />
         </main>
 
