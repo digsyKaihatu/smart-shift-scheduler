@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+// DailyShiftDetailModalをインポート
+import DailyShiftDetailModal from './DailyShiftDetailModal';
 
 // エラー回避のため、styleUtilsからインポートせずここで定義します
 const getColorForName = (name) => {
@@ -28,6 +30,7 @@ const getColorForName = (name) => {
  * - タイムライン形式でのメンバー稼働状況表示
  * - 出勤日/休暇日の切り替え機能
  * - 有休・通休・欠勤のステータス表示対応
+ * - 日付クリック時の詳細モーダル表示
  */
 const MonthlyCalendar = ({ 
   schedule, 
@@ -40,6 +43,7 @@ const MonthlyCalendar = ({
   isAdmin 
 }) => {
   const [viewMode, setViewMode] = useState('work'); // 'work' or 'holiday'
+  const [selectedDateDetail, setSelectedDateDetail] = useState(null); // モーダル表示用データ
   
   // 親コンポーネントからの年月変更を反映
   const year = initialYear;
@@ -105,6 +109,42 @@ const MonthlyCalendar = ({
     return false;
   };
 
+  // 指定した日のメンバーリストを取得する関数（カレンダー表示とモーダル詳細の両方で使用）
+  const getMembersForDay = (day) => {
+    return staff.filter(member => {
+      const rawVal = schedule?.[`${year}-${month}`]?.[member.id]?.[day];
+      const status = getStatus(member.id, day);
+      
+      if (viewMode === 'work') {
+        return isWorkStatus(status, rawVal);
+      } else {
+        // 休暇モード: ステータスがあり、かつ休暇ステータスの人を表示
+        return isHolidayStatus(status) && status !== '';
+      }
+    }).sort((a, b) => 
+      String(a.employeeId || '').localeCompare(String(b.employeeId || ''), undefined, { numeric: true })
+    );
+  };
+
+  // 日付セルクリック時のハンドラ
+  const handleDateClick = (day) => {
+    const members = getMembersForDay(day);
+    const events = members.map(m => {
+      const status = getStatus(m.id, day);
+      return {
+        id: `${day}-${m.id}`,
+        userName: m.name,
+        type: status === STATUS.WORK ? '稼働' : status, // ステータスを表示用に
+        staffId: m.id,
+      };
+    });
+
+    setSelectedDateDetail({
+      date: new Date(year, month - 1, day),
+      events: events,
+    });
+  };
+
   const daysInMonth = new Date(year, month, 0).getDate();
   const daysArray = Array.from({ length: daysInMonth }, (_, i) => i + 1);
 
@@ -158,26 +198,14 @@ const MonthlyCalendar = ({
               const today = new Date();
               const isToday = today.getFullYear() === year && (today.getMonth() + 1) === month && today.getDate() === day;
 
-              // メンバーの抽出
-              const dayMembers = staff.filter(member => {
-                const rawVal = schedule?.[`${year}-${month}`]?.[member.id]?.[day];
-                const status = getStatus(member.id, day);
-                
-                if (viewMode === 'work') {
-                  return isWorkStatus(status, rawVal);
-                } else {
-                  // 休暇モード: ステータスがあり、かつ休暇ステータスの人を表示
-                  return isHolidayStatus(status) && status !== '';
-                }
-              });
-
-              // 表示用にソート
-              const sortedMembers = dayMembers.sort((a, b) => 
-                String(a.employeeId || '').localeCompare(String(b.employeeId || ''), undefined, { numeric: true })
-              );
+              const sortedMembers = getMembersForDay(day);
 
               return (
-                <div key={day} className={`w-36 border-r flex flex-col ${isToday ? 'bg-yellow-50/30' : ''}`}>
+                <div 
+                  key={day} 
+                  className={`w-36 border-r flex flex-col cursor-pointer transition-colors hover:bg-slate-50 ${isToday ? 'bg-yellow-50/30' : ''}`}
+                  onClick={() => handleDateClick(day)}
+                >
                   {/* Date Header */}
                   <div className={`h-10 border-b flex items-center justify-center text-xs font-bold 
                     ${isToday ? 'bg-yellow-100 text-yellow-800 border-yellow-200' : 
@@ -186,7 +214,7 @@ const MonthlyCalendar = ({
                   </div>
 
                   {/* Members List */}
-                  <div className="flex-1 p-2 flex flex-col gap-1.5 overflow-y-auto overflow-x-hidden content-start">
+                  <div className="flex-1 p-2 flex flex-col gap-1.5 overflow-y-auto overflow-x-hidden content-start pointer-events-none"> {/* 子要素でのクリックイベント発火を防ぐ */}
                     {sortedMembers.length > 0 ? (
                       sortedMembers.map((m) => {
                         const colors = getColorForName(m.name);
@@ -228,6 +256,15 @@ const MonthlyCalendar = ({
       <div className="mt-2 h-1.5 bg-slate-100 rounded-full overflow-hidden w-full">
         <div className="h-full bg-slate-300 w-1/3 rounded-full opacity-50"></div>
       </div>
+
+      {/* 詳細表示モーダル */}
+      <DailyShiftDetailModal 
+        detail={selectedDateDetail}
+        viewMode={viewMode === 'work' ? 'active_shifts' : 'holiday_shifts'} // モーダル内でのタイトル切り替え用
+        onClose={() => setSelectedDateDetail(null)}
+        onDelete={() => {}} // 削除機能はここでは不要なため空関数
+        canDelete={() => false}
+      />
     </div>
   );
 };
