@@ -1,6 +1,6 @@
 import React, { useRef, useMemo } from 'react';
-import { summarizePattern } from '../../utils/scheduleUtils.js';
-import { formatValue } from '../../utils/dateUtils.js';
+import { summarizePattern } from '../../utils/scheduleUtils';
+import { formatValue } from '../../utils/dateUtils';
 
 const ShiftApprovalModal = ({ staffMember, schedule, shiftPatterns, holidays, year, month, onConfirm, onClose }) => {
     const remarksRef = useRef(null);
@@ -47,11 +47,26 @@ const ShiftApprovalModal = ({ staffMember, schedule, shiftPatterns, holidays, ye
             // 比較用に値を正規化（ロックされた休日オブジェクト等の場合は type を使用）
             let actualCompare = actualValue;
             if (typeof actualValue === 'object' && actualValue !== null) {
-                actualCompare = actualValue.type;
+                actualCompare = actualValue.type || '';
             }
 
-            // 「想定がシフト休」で「実際が空欄」の場合は一致とみなす（イレギュラーから除外）
-            const isEffectivelySame = (actualCompare === expectedValue) || (expectedValue === 'シフト休' && actualCompare === '');
+            // 一致判定の強化（より柔軟に判定する）
+            let isEffectivelySame = (actualCompare === expectedValue);
+
+            if (!isEffectivelySame) {
+                if (expectedValue === 'シフト休') {
+                    // 想定が休日の場合、実質的に休みを意味する値（空欄、0、休など）であれば一致とみなす
+                    const emptyOrRestValues = ['', 0, '0', '休', 'シフト休', null, undefined];
+                    if (emptyOrRestValues.includes(actualCompare)) {
+                        isEffectivelySame = true;
+                    }
+                } else if (expectedValue !== '') {
+                    // 想定が数値(稼働時間)の場合、文字列や小数点表記の違いを吸収 (例: 8 と "8.0")
+                    if (!isNaN(parseFloat(actualCompare)) && !isNaN(parseFloat(expectedValue)) && parseFloat(actualCompare) === parseFloat(expectedValue)) {
+                        isEffectivelySame = true;
+                    }
+                }
+            }
 
             if (!isEffectivelySame) {
                 const dayOfWeekStr = ['日', '月', '火', '水', '木', '金', '土'][dayOfWeek];
