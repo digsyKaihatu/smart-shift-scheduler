@@ -246,7 +246,7 @@ const MonthlyCalendar = ({ schedule, staff, tasks, shiftPatterns, initialYear, i
 
             <div className="flex">
                 <div className="sticky left-0 z-30 bg-slate-50 p-2 border-r border-slate-300 font-semibold text-xs text-center min-w-[100px] w-[100px] flex-shrink-0 flex items-center justify-center border-b border-slate-200 box-border">
-                    {viewMode === 'active_shifts' ? '出勤者' : '休日者'}
+                    {viewMode === 'active_shifts' ? '出勤' : '休み'}
                 </div>
                 
                 {daysInMonth.map((d) => {
