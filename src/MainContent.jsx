@@ -2,25 +2,25 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { useOktaAuth } from '@okta/okta-react';
 
 // Hooks & Services & Utils
-import { useShiftData } from './hooks/useShiftData.js';
-import { chatService } from './services/chatService.js';
-import { downloadScheduleCSV } from './utils/csvExporter.js';
-import { getJapaneseHolidays, formatValue } from './utils/dateUtils.js';
-import { generateScheduleForMonth, summarizePattern } from './utils/scheduleUtils.js';
+import { useShiftData } from './hooks/useShiftData';
+import { chatService } from './services/chatService';
+import { downloadScheduleCSV } from './utils/csvExporter';
+import { getJapaneseHolidays, formatValue } from './utils/dateUtils';
+import { generateScheduleForMonth, summarizePattern } from './utils/scheduleUtils';
 
 // Components
-import LoadingScreen from './components/common/LoadingScreen.jsx';
-import HelpGuideModal from './components/common/HelpGuideModal.jsx';
-import { ConfirmationModal, ConfirmDeleteModal } from './components/common/Modal.jsx';
-import Legend from './components/schedule/Legend.jsx';
-import ShiftSchedule from './components/schedule/ShiftSchedule.jsx';
-import MonthlyCalendar from './components/schedule/MonthlyCalendar.jsx';
-import ShiftPatternDisplay from './components/schedule/ShiftPatternDisplay.jsx';
-import ShiftApprovalModal from './components/schedule/ShiftApprovalModal.jsx';
-import TaskShortageDisplay from './components/tasks/TaskShortageDisplay.jsx';
-import TaskStaffMappingEditor from './components/tasks/TaskStaffMappingEditor.jsx';
-import MemberManagementModal from './components/admin/MemberManagementModal.jsx';
-import AdminSettingsModal from './components/admin/AdminSettingsModal.jsx';
+import LoadingScreen from './components/common/LoadingScreen';
+import HelpGuideModal from './components/common/HelpGuideModal';
+import { ConfirmationModal, ConfirmDeleteModal } from './components/common/Modal';
+import Legend from './components/schedule/Legend';
+import ShiftSchedule from './components/schedule/ShiftSchedule';
+import MonthlyCalendar from './components/schedule/MonthlyCalendar';
+import ShiftPatternDisplay from './components/schedule/ShiftPatternDisplay';
+import ShiftApprovalModal from './components/schedule/ShiftApprovalModal';
+import TaskShortageDisplay from './components/tasks/TaskShortageDisplay';
+import TaskStaffMappingEditor from './components/tasks/TaskStaffMappingEditor';
+import MemberManagementModal from './components/admin/MemberManagementModal';
+import AdminSettingsModal from './components/admin/AdminSettingsModal';
 
 const MainContent = () => {
   const { oktaAuth, authState } = useOktaAuth();
@@ -209,11 +209,26 @@ const MainContent = () => {
         // 比較用に正規化
         let actualCompare = actual;
         if (typeof actual === 'object' && actual !== null) {
-            actualCompare = actual.type;
+            actualCompare = actual.type || '';
         }
 
-        // 「想定がシフト休」で「実際が空欄」の場合は一致とみなす（イレギュラーから除外）
-        const isEffectivelySame = (actualCompare === expected) || (expected === 'シフト休' && actualCompare === '');
+        // 一致判定の強化（より柔軟に判定する）
+        let isEffectivelySame = (actualCompare === expected);
+
+        if (!isEffectivelySame) {
+            if (expected === 'シフト休') {
+                // 想定が休日の場合、実質的に休みを意味する値（空欄、0、休など）であれば一致とみなす
+                const emptyOrRestValues = ['', 0, '0', '休', 'シフト休', null, undefined];
+                if (emptyOrRestValues.includes(actualCompare)) {
+                    isEffectivelySame = true;
+                }
+            } else if (expected !== '') {
+                // 想定が数値(稼働時間)の場合、文字列や小数点表記の違いを吸収 (例: 8 と "8.0")
+                if (!isNaN(parseFloat(actualCompare)) && !isNaN(parseFloat(expected)) && parseFloat(actualCompare) === parseFloat(expected)) {
+                    isEffectivelySame = true;
+                }
+            }
+        }
 
         if (!isEffectivelySame) {
             const wStr = ['日', '月', '火', '水', '木', '金', '土'][dayOfWeek];
