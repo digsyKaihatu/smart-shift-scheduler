@@ -25,8 +25,6 @@ import AdminSettingsModal from './components/admin/AdminSettingsModal';
 const MainContent = () => {
   const { oktaAuth, authState } = useOktaAuth();
 
-  // ★重要: useShiftData に渡す year/month を先に定義する必要があります。
-  // 元のコードでは useShiftData() の後に useState があり、データ取得時に undefined になるバグがありました。
   const [year, setYear] = useState(new Date().getFullYear());
   const [month, setMonth] = useState(new Date().getMonth() + 1);
 
@@ -37,7 +35,7 @@ const MainContent = () => {
     shiftPatterns, setShiftPatterns, 
     adminConfig, setAdminConfig,
     isLoading, loadingMessage, setLoadingMessage, setIsLoading, saveStatus, initialDataLoaded
-  } = useShiftData(year, month); // year, month を渡す
+  } = useShiftData(year, month);
 
   const [currentUser, setCurrentUser] = useState(null);
   const [taskCountsByDay, setTaskCountsByDay] = useState({});
@@ -207,7 +205,32 @@ const MainContent = () => {
              }
         }
         const actual = schedule[key]?.[s.id]?.[day] ?? '';
-        if (JSON.stringify(actual) !== JSON.stringify(expected)) {
+        
+        // 比較用に正規化
+        let actualCompare = actual;
+        if (typeof actual === 'object' && actual !== null) {
+            actualCompare = actual.type || '';
+        }
+
+        // 一致判定の強化（より柔軟に判定する）
+        let isEffectivelySame = (actualCompare === expected);
+
+        if (!isEffectivelySame) {
+            if (expected === 'シフト休') {
+                // 想定が休日の場合、実質的に休みを意味する値（空欄、0、休など）であれば一致とみなす
+                const emptyOrRestValues = ['', 0, '0', '休', 'シフト休', null, undefined];
+                if (emptyOrRestValues.includes(actualCompare)) {
+                    isEffectivelySame = true;
+                }
+            } else if (expected !== '') {
+                // 想定が数値(稼働時間)の場合、文字列や小数点表記の違いを吸収 (例: 8 と "8.0")
+                if (!isNaN(parseFloat(actualCompare)) && !isNaN(parseFloat(expected)) && parseFloat(actualCompare) === parseFloat(expected)) {
+                    isEffectivelySame = true;
+                }
+            }
+        }
+
+        if (!isEffectivelySame) {
             const wStr = ['日', '月', '火', '水', '木', '金', '土'][dayOfWeek];
             irregularities.push(`${month}/${day}(${wStr}): ${formatValue(actual) || '未入力'}`);
         }
