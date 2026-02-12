@@ -2,31 +2,29 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { useOktaAuth } from '@okta/okta-react';
 
 // Hooks & Services & Utils
-import { useShiftData } from './hooks/useShiftData';
-import { chatService } from './services/chatService';
-import { downloadScheduleCSV } from './utils/csvExporter';
-import { getJapaneseHolidays, formatValue } from './utils/dateUtils';
-import { generateScheduleForMonth, summarizePattern } from './utils/scheduleUtils';
+import { useShiftData } from './hooks/useShiftData.js';
+import { chatService } from './services/chatService.js';
+import { downloadScheduleCSV } from './utils/csvExporter.js';
+import { getJapaneseHolidays, formatValue } from './utils/dateUtils.js';
+import { generateScheduleForMonth, summarizePattern } from './utils/scheduleUtils.js';
 
 // Components
-import LoadingScreen from './components/common/LoadingScreen';
-import HelpGuideModal from './components/common/HelpGuideModal';
-import { ConfirmationModal, ConfirmDeleteModal } from './components/common/Modal';
-import Legend from './components/schedule/Legend';
-import ShiftSchedule from './components/schedule/ShiftSchedule';
-import MonthlyCalendar from './components/schedule/MonthlyCalendar';
-import ShiftPatternDisplay from './components/schedule/ShiftPatternDisplay';
-import ShiftApprovalModal from './components/schedule/ShiftApprovalModal';
-import TaskShortageDisplay from './components/tasks/TaskShortageDisplay';
-import TaskStaffMappingEditor from './components/tasks/TaskStaffMappingEditor';
-import MemberManagementModal from './components/admin/MemberManagementModal';
-import AdminSettingsModal from './components/admin/AdminSettingsModal';
+import LoadingScreen from './components/common/LoadingScreen.jsx';
+import HelpGuideModal from './components/common/HelpGuideModal.jsx';
+import { ConfirmationModal, ConfirmDeleteModal } from './components/common/Modal.jsx';
+import Legend from './components/schedule/Legend.jsx';
+import ShiftSchedule from './components/schedule/ShiftSchedule.jsx';
+import MonthlyCalendar from './components/schedule/MonthlyCalendar.jsx';
+import ShiftPatternDisplay from './components/schedule/ShiftPatternDisplay.jsx';
+import ShiftApprovalModal from './components/schedule/ShiftApprovalModal.jsx';
+import TaskShortageDisplay from './components/tasks/TaskShortageDisplay.jsx';
+import TaskStaffMappingEditor from './components/tasks/TaskStaffMappingEditor.jsx';
+import MemberManagementModal from './components/admin/MemberManagementModal.jsx';
+import AdminSettingsModal from './components/admin/AdminSettingsModal.jsx';
 
 const MainContent = () => {
   const { oktaAuth, authState } = useOktaAuth();
 
-  // ★重要: useShiftData に渡す year/month を先に定義する必要があります。
-  // 元のコードでは useShiftData() の後に useState があり、データ取得時に undefined になるバグがありました。
   const [year, setYear] = useState(new Date().getFullYear());
   const [month, setMonth] = useState(new Date().getMonth() + 1);
 
@@ -37,7 +35,7 @@ const MainContent = () => {
     shiftPatterns, setShiftPatterns, 
     adminConfig, setAdminConfig,
     isLoading, loadingMessage, setLoadingMessage, setIsLoading, saveStatus, initialDataLoaded
-  } = useShiftData(year, month); // year, month を渡す
+  } = useShiftData(year, month);
 
   const [currentUser, setCurrentUser] = useState(null);
   const [taskCountsByDay, setTaskCountsByDay] = useState({});
@@ -207,7 +205,17 @@ const MainContent = () => {
              }
         }
         const actual = schedule[key]?.[s.id]?.[day] ?? '';
-        if (JSON.stringify(actual) !== JSON.stringify(expected)) {
+        
+        // 比較用に正規化
+        let actualCompare = actual;
+        if (typeof actual === 'object' && actual !== null) {
+            actualCompare = actual.type;
+        }
+
+        // 「想定がシフト休」で「実際が空欄」の場合は一致とみなす（イレギュラーから除外）
+        const isEffectivelySame = (actualCompare === expected) || (expected === 'シフト休' && actualCompare === '');
+
+        if (!isEffectivelySame) {
             const wStr = ['日', '月', '火', '水', '木', '金', '土'][dayOfWeek];
             irregularities.push(`${month}/${day}(${wStr}): ${formatValue(actual) || '未入力'}`);
         }
