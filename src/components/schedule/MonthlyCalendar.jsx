@@ -204,13 +204,13 @@ const MonthlyCalendar = ({ schedule, staff, tasks, shiftPatterns, initialYear, i
                 onClick={() => setViewMode('active_shifts')}
                 className={`px-4 py-1.5 rounded-md text-xs font-bold transition-all ${viewMode === 'active_shifts' ? 'bg-white text-[#D9824D] shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
             >
-                出勤日
+                出勤
             </button>
             <button
                 onClick={() => setViewMode('holidays')}
                 className={`px-4 py-1.5 rounded-md text-xs font-bold transition-all ${viewMode === 'holidays' ? 'bg-white text-[#D9824D] shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
             >
-                休暇日
+                休み
             </button>
         </div>
       </div>
