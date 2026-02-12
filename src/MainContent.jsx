@@ -24,15 +24,22 @@ import AdminSettingsModal from './components/admin/AdminSettingsModal';
 
 const MainContent = () => {
   const { oktaAuth, authState } = useOktaAuth();
-  const {
-    staff, setStaff, schedule, setSchedule, tasks, setTasks,
-    shiftPatterns, setShiftPatterns, adminConfig, setAdminConfig,
-    isLoading, loadingMessage, setLoadingMessage, setIsLoading, saveStatus, initialDataLoaded
-  } = useShiftData();
 
-  const [currentUser, setCurrentUser] = useState(null);
+  // ★重要: useShiftData に渡す year/month を先に定義する必要があります。
+  // 元のコードでは useShiftData() の後に useState があり、データ取得時に undefined になるバグがありました。
   const [year, setYear] = useState(new Date().getFullYear());
   const [month, setMonth] = useState(new Date().getMonth() + 1);
+
+  const {
+    staff, setStaff, 
+    schedule, setSchedule, 
+    tasks, setTasks,
+    shiftPatterns, setShiftPatterns, 
+    adminConfig, setAdminConfig,
+    isLoading, loadingMessage, setLoadingMessage, setIsLoading, saveStatus, initialDataLoaded
+  } = useShiftData(year, month); // year, month を渡す
+
+  const [currentUser, setCurrentUser] = useState(null);
   const [taskCountsByDay, setTaskCountsByDay] = useState({});
   const [isTaskEditorOpen, setIsTaskEditorOpen] = useState(false);
   const [isHelpOpen, setIsHelpOpen] = useState(false);
@@ -226,8 +233,6 @@ const MainContent = () => {
   const handleDeleteStaff = (id) => setConfirmDelete({ type: 'staff', id, name: staff.find(s => s.id === id)?.name });
   const handleDeleteTask = (id) => setConfirmDelete({ type: 'task', id, name: tasks.find(t => t.id === id)?.name });
   
-  // ★重要修正: CSVエクスポートの呼び出し引数を新仕様に修正
-  // (staff, schedule, shiftPatterns, year, month) の順で渡す
   const handleExportCSV = () => downloadScheduleCSV(staff, schedule, shiftPatterns, year, month);
    
   const handleBulkUpdateStaffTasks = (taskStaffMap) => {
@@ -291,7 +296,6 @@ const MainContent = () => {
           defaultShift: { pattern: ['A','A','A','A','A'], hasBreak: true }, shiftSubmitted: {}, shiftRemanded: {}, shiftApproved: {}
       }]);
       
-      // 新規メンバー用のスケジュール初期化（平日以外をシフト休にする）
       const newMemberSchedule = {};
       for (let day = 1; day <= daysInMonth; day++) {
           const date = new Date(year, month - 1, day);
@@ -356,7 +360,6 @@ const MainContent = () => {
   const currentMonthSchedule = schedule[key] || {};
   const approvalStaff = approvalModalStaffId ? staff.find(s => s.id === approvalModalStaffId) : null;
 
-  // 管理者用ボタン群（ShiftPatternDisplayに渡す）
   const adminControls = (
       <>
           {isAdmin && (
@@ -423,6 +426,7 @@ const MainContent = () => {
             onUpdateTaskPersonnel={(id, count) => setTasks(prev => prev.map(t => t.id === id ? { ...t, requiredPersonnel: count } : t))}
             onUpdateTaskStaff={handleUpdateSingleTaskStaff}
             year={year} month={month}
+            schedule={currentMonthSchedule} // 案件詳細表示用
           />
           <MonthlyCalendar
             schedule={schedule} staff={staff} tasks={tasks} shiftPatterns={shiftPatterns} initialYear={year} initialMonth={month}

@@ -1,8 +1,8 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { getJapaneseHolidays, formatDate } from '../../utils/dateUtils';
-import { getColorForName } from '../../utils/styleUtils';
-import { ChevronLeft, ChevronRight, TrashIcon } from '../common/Icons';
-import DailyShiftDetailModal from './DailyShiftDetailModal';
+import { getJapaneseHolidays, formatDate } from '../../utils/dateUtils.js';
+import { getColorForName } from '../../utils/styleUtils.js';
+import { ChevronLeft, ChevronRight, TrashIcon } from '../common/Icons.jsx';
+import DailyShiftDetailModal from './DailyShiftDetailModal.jsx';
 
 const MonthlyCalendar = ({ schedule, staff, tasks, shiftPatterns, initialYear, initialMonth, onUpdateSchedule, isAdmin, currentUser }) => {
   const [currentDate, setCurrentDate] = useState(new Date(initialYear, initialMonth - 1, 1));
@@ -83,13 +83,17 @@ const MonthlyCalendar = ({ schedule, staff, tasks, shiftPatterns, initialYear, i
             
             if (typeof value === 'object' && value.type) {
                 displayText = value.type === 'シフト休' ? 'シフト休' : `${value.type}${value.hours ? `(${value.hours})` : ''}`;
-                if (['シフト休', '欠勤', '有休', '午前休', '午後休'].some(type => value.type.includes(type))) {
+                // オブジェクト型の場合の休日判定（通休を追加）
+                if (['シフト休', '欠勤', '有休', '午前休', '午後休', '通休'].some(type => value.type.includes(type))) {
                     isHoliday = true;
                 }
             } else if (typeof value === 'number') {
                 displayText = `${value}h`;
-            } else if (value === 'シフト休') {
-                isHoliday = true;
+            } else if (typeof value === 'string') {
+                // 文字列型の場合の休日判定を拡張
+                if (['シフト休', '有休', '通休', '欠勤'].includes(value)) {
+                    isHoliday = true;
+                }
             }
 
             eventList.push({
