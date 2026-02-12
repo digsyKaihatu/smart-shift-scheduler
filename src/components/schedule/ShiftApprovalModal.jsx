@@ -1,6 +1,6 @@
 import React, { useRef, useMemo } from 'react';
-import { summarizePattern } from '../../utils/scheduleUtils';
-import { formatValue } from '../../utils/dateUtils';
+import { summarizePattern } from '../../utils/scheduleUtils.js';
+import { formatValue } from '../../utils/dateUtils.js';
 
 const ShiftApprovalModal = ({ staffMember, schedule, shiftPatterns, holidays, year, month, onConfirm, onClose }) => {
     const remarksRef = useRef(null);
@@ -44,7 +44,16 @@ const ShiftApprovalModal = ({ staffMember, schedule, shiftPatterns, holidays, ye
             
             const actualValue = schedule?.[day] ?? '';
 
-            if (JSON.stringify(actualValue) !== JSON.stringify(expectedValue)) {
+            // 比較用に値を正規化（ロックされた休日オブジェクト等の場合は type を使用）
+            let actualCompare = actualValue;
+            if (typeof actualValue === 'object' && actualValue !== null) {
+                actualCompare = actualValue.type;
+            }
+
+            // 「想定がシフト休」で「実際が空欄」の場合は一致とみなす（イレギュラーから除外）
+            const isEffectivelySame = (actualCompare === expectedValue) || (expectedValue === 'シフト休' && actualCompare === '');
+
+            if (!isEffectivelySame) {
                 const dayOfWeekStr = ['日', '月', '火', '水', '木', '金', '土'][dayOfWeek];
                 const formattedActual = formatValue(actualValue);
                 irregularities.push(`${month}/${day}(${dayOfWeekStr}): ${String(formattedActual) || '未入力'}`);
