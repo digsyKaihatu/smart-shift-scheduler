@@ -267,14 +267,29 @@ const MainContent = () => {
     setLoadingMessage('承認通知を送信中...');
     try { await chatService.sendApproval(s, year, month, summarizePattern(s.defaultShift.pattern, shiftPatterns, s.defaultShift.hasBreakArray), irregularities.join('\n') || 'なし', remarks); } catch (e) { alert('通知送信に失敗しました'); }
     setIsLoading(false);
-    setStaff(prev => prev.map(x => x.id === approvalModalStaffId ? { ...x, shiftApproved: { ...x.shiftApproved, [key]: true } } : x));
+    
+    // 状態更新時に安全にアクセスできるよう修正
+    setStaff(prev => prev.map(x => {
+        if (x.id === approvalModalStaffId) {
+            const currentApproved = x.shiftApproved || {};
+            return { 
+                ...x, 
+                shiftApproved: { 
+                    ...currentApproved, 
+                    [key]: true 
+                } 
+            };
+        }
+        return x;
+    }));
     setApprovalModalStaffId(null);
   };
 
   // 承認ボタンクリック時の処理（解除時は確認モーダルへ）
   const handleToggleShiftApproved = (staffId) => {
       const s = staff.find(x => x.id === staffId);
-      if (s?.shiftApproved?.[key]) {
+      // オブジェクトの存在チェックを追加して安全にアクセス
+      if (s?.shiftApproved && s.shiftApproved[key]) {
           // 既に承認済みの場合は、解除確認モーダルを表示
           setApprovalCancellationConfirmation({ staffId, name: s.name });
       } else {
@@ -287,7 +302,21 @@ const MainContent = () => {
   const handleConfirmApprovalCancellation = () => {
     if (!approvalCancellationConfirmation) return;
     const { staffId } = approvalCancellationConfirmation;
-    setStaff(prev => prev.map(x => x.id === staffId ? { ...x, shiftApproved: { ...x.shiftApproved, [key]: false } } : x));
+    
+    // 状態更新時に安全にアクセスできるよう修正
+    setStaff(prev => prev.map(x => {
+        if (x.id === staffId) {
+            const currentApproved = x.shiftApproved || {};
+            return { 
+                ...x, 
+                shiftApproved: { 
+                    ...currentApproved, 
+                    [key]: false 
+                } 
+            };
+        }
+        return x;
+    }));
     setApprovalCancellationConfirmation(null);
   };
 
@@ -457,6 +486,19 @@ const MainContent = () => {
               <div className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-semibold w-36 justify-center ${saveStatus === 'saved' ? 'text-white/80' : 'text-yellow-300'}`}>
                 <span>{saveStatus === 'saved' ? '自動保存済み' : saveStatus === 'saving' ? '保存中...' : '編集中...'}</span>
               </div>
+              
+              {/* 更新ボタンの追加 */}
+              <button 
+                onClick={() => window.location.reload()} 
+                className="px-3 py-1.5 bg-white/20 rounded hover:bg-white/30 text-sm font-bold whitespace-nowrap flex items-center gap-1 transition-colors"
+                title="最新のデータを取得します"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                更新
+              </button>
+
               <button onClick={() => setIsHelpOpen(true)} className="px-3 py-1.5 bg-white/20 rounded hover:bg-white/30 text-sm font-bold whitespace-nowrap">ガイド</button>
               <div className="hidden md:block">
                  <Legend />
