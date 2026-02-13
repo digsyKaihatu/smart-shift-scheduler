@@ -316,7 +316,8 @@ const MainContent = () => {
       const newId = `s${Date.now()}`;
       setStaff(prev => [...prev, {
           id: newId, employeeId: 'New', name: '新規メンバー', role: 'OP', chatUserId: '', possibleTasks: [],
-          defaultShift: { pattern: ['A','A','A','A','A'], hasBreak: true }, shiftSubmitted: {}, shiftRemanded: {}, shiftApproved: {}
+          // デフォルトパターンを 'I' (9:30始業) に変更
+          defaultShift: { pattern: ['I','I','I','I','I'], hasBreak: true }, shiftSubmitted: {}, shiftRemanded: {}, shiftApproved: {}
       }]);
       
       const newMemberSchedule = {};
