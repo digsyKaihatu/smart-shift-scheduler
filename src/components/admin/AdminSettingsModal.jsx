@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 
-const AdminSettingsModal = ({ adminConfig, onClose, onSave }) => {
+const AdminSettingsModal = ({ adminConfig, onClose, onSave, onMigrate }) => {
   const [submissionNotificationIds, setSubmissionNotificationIds] = useState(adminConfig.submissionNotificationIds || "");
 
   const handleSave = () => {
@@ -18,7 +18,7 @@ const AdminSettingsModal = ({ adminConfig, onClose, onSave }) => {
           <p className="text-sm text-slate-500">通知などの全体設定を行います。</p>
         </header>
 
-        <main className="p-6 space-y-4">
+        <main className="p-6 space-y-6">
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-2">提出通知を送るUser ID（カンマ区切りで複数可）</label>
             <textarea
@@ -30,6 +30,22 @@ const AdminSettingsModal = ({ adminConfig, onClose, onSave }) => {
             <p className="text-xs text-slate-500 mt-1">
               ここにIDを設定すると、メンバーがシフトを提出した際に、指定されたユーザーへメンション通知が飛びます。
             </p>
+          </div>
+
+          <div className="pt-4 border-t border-slate-100">
+            <h3 className="text-sm font-bold text-slate-700 mb-2">データ管理</h3>
+            <div className="bg-yellow-50 border border-yellow-100 p-3 rounded-md">
+              <p className="text-xs text-yellow-800 mb-2">
+                古いシフトパターン（A）を使用しているデータを、新しい形式（I: 9:30-18:30）へ一括変換します。
+                <br />※必要な場合のみ実行してください。
+              </p>
+              <button 
+                onClick={onMigrate}
+                className="px-3 py-1.5 bg-white border border-yellow-300 text-yellow-800 text-xs font-bold rounded hover:bg-yellow-100 transition-colors shadow-sm"
+              >
+                データ移行を実行（パターンA → I）
+              </button>
+            </div>
           </div>
         </main>
         
