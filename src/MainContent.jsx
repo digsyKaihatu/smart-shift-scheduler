@@ -267,14 +267,29 @@ const MainContent = () => {
     setLoadingMessage('承認通知を送信中...');
     try { await chatService.sendApproval(s, year, month, summarizePattern(s.defaultShift.pattern, shiftPatterns, s.defaultShift.hasBreakArray), irregularities.join('\n') || 'なし', remarks); } catch (e) { alert('通知送信に失敗しました'); }
     setIsLoading(false);
-    setStaff(prev => prev.map(x => x.id === approvalModalStaffId ? { ...x, shiftApproved: { ...x.shiftApproved, [key]: true } } : x));
+    
+    // 状態更新時に安全にアクセスできるよう修正
+    setStaff(prev => prev.map(x => {
+        if (x.id === approvalModalStaffId) {
+            const currentApproved = x.shiftApproved || {};
+            return { 
+                ...x, 
+                shiftApproved: { 
+                    ...currentApproved, 
+                    [key]: true 
+                } 
+            };
+        }
+        return x;
+    }));
     setApprovalModalStaffId(null);
   };
 
   // 承認ボタンクリック時の処理（解除時は確認モーダルへ）
   const handleToggleShiftApproved = (staffId) => {
       const s = staff.find(x => x.id === staffId);
-      if (s?.shiftApproved?.[key]) {
+      // オブジェクトの存在チェックを追加して安全にアクセス
+      if (s?.shiftApproved && s.shiftApproved[key]) {
           // 既に承認済みの場合は、解除確認モーダルを表示
           setApprovalCancellationConfirmation({ staffId, name: s.name });
       } else {
@@ -287,7 +302,21 @@ const MainContent = () => {
   const handleConfirmApprovalCancellation = () => {
     if (!approvalCancellationConfirmation) return;
     const { staffId } = approvalCancellationConfirmation;
-    setStaff(prev => prev.map(x => x.id === staffId ? { ...x, shiftApproved: { ...x.shiftApproved, [key]: false } } : x));
+    
+    // 状態更新時に安全にアクセスできるよう修正
+    setStaff(prev => prev.map(x => {
+        if (x.id === staffId) {
+            const currentApproved = x.shiftApproved || {};
+            return { 
+                ...x, 
+                shiftApproved: { 
+                    ...currentApproved, 
+                    [key]: false 
+                } 
+            };
+        }
+        return x;
+    }));
     setApprovalCancellationConfirmation(null);
   };
 
