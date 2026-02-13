@@ -1,3 +1,4 @@
+
 import React, { useRef, useMemo } from 'react';
 import { summarizePattern } from '../../utils/scheduleUtils';
 import { formatValue } from '../../utils/dateUtils';
