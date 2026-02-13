@@ -76,29 +76,36 @@ const MainContent = () => {
     if (authState?.isAuthenticated && staff.length > 0) identifyUser();
   }, [authState, oktaAuth, staff]);
 
-  // データ移行処理 (パターンA -> I)
-  useEffect(() => {
-    if (initialDataLoaded && staff.length > 0) {
-      setStaff(prevStaff => {
-        let isChanged = false;
-        const newStaff = prevStaff.map(s => {
-          const isAllA = s.defaultShift?.pattern?.every(p => p === 'A');
-          if (isAllA) {
-            isChanged = true;
-            return {
-              ...s,
-              defaultShift: {
-                ...s.defaultShift,
-                pattern: ['I', 'I', 'I', 'I', 'I']
-              }
-            };
-          }
-          return s;
-        });
-        return isChanged ? newStaff : prevStaff;
+  // データ移行処理 (手動実行用に変更)
+  const handleMigrateData = () => {
+    if (!window.confirm("データ移行（パターンA → I）を実行しますか？\n※この操作は取り消せません。")) return;
+
+    setStaff(prevStaff => {
+      let isChanged = false;
+      const newStaff = prevStaff.map(s => {
+        const isAllA = s.defaultShift?.pattern?.every(p => p === 'A');
+        if (isAllA) {
+          isChanged = true;
+          return {
+            ...s,
+            defaultShift: {
+              ...s.defaultShift,
+              pattern: ['I', 'I', 'I', 'I', 'I']
+            }
+          };
+        }
+        return s;
       });
-    }
-  }, [initialDataLoaded]);
+      
+      if (isChanged) {
+        alert("データの移行が完了しました。");
+        return newStaff;
+      } else {
+        alert("移行対象のデータはありませんでした。");
+        return prevStaff;
+      }
+    });
+  };
 
   const firebaseAdminEmails = useMemo(() => {
     if (!adminConfig?.adminEmails) return [];
@@ -524,7 +531,14 @@ const MainContent = () => {
         </main>
 
         {isAdmin && isMemberManagementOpen && <MemberManagementModal staff={staff} onClose={() => setIsMemberManagementOpen(false)} onSave={(updated) => { setStaff(updated); setIsMemberManagementOpen(false); }} />}
-        {isAdmin && isAdminSettingsOpen && <AdminSettingsModal adminConfig={adminConfig} onClose={() => setIsAdminSettingsOpen(false)} onSave={(cfg) => { setAdminConfig(cfg); setIsAdminSettingsOpen(false); }} />}
+        {isAdmin && isAdminSettingsOpen && (
+          <AdminSettingsModal 
+            adminConfig={adminConfig} 
+            onClose={() => setIsAdminSettingsOpen(false)} 
+            onSave={(cfg) => { setAdminConfig(cfg); setIsAdminSettingsOpen(false); }} 
+            onMigrate={handleMigrateData} 
+          />
+        )}
         {isAdmin && isTaskEditorOpen && <TaskStaffMappingEditor staff={staff} tasks={tasks} onClose={() => setIsTaskEditorOpen(false)} onSave={handleBulkUpdateStaffTasks} />}
         {isHelpOpen && <HelpGuideModal onClose={() => setIsHelpOpen(false)} />}
         {confirmDelete && <ConfirmDeleteModal itemType={confirmDelete.type === 'staff' ? 'メンバー' : '業務'} itemName={confirmDelete.name} onConfirm={executeDelete} onCancel={() => setConfirmDelete(null)} />}
