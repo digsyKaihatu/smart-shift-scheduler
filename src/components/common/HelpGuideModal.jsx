@@ -9,6 +9,13 @@ const HelpGuideModal = ({ onClose }) => {
     </div>
   );
 
+  // 管理者専用バッジ
+  const AdminBadge = () => (
+    <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-slate-600 text-white align-middle">
+      管理者のみ
+    </span>
+  );
+
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={onClose}>
       <div className="bg-white rounded-lg shadow-xl w-full max-w-3xl max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
@@ -56,7 +63,7 @@ const HelpGuideModal = ({ onClose }) => {
             <div className="space-y-2">
                 <ul className="list-disc list-inside space-y-1">
                     <li>シフト表左側の「役職」「社員番号」「稼働名前」の各セルは、クリックして直接テキストを編集できます。</li>
-                    <li><span className="font-bold text-[#D9824D]">「メンバー管理」</span>ボタンからは、上記に加え「メールアドレス」や<span className="font-bold">「Chat User ID」</span>を設定できます。</li>
+                    <li><span className="font-bold text-[#D9824D]">「メンバー管理」</span>ボタン<AdminBadge />からは、上記に加え「メールアドレス」や<span className="font-bold">「Chat User ID」</span>を設定できます。</li>
                 </ul>
                 <p className="text-xs text-slate-500 ml-4">※Chat User IDを設定すると、Google Chatの通知でそのメンバー宛にメンション（通知）が飛びます。</p>
             </div>
@@ -65,14 +72,39 @@ const HelpGuideModal = ({ onClose }) => {
             </div>
           </GuideSection>
 
-          <GuideSection title="3. 提出・差戻・承認と通知機能">
-            <p className="mb-2">メンバー行のチェックボックス操作により、ワークフロー管理とGoogle Chatへの通知が行われます。</p>
-            <ul className="list-disc list-inside ml-2 space-y-2">
-              <li><span className="font-bold text-sky-600">提出☑:</span> メンバー本人がチェックします。チェックすると、<span className="font-bold">通知設定で指定された管理者</span>宛に提出通知が飛びます。</li>
-              <li><span className="font-bold text-red-600">差戻☑ (管理者のみ):</span> 管理者がチェックすると確認画面が出ます。「はい」を押すと、<span className="font-bold">対象メンバー</span>へ差戻通知が飛びます。</li>
-              <li><span className="font-bold text-green-600">承認☑ (管理者のみ):</span> 管理者がチェックすると確認画面が出ます。「はい」を押すと、<span className="font-bold">対象メンバー</span>へ承認通知（基本シフトや変更点を含む詳細カード）が飛びます。</li>
-              <li><span className="font-bold text-slate-600">欠勤連絡:</span> 管理者が当日のシフトを「欠勤」に変更すると、確認画面が出ます。「はい」を押すと、<span className="font-bold">全員</span>宛に欠勤周知の通知が飛びます。</li>
-            </ul>
+          <GuideSection title="3. シフト提出・承認のフローと通知">
+            <div className="space-y-4">
+                <div>
+                    <h4 className="font-bold text-slate-700 mb-1">STEP 1: シフトの提出 (メンバー)</h4>
+                    <ul className="list-disc list-inside ml-2 space-y-1 text-slate-600">
+                        <li>全てのシフト入力が完了したら、自分の行の<span className="font-bold text-sky-600">「提出☑」</span>をチェックします。</li>
+                        <li>確認画面で「はい」を押すと、<span className="font-bold">管理者</span>へ提出通知が送信されます。</li>
+                    </ul>
+                </div>
+
+                <div>
+                    <h4 className="font-bold text-slate-700 mb-1 flex items-center">
+                        STEP 2: 確認・承認 <AdminBadge />
+                    </h4>
+                    <p className="text-xs text-slate-500 ml-2 mb-1">管理者はメンバーのシフトを確認し、以下のいずれかを行います。</p>
+                    <ul className="list-disc list-inside ml-2 space-y-1 text-slate-600">
+                         <li>
+                            <span className="font-bold text-green-600">承認☑:</span> 問題なければチェックします。メンバーへ<span className="font-bold">承認通知（確定シフト詳細）</span>が送信されます。
+                            <p className="text-xs text-slate-500 mt-1 ml-1 pl-2 border-l-2 border-slate-300">
+                                ※通知内の「特記事項」は、設定された<span className="font-bold">基本シフトパターン</span>を基準とし、それと異なる勤務内容（時間変更や欠勤など）が自動的に抽出・記載されます。
+                            </p>
+                         </li>
+                         <li><span className="font-bold text-red-600">差戻☑:</span> 修正が必要な場合チェックします。メンバーへ<span className="font-bold">差戻通知</span>が送信されます。</li>
+                    </ul>
+                </div>
+
+                <div>
+                    <h4 className="font-bold text-slate-700 mb-1 flex items-center">
+                        その他: 欠勤連絡 <AdminBadge />
+                    </h4>
+                    <p className="text-slate-600 ml-2">管理者が当日のシフトを「欠勤」に変更すると確認画面が表示され、<span className="font-bold">全員</span>宛に欠勤周知の通知を送信できます。</p>
+                </div>
+            </div>
             <div className="mt-3 border border-slate-200 rounded-md overflow-hidden shadow-sm max-w-2xl">
                 <img src="/スマシフガイド3.png" alt="通知機能の例" className="w-full h-auto object-contain bg-slate-100" />
             </div>
@@ -94,10 +126,10 @@ const HelpGuideModal = ({ onClose }) => {
             <ul className="list-disc list-inside ml-2 space-y-1">
                 <li><span className="font-bold">シフトパターン一覧:</span> 登録されている勤務時間パターン（A, B...）を確認できます。クリックで開閉します。</li>
                 <li><span className="font-bold bg-[#F4B896] text-white px-1 rounded text-xs">+ パターンを追加:</span> 新しい勤務時間パターン（記号、時間、休憩）を作成します。</li>
-                <li><span className="font-bold text-slate-700">通知設定:</span> メンバーが「提出」した際に通知を受け取る管理者のChat User IDを設定します（カンマ区切りで複数指定可）。</li>
-                <li><span className="font-bold text-[#D9824D]">業務担当:</span> 各業務について、担当可能なメンバーの割り当てを一括で設定します。</li>
-                <li><span className="font-bold text-[#D9824D]">+ メンバー:</span> 新しいメンバー行を追加します。</li>
-                <li><span className="font-bold text-[#D9824D]">+ 業務:</span> 新しい業務列を追加します。</li>
+                <li><span className="font-bold text-slate-700">通知設定:</span><AdminBadge /> メンバーが「提出」した際に通知を受け取る管理者のChat User IDを設定します（カンマ区切りで複数指定可）。</li>
+                <li><span className="font-bold text-[#D9824D]">業務担当:</span><AdminBadge /> 各業務について、担当可能なメンバーの割り当てを一括で設定します。</li>
+                <li><span className="font-bold text-[#D9824D]">+ メンバー:</span><AdminBadge /> 新しいメンバー行を追加します。</li>
+                <li><span className="font-bold text-[#D9824D]">+ 業務:</span><AdminBadge /> 新しい業務列を追加します。</li>
                 <li><span className="font-bold text-gray-600 bg-gray-200 px-1 rounded text-xs">CSV:</span> 現在表示されているシフト表（手入力値と基本パターンのマージ結果）をCSVファイルとしてダウンロードします。</li>
             </ul>
             <div className="mt-3 border border-slate-200 rounded-md overflow-hidden shadow-sm">
@@ -110,7 +142,10 @@ const HelpGuideModal = ({ onClose }) => {
                 <li>ページ下部の「業務一覧」で、日ごとの各業務の稼働人数を確認できます。</li>
                 <li>設定された「定員」に対して稼働人数が足りていない日は、<span className="font-bold text-red-500">「不足」</span>とハイライト表示されます（不足割合に応じて赤〜黄色で警告）。</li>
                 <li>人数の書かれたセルをクリックすると、その日のその業務を担当する<span className="font-bold">出勤者リスト</span>が表示されます。</li>
-                <li>管理者のみ、業務名や定員数を直接クリックして修正・削除できます。</li>
+                <li className="flex items-start">
+                    <span className="mr-1">管理者のみ、業務名や定員数を直接クリックして修正・削除できます。</span>
+                    <AdminBadge />
+                </li>
             </ul>
             <div className="mt-2 border border-slate-200 rounded-md overflow-hidden shadow-sm max-w-2xl">
                 <img src="/スマシフガイド6.png" alt="業務一覧の例" className="w-full h-auto object-contain bg-slate-100" />
