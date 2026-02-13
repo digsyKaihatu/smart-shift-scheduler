@@ -49,6 +49,8 @@ const MainContent = () => {
   const [holidayConfirmation, setHolidayConfirmation] = useState(null);
   const [absenceNotificationConfirmation, setAbsenceNotificationConfirmation] = useState(null);
   const [remandConfirmation, setRemandConfirmation] = useState(null);
+  // 追加: 承認取り消し確認用のState
+  const [approvalCancellationConfirmation, setApprovalCancellationConfirmation] = useState(null);
 
   useEffect(() => {
     const identifyUser = async () => {
@@ -71,6 +73,36 @@ const MainContent = () => {
     };
     if (authState?.isAuthenticated && staff.length > 0) identifyUser();
   }, [authState, oktaAuth, staff]);
+
+  // ---------------------------------------------------------------------------
+  // 追加: 既存データ移行処理 (パターンA -> I)
+  // ---------------------------------------------------------------------------
+  useEffect(() => {
+    if (initialDataLoaded && staff.length > 0) {
+      setStaff(prevStaff => {
+        let isChanged = false;
+        const newStaff = prevStaff.map(s => {
+          // デフォルトシフトが全て'A'で構成されているかチェック
+          // (未編集の初期値がAだった人のみを対象とする)
+          const isAllA = s.defaultShift?.pattern?.every(p => p === 'A');
+          if (isAllA) {
+            isChanged = true;
+            return {
+              ...s,
+              defaultShift: {
+                ...s.defaultShift,
+                pattern: ['I', 'I', 'I', 'I', 'I'] // 'A'の場合は'I' (9:30始業) に置換
+              }
+            };
+          }
+          return s;
+        });
+        
+        // 変更があった場合のみStateを更新
+        return isChanged ? newStaff : prevStaff;
+      });
+    }
+  }, [initialDataLoaded]); // 初回ロード完了時に一度だけチェック
 
   const firebaseAdminEmails = useMemo(() => {
     if (!adminConfig?.adminEmails) return [];
@@ -206,24 +238,20 @@ const MainContent = () => {
         }
         const actual = schedule[key]?.[s.id]?.[day] ?? '';
         
-        // 比較用に正規化
         let actualCompare = actual;
         if (typeof actual === 'object' && actual !== null) {
             actualCompare = actual.type || '';
         }
 
-        // 一致判定の強化（より柔軟に判定する）
         let isEffectivelySame = (actualCompare === expected);
 
         if (!isEffectivelySame) {
             if (expected === 'シフト休') {
-                // 想定が休日の場合、実質的に休みを意味する値（空欄、0、休など）であれば一致とみなす
                 const emptyOrRestValues = ['', 0, '0', '休', 'シフト休', null, undefined];
                 if (emptyOrRestValues.includes(actualCompare)) {
                     isEffectivelySame = true;
                 }
             } else if (expected !== '') {
-                // 想定が数値(稼働時間)の場合、文字列や小数点表記の違いを吸収 (例: 8 と "8.0")
                 if (!isNaN(parseFloat(actualCompare)) && !isNaN(parseFloat(expected)) && parseFloat(actualCompare) === parseFloat(expected)) {
                     isEffectivelySame = true;
                 }
@@ -243,13 +271,24 @@ const MainContent = () => {
     setApprovalModalStaffId(null);
   };
 
+  // 承認ボタンクリック時の処理（解除時は確認モーダルへ）
   const handleToggleShiftApproved = (staffId) => {
       const s = staff.find(x => x.id === staffId);
       if (s?.shiftApproved?.[key]) {
-          setStaff(prev => prev.map(x => x.id === staffId ? { ...x, shiftApproved: { ...x.shiftApproved, [key]: false } } : x));
+          // 既に承認済みの場合は、解除確認モーダルを表示
+          setApprovalCancellationConfirmation({ staffId, name: s.name });
       } else {
+          // 未承認の場合は、承認モーダルを表示
           setApprovalModalStaffId(staffId);
       }
+  };
+
+  // 追加: 承認取り消しの確定処理
+  const handleConfirmApprovalCancellation = () => {
+    if (!approvalCancellationConfirmation) return;
+    const { staffId } = approvalCancellationConfirmation;
+    setStaff(prev => prev.map(x => x.id === staffId ? { ...x, shiftApproved: { ...x.shiftApproved, [key]: false } } : x));
+    setApprovalCancellationConfirmation(null);
   };
 
   const handleUpdateStaffInfo = (id, field, val) => setStaff(prev => prev.map(s => s.id === id ? { ...s, [field]: val } : s));
@@ -316,7 +355,8 @@ const MainContent = () => {
       const newId = `s${Date.now()}`;
       setStaff(prev => [...prev, {
           id: newId, employeeId: 'New', name: '新規メンバー', role: 'OP', chatUserId: '', possibleTasks: [],
-          defaultShift: { pattern: ['A','A','A','A','A'], hasBreak: true }, shiftSubmitted: {}, shiftRemanded: {}, shiftApproved: {}
+          // 修正: デフォルトパターンを 'I' (9:30始業) に変更
+          defaultShift: { pattern: ['I','I','I','I','I'], hasBreak: true }, shiftSubmitted: {}, shiftRemanded: {}, shiftApproved: {}
       }]);
       
       const newMemberSchedule = {};
@@ -417,6 +457,19 @@ const MainContent = () => {
               <div className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-semibold w-36 justify-center ${saveStatus === 'saved' ? 'text-white/80' : 'text-yellow-300'}`}>
                 <span>{saveStatus === 'saved' ? '自動保存済み' : saveStatus === 'saving' ? '保存中...' : '編集中...'}</span>
               </div>
+              
+              {/* 更新ボタンの追加 */}
+              <button 
+                onClick={() => window.location.reload()} 
+                className="px-3 py-1.5 bg-white/20 rounded hover:bg-white/30 text-sm font-bold whitespace-nowrap flex items-center gap-1 transition-colors"
+                title="最新のデータを取得します"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                更新
+              </button>
+
               <button onClick={() => setIsHelpOpen(true)} className="px-3 py-1.5 bg-white/20 rounded hover:bg-white/30 text-sm font-bold whitespace-nowrap">ガイド</button>
               <div className="hidden md:block">
                  <Legend />
@@ -468,6 +521,8 @@ const MainContent = () => {
         {remandConfirmation && <ConfirmationModal title="差戻の確認" message="本当に差し戻しますか？" onConfirm={handleConfirmRemand} onCancel={() => setRemandConfirmation(null)} />}
         {holidayConfirmation && <ConfirmationModal title={holidayConfirmation.isUnlocking ? "休日設定解除" : "休日設定"} message="全メンバーに適用しますか？" onConfirm={holidayConfirmation.onConfirm} onCancel={() => setHolidayConfirmation(null)} />}
         {absenceNotificationConfirmation && <ConfirmationModal title="欠勤の周知" message={`${absenceNotificationConfirmation.staffMember.name}さんの欠勤をチャットで周知しますか？`} onConfirm={() => handleAbsenceNotificationResponse(true)} onCancel={() => handleAbsenceNotificationResponse(false)} />}
+        {/* 追加: 承認取り消し確認モーダル */}
+        {approvalCancellationConfirmation && <ConfirmationModal title="承認の取り消し" message={`${approvalCancellationConfirmation.name}さんの承認を取り消しますか？`} onConfirm={handleConfirmApprovalCancellation} onCancel={() => setApprovalCancellationConfirmation(null)} />}
         <footer className="text-center mt-6 text-sm text-slate-500 pb-8"><p>Powered by Gemini & React</p></footer>
       </div>
     </div>
