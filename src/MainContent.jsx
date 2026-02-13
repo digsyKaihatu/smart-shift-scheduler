@@ -72,6 +72,35 @@ const MainContent = () => {
     if (authState?.isAuthenticated && staff.length > 0) identifyUser();
   }, [authState, oktaAuth, staff]);
 
+  // ---------------------------------------------------------------------------
+  // 既存データ移行処理: パターンA(9:00)が設定されているユーザーをI(9:30)に変更
+  // ---------------------------------------------------------------------------
+  useEffect(() => {
+    if (initialDataLoaded && staff.length > 0) {
+      setStaff(prevStaff => {
+        let isChanged = false;
+        const newStaff = prevStaff.map(s => {
+          // デフォルトシフトが全て'A'で構成されているかチェック
+          const isAllA = s.defaultShift?.pattern?.every(p => p === 'A');
+          if (isAllA) {
+            isChanged = true;
+            return {
+              ...s,
+              defaultShift: {
+                ...s.defaultShift,
+                pattern: ['I', 'I', 'I', 'I', 'I'] // 'A'の場合は'I'に置換
+              }
+            };
+          }
+          return s;
+        });
+        
+        // 変更があった場合のみStateを更新（これにより自動保存がトリガーされる）
+        return isChanged ? newStaff : prevStaff;
+      });
+    }
+  }, [initialDataLoaded]); // 初回ロード完了時に一度だけチェックを実行
+
   const firebaseAdminEmails = useMemo(() => {
     if (!adminConfig?.adminEmails) return [];
     return adminConfig.adminEmails.split(',').map(email => email.trim());
