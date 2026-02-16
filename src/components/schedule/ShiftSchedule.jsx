@@ -2,8 +2,57 @@ import React, { useRef, useMemo, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { summarizePattern } from '../../utils/scheduleUtils';
 import { EditableCell, EditableStaffInfoCell } from '../common/EditableCells';
-import { DeleteIcon, SetHolidayIcon, UnlockIcon } from '../common/Icons';
+import { DeleteIcon, SetHolidayIcon, UnlockIcon, XIcon } from '../common/Icons'; // XIconを追加インポートしてください
 import ScheduleShiftPatternEditor from './ScheduleShiftPatternEditor';
+
+// -----------------------------------------------------------------------------
+// Helper Component: Task Skills Modal (担当業務確認モーダル)
+// -----------------------------------------------------------------------------
+const TaskSkillsModal = ({ staff, tasks, onClose, position }) => {
+  if (!staff) return null;
+
+  // スタッフの担当可能業務IDリスト
+  const possibleTaskIds = staff.possibleTasks || [];
+  
+  // IDを名前に変換
+  const assignedTasks = tasks.filter(t => possibleTaskIds.includes(t.id));
+
+  // モーダルの表示位置計算 (画面外にはみ出さないように簡易調整)
+  const style = {
+      top: position?.y ?? 0,
+      left: position?.x ?? 0,
+  };
+
+  return createPortal(
+      <div className="fixed inset-0 z-[9999]" onMouseDown={onClose}>
+          <div 
+              className="absolute bg-white rounded-lg shadow-xl border border-slate-200 w-64 overflow-hidden animate-fade-in-down"
+              style={style}
+              onMouseDown={e => e.stopPropagation()}
+          >
+              <div className="bg-slate-100 px-4 py-2 border-b border-slate-200 flex justify-between items-center">
+                  <h3 className="font-bold text-sm text-slate-700 truncate">{staff.name}</h3>
+                  <span className="text-xs text-slate-500">担当業務</span>
+              </div>
+              <div className="p-4 max-h-60 overflow-y-auto">
+                  {assignedTasks.length > 0 ? (
+                      <ul className="space-y-2">
+                          {assignedTasks.map(task => (
+                              <li key={task.id} className="text-sm text-slate-700 flex items-center gap-2">
+                                  <span className="w-2 h-2 rounded-full bg-green-400"></span>
+                                  {task.name}
+                              </li>
+                          ))}
+                      </ul>
+                  ) : (
+                      <p className="text-sm text-slate-400 text-center py-2">担当業務なし</p>
+                  )}
+              </div>
+          </div>
+      </div>,
+      document.body
+  );
+};
 
 // -----------------------------------------------------------------------------
 // Context Menu Component
@@ -45,6 +94,7 @@ const ShiftSchedule = ({
     isAdmin, 
     schedule, 
     staff = [], 
+    tasks = [], // タスク情報を受け取るように追加 (MainContentから渡す必要あり)
     days = [],
     holidays = [], 
     shiftPatterns = [], 
@@ -65,6 +115,9 @@ const ShiftSchedule = ({
   const [selection, setSelection] = useState(null);
   const [isSelecting, setIsSelecting] = useState(false);
   const [contextMenu, setContextMenu] = useState(null);
+  
+  // 担当業務確認モーダル用のState
+  const [taskSkillsModal, setTaskSkillsModal] = useState(null); // { staff, position }
 
   useEffect(() => {
       const handleWindowMouseUp = () => setIsSelecting(false);
@@ -78,19 +131,18 @@ const ShiftSchedule = ({
     return [...staff].sort((a, b) => String(a.employeeId || '').localeCompare(String(b.employeeId || ''), undefined, { numeric: true }));
   }, [staff]);
   
-  // 文字サイズ拡大に伴い、列幅を調整
+  // 幅調整: nameカラムを少し広げてアイコンを入れるスペースを作る
   const widths = { 
-    role: 70,   // 60 -> 70
-    empId: 100, // 90 -> 100
-    name: 140,  // 120 -> 140
-    setting: 190, // 170 -> 190
-    submit: 70, // 65 -> 70
-    remand: 70, // 65 -> 70
-    approve: 70, // 65 -> 70
-    del: 50     // 45 -> 50
+    role: 70,
+    empId: 100,
+    name: 160,  // 140 -> 160 に拡張
+    setting: 190,
+    submit: 70,
+    remand: 70,
+    approve: 70,
+    del: 50
   };
   
-  // 日付セルの幅も調整 (CSSクラスで使用するためここでは変数定義しないが、render内で w-[80px] を使用)
   const DAY_CELL_WIDTH = '80px'; 
 
   const stickyPositions = useMemo(() => {
@@ -184,6 +236,16 @@ const ShiftSchedule = ({
       }
       setContextMenu(null);
   };
+  
+  // 担当業務アイコンのクリックハンドラ
+  const handleTaskIconClick = (e, staffMember) => {
+      e.stopPropagation();
+      const rect = e.currentTarget.getBoundingClientRect();
+      setTaskSkillsModal({
+          staff: staffMember,
+          position: { x: rect.right + 10, y: rect.top } // アイコンの右側に表示
+      });
+  };
 
   const stickyHeaderStyle = (key) => ({
     position: 'sticky', left: stickyPositions[key], width: widths[key], minWidth: widths[key], maxWidth: widths[key], zIndex: 50 
@@ -192,7 +254,6 @@ const ShiftSchedule = ({
     position: 'sticky', left: stickyPositions[key], width: widths[key], minWidth: widths[key], maxWidth: widths[key], zIndex: 30 
   });
   
-  // 文字サイズ変更: ヘッダーを text-sm に変更 (以前は text-[11px])
   const headerRowClass = "flex w-max";
   const headerCellBase = "sticky top-0 p-1.5 border-b-2 border-r border-slate-300 font-bold text-sm text-center h-12 flex items-center justify-center flex-shrink-0 box-border";
   const cellBase = "bg-white border-b border-r border-slate-300 flex items-center h-10 flex-shrink-0 box-border";
@@ -204,6 +265,13 @@ const ShiftSchedule = ({
             .custom-scrollbar::-webkit-scrollbar-track { background: #f1f5f9; }
             .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 6px; }
             .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+            @keyframes fade-in-down {
+                0% { opacity: 0; transform: translateY(-10px); }
+                100% { opacity: 1; transform: translateY(0); }
+            }
+            .animate-fade-in-down {
+                animation: fade-in-down 0.2s ease-out;
+            }
         `}</style>
         
         <div 
@@ -229,11 +297,10 @@ const ShiftSchedule = ({
                         else if (dayOfWeek === '土') headerColorClass = "bg-sky-100 text-sky-800 border-sky-200";
                         else if (dayOfWeek === '日' || isHoliday) headerColorClass = "bg-pink-100 text-pink-800 border-pink-200";
 
-                        // 日付セルの幅を w-[80px] に拡大、文字サイズも調整
                         return (
                             <div key={day} className={`${headerCellBase} ${headerColorClass} whitespace-nowrap w-[${DAY_CELL_WIDTH}] min-w-[${DAY_CELL_WIDTH}] max-w-[${DAY_CELL_WIDTH}] flex-col`} style={{ zIndex: 40 }} data-day={day}>
-                                <div className="text-xs opacity-70 mb-1">{dayOfWeek}</div> {/* 9px -> xs */}
-                                <div className="text-base font-bold">{day}</div> {/* sm -> base */}
+                                <div className="text-xs opacity-70 mb-1">{dayOfWeek}</div>
+                                <div className="text-base font-bold">{day}</div>
                                 {isAdmin && (
                                 <button onClick={() => onSetDayAsHolidayForAll(day)} className="group absolute bottom-0.5 right-0.5 p-0.5 bg-white/50 rounded-full hover:bg-sky-100">
                                     {sortedStaff.every(s => typeof (schedule[s.id]?.[day]) === 'object' && (schedule[s.id]?.[day])?.locked) ? <UnlockIcon /> : <SetHolidayIcon />}
@@ -256,9 +323,24 @@ const ShiftSchedule = ({
                             <div className={cellBase} style={stickyCellStyle('empId')}>
                                 <EditableStaffInfoCell value={s.employeeId} onUpdate={v => onUpdateStaffInfo(s.id, 'employeeId', v)} disabled={!isEditable} className="border-none w-full" />
                             </div>
+                            
+                            {/* 名前セル：アイコンを追加 */}
                             <div className={cellBase} style={stickyCellStyle('name')}>
-                                <EditableStaffInfoCell value={s.name} onUpdate={v => onUpdateStaffInfo(s.id, 'name', v)} disabled={!isEditable} className="border-none w-full" />
+                                <div className="flex items-center w-full h-full relative">
+                                    <EditableStaffInfoCell value={s.name} onUpdate={v => onUpdateStaffInfo(s.id, 'name', v)} disabled={!isEditable} className="border-none flex-grow" />
+                                    <button 
+                                        onClick={(e) => handleTaskIconClick(e, s)}
+                                        className="p-1 mx-1 text-slate-300 hover:text-[#D9824D] hover:bg-orange-50 rounded transition-colors flex-shrink-0"
+                                        title="担当業務を確認"
+                                    >
+                                        {/* クリップボードリストアイコン */}
+                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+                                        </svg>
+                                    </button>
+                                </div>
                             </div>
+
                             <div className={`${cellBase} px-1`} style={stickyCellStyle('setting')}>
                                 <ScheduleShiftPatternEditor pattern={defaultShift.pattern} hasBreakArray={defaultShift.hasBreakArray} patterns={shiftPatterns} onApply={(p, hb) => onApplyStaffPattern(s.id, p, hb)} summary={summarizePattern(defaultShift.pattern, shiftPatterns, defaultShift.hasBreakArray)} disabled={!isEditable} />
                             </div>
@@ -280,7 +362,6 @@ const ShiftSchedule = ({
                                 const isWeekend = dayOfWeek === '土' || dayOfWeek === '日';
                                 const selected = isCellSelected(rowIndex, colIndex);
 
-                                // 渡す幅を w-[80px] に拡大
                                 return (
                                 <div key={day} className={`w-[${DAY_CELL_WIDTH}] min-w-[${DAY_CELL_WIDTH}] max-w-[${DAY_CELL_WIDTH}]`}>
                                     <EditableCell 
@@ -315,6 +396,14 @@ const ShiftSchedule = ({
             position={contextMenu} 
             onClose={() => setContextMenu(null)} 
             onAction={handleBulkUpdate} 
+        />
+        
+        {/* 担当業務確認モーダル */}
+        <TaskSkillsModal 
+            staff={taskSkillsModal?.staff}
+            tasks={tasks}
+            position={taskSkillsModal?.position}
+            onClose={() => setTaskSkillsModal(null)}
         />
     </>
   );
