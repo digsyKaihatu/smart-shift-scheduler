@@ -97,7 +97,7 @@ const ShiftSchedule = ({
     isAdmin, 
     schedule, 
     staff = [], 
-    tasks = [], // タスク情報を受け取る
+    tasks = [], 
     days = [],
     holidays = [], 
     shiftPatterns = [], 
@@ -138,7 +138,7 @@ const ShiftSchedule = ({
   const widths = { 
     role: 70,
     empId: 100,
-    name: 170,  // 140 -> 170 に拡張
+    name: 170, // 以前の170のまま維持（文字数が増えるためこれくらい必要）
     setting: 190,
     submit: 70,
     remand: 70,
@@ -285,7 +285,8 @@ const ShiftSchedule = ({
                 <div className={`${headerRowClass} sticky top-0 z-40`}>
                     <div className={`${headerCellBase} bg-slate-200`} style={stickyHeaderStyle('role')}>役職</div>
                     <div className={`${headerCellBase} bg-slate-200`} style={stickyHeaderStyle('empId')}>社員番号</div>
-                    <div className={`${headerCellBase} bg-slate-200`} style={stickyHeaderStyle('name')}>稼働名前</div>
+                    {/* ここを変更：稼働名前・業務一覧 */}
+                    <div className={`${headerCellBase} bg-slate-200`} style={stickyHeaderStyle('name')}>稼働名前・業務一覧</div>
                     <div className={`${headerCellBase} bg-slate-200`} style={stickyHeaderStyle('setting')}>基本シフト設定</div>
                     <div className={`${headerCellBase} bg-slate-200`} style={stickyHeaderStyle('submit')}>提出☑</div>
                     <div className={`${headerCellBase} bg-slate-200`} style={stickyHeaderStyle('remand')}>差戻☑</div>
