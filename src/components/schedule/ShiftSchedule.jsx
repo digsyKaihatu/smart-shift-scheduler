@@ -2,7 +2,7 @@ import React, { useRef, useMemo, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { summarizePattern } from '../../utils/scheduleUtils';
 import { EditableCell, EditableStaffInfoCell } from '../common/EditableCells';
-import { DeleteIcon, SetHolidayIcon, UnlockIcon, XIcon } from '../common/Icons'; // XIconを追加インポートしてください
+import { DeleteIcon, SetHolidayIcon, UnlockIcon, XIcon } from '../common/Icons';
 import ScheduleShiftPatternEditor from './ScheduleShiftPatternEditor';
 
 // -----------------------------------------------------------------------------
@@ -17,7 +17,7 @@ const TaskSkillsModal = ({ staff, tasks, onClose, position }) => {
   // IDを名前に変換
   const assignedTasks = tasks.filter(t => possibleTaskIds.includes(t.id));
 
-  // モーダルの表示位置計算 (画面外にはみ出さないように簡易調整)
+  // モーダルの表示位置計算
   const style = {
       top: position?.y ?? 0,
       left: position?.x ?? 0,
@@ -32,15 +32,18 @@ const TaskSkillsModal = ({ staff, tasks, onClose, position }) => {
           >
               <div className="bg-slate-100 px-4 py-2 border-b border-slate-200 flex justify-between items-center">
                   <h3 className="font-bold text-sm text-slate-700 truncate">{staff.name}</h3>
-                  <span className="text-xs text-slate-500">担当業務</span>
+                  <button onClick={onClose} className="text-slate-400 hover:text-slate-600">
+                      <XIcon size={16} />
+                  </button>
               </div>
               <div className="p-4 max-h-60 overflow-y-auto">
+                  <div className="text-xs text-slate-500 mb-2">担当可能業務一覧</div>
                   {assignedTasks.length > 0 ? (
                       <ul className="space-y-2">
                           {assignedTasks.map(task => (
                               <li key={task.id} className="text-sm text-slate-700 flex items-center gap-2">
-                                  <span className="w-2 h-2 rounded-full bg-green-400"></span>
-                                  {task.name}
+                                  <span className="w-2 h-2 rounded-full bg-green-400 flex-shrink-0"></span>
+                                  <span className="truncate">{task.name}</span>
                               </li>
                           ))}
                       </ul>
@@ -94,7 +97,7 @@ const ShiftSchedule = ({
     isAdmin, 
     schedule, 
     staff = [], 
-    tasks = [], // タスク情報を受け取るように追加 (MainContentから渡す必要あり)
+    tasks = [], // タスク情報を受け取る
     days = [],
     holidays = [], 
     shiftPatterns = [], 
@@ -135,7 +138,7 @@ const ShiftSchedule = ({
   const widths = { 
     role: 70,
     empId: 100,
-    name: 160,  // 140 -> 160 に拡張
+    name: 170,  // 140 -> 170 に拡張
     setting: 190,
     submit: 70,
     remand: 70,
@@ -243,7 +246,7 @@ const ShiftSchedule = ({
       const rect = e.currentTarget.getBoundingClientRect();
       setTaskSkillsModal({
           staff: staffMember,
-          position: { x: rect.right + 10, y: rect.top } // アイコンの右側に表示
+          position: { x: rect.right + 5, y: rect.top } // アイコンの右側に表示
       });
   };
 
@@ -327,13 +330,12 @@ const ShiftSchedule = ({
                             {/* 名前セル：アイコンを追加 */}
                             <div className={cellBase} style={stickyCellStyle('name')}>
                                 <div className="flex items-center w-full h-full relative">
-                                    <EditableStaffInfoCell value={s.name} onUpdate={v => onUpdateStaffInfo(s.id, 'name', v)} disabled={!isEditable} className="border-none flex-grow" />
+                                    <EditableStaffInfoCell value={s.name} onUpdate={v => onUpdateStaffInfo(s.id, 'name', v)} disabled={!isEditable} className="border-none flex-grow min-w-0" />
                                     <button 
                                         onClick={(e) => handleTaskIconClick(e, s)}
                                         className="p-1 mx-1 text-slate-300 hover:text-[#D9824D] hover:bg-orange-50 rounded transition-colors flex-shrink-0"
                                         title="担当業務を確認"
                                     >
-                                        {/* クリップボードリストアイコン */}
                                         <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
                                         </svg>
