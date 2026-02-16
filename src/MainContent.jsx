@@ -502,10 +502,23 @@ const MainContent = () => {
 
         <main className="space-y-6">
           <ShiftSchedule 
-            isAdmin={isAdmin} currentUser={currentUser} schedule={currentMonthSchedule} staff={staff} days={days} holidays={currentMonthHolidays} shiftPatterns={shiftPatterns} year={year} month={month}
-            onUpdateSchedule={handleUpdateSchedule} onDeleteStaff={handleDeleteStaff} onUpdateStaffInfo={handleUpdateStaffInfo}
-            onApplyStaffPattern={handleApplyStaffPattern} onToggleShiftSubmitted={handleToggleShiftSubmitted}
-            onToggleShiftApproved={handleToggleShiftApproved} onToggleShiftRemanded={handleToggleShiftRemanded}
+            isAdmin={isAdmin} 
+            currentUser={currentUser} 
+            schedule={currentMonthSchedule} 
+            staff={staff} 
+            tasks={tasks} // Tasksを渡すように修正
+            days={days} 
+            holidays={currentMonthHolidays} 
+            shiftPatterns={shiftPatterns} 
+            year={year} 
+            month={month}
+            onUpdateSchedule={handleUpdateSchedule} 
+            onDeleteStaff={handleDeleteStaff} 
+            onUpdateStaffInfo={handleUpdateStaffInfo}
+            onApplyStaffPattern={handleApplyStaffPattern} 
+            onToggleShiftSubmitted={handleToggleShiftSubmitted}
+            onToggleShiftApproved={handleToggleShiftApproved} 
+            onToggleShiftRemanded={handleToggleShiftRemanded}
             onSetDayAsHolidayForAll={handleSetDayAsHolidayForAll}
           />
           

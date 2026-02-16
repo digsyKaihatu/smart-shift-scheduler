@@ -59,10 +59,11 @@ const HelpGuideModal = ({ onClose }) => {
             </div>
           </GuideSection>
           
-          <GuideSection title="2. メンバー情報の編集と通知設定">
+          <GuideSection title="2. メンバー情報の編集と担当業務の確認">
             <div className="space-y-3">
                 <ul className="list-disc list-inside space-y-2">
                     <li>シフト表左側の「役職」「社員番号」「稼働名前」の各セルは、クリックして直接テキストを編集できます。</li>
+                    <li><span className="font-bold">「稼働名前・業務一覧」</span>のセルにある<span className="font-bold text-[#D9824D]">リストアイコン(📋)</span>をクリックすると、そのメンバーが担当可能な業務の一覧を確認できます。</li>
                     <li><span className="font-bold text-[#D9824D]">「メンバー管理」</span>ボタン<AdminBadge />からは、上記に加え「メールアドレス」や<span className="font-bold">「Chat User ID」</span>を設定できます。</li>
                 </ul>
                 <p className="text-sm text-slate-500 ml-5">※Chat User IDを設定すると、Google Chatの通知でそのメンバー宛にメンション（通知）が飛びます。</p>
