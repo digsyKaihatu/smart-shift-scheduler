@@ -189,7 +189,12 @@ const StaffRow = React.memo(({
                 const selected = isCellSelected(colIndex);
 
                 return (
-                <div key={day} className={`w-[${DAY_CELL_WIDTH}] min-w-[${DAY_CELL_WIDTH}] max-w-[${DAY_CELL_WIDTH}]`}>
+                <div 
+                    key={day} 
+                    className="flex-shrink-0"
+                    // Tailwindの動的クラスではなく、style属性で幅を確実に指定して潰れるのを防ぐ
+                    style={{ width: DAY_CELL_WIDTH, minWidth: DAY_CELL_WIDTH, maxWidth: DAY_CELL_WIDTH }}
+                >
                     <EditableCell 
                         value={scheduleRow?.[day] ?? ''} 
                         onUpdate={(v) => onUpdateSchedule(staff.id, day, v)} 
@@ -215,35 +220,21 @@ const StaffRow = React.memo(({
     );
 }, (prevProps, nextProps) => {
     // カスタム比較関数で再レンダリングを制御
-    
-    // 1. スケジュールデータの変更 (オブジェクト参照比較。Shallow copyされている前提)
-    // 内容が同じでも新しいオブジェクトが生成されている場合があるため、JSON比較なども検討できるが、
-    // ここでは親側で適切に制御されていることを期待して参照比較 + スタッフ情報の比較。
-    // ※ scheduleRow は { [day]: value } のオブジェクト。
     const scheduleChanged = JSON.stringify(prevProps.scheduleRow) !== JSON.stringify(nextProps.scheduleRow);
-
-    // 2. スタッフデータの変更 (名前、提出状態など)
     const staffChanged = JSON.stringify(prevProps.staff) !== JSON.stringify(nextProps.staff);
 
-    // 3. 選択範囲の影響
-    // 選択範囲が変更された場合、この行が含まれているか、含まれていたかをチェックする
     const prevSel = prevProps.selection;
     const nextSel = nextProps.selection;
     let selectionChanged = false;
     
-    // どちらかがnullなら、変化があったかチェック
     if (!prevSel && !nextSel) {
         selectionChanged = false;
     } else if (!prevSel || !nextSel) {
-        // 選択開始 or 終了時は全行更新 (シンプルにするため)
-        // 最適化するなら: この行が選択範囲に関係あるかチェック
         selectionChanged = true; 
     } else {
-        // 範囲が変わった場合
         if (prevSel.start.row !== nextSel.start.row || prevSel.end.row !== nextSel.end.row ||
             prevSel.start.col !== nextSel.start.col || prevSel.end.col !== nextSel.end.col) {
             
-            // この行が前回の範囲に含まれていた、または今回の範囲に含まれている場合は更新
             const rowIndex = prevProps.rowIndex;
             const inPrev = rowIndex >= Math.min(prevSel.start.row, prevSel.end.row) && 
                            rowIndex <= Math.max(prevSel.start.row, prevSel.end.row);
@@ -256,7 +247,6 @@ const StaffRow = React.memo(({
         }
     }
 
-    // 4. その他のグローバルな変更
     const otherChanged = 
         prevProps.year !== nextProps.year ||
         prevProps.month !== nextProps.month ||
@@ -335,7 +325,7 @@ const ShiftSchedule = ({
       currentLeft += widths[key];
     });
     return positions;
-  }, []); // widthsは定数なので依存配列は空でOK
+  }, []);
 
   useEffect(() => {
     if (!containerRef.current || safeDays.length === 0 || hasScrolledRef.current) return;
@@ -359,7 +349,6 @@ const ShiftSchedule = ({
     }
   }, [year, month, safeDays]);
 
-  // イベントハンドラのメモ化
   const handleCellMouseDown = useCallback((row, col, e) => {
       if (e.button !== 0) return;
       setSelection({ start: { row, col }, end: { row, col } });
@@ -368,11 +357,6 @@ const ShiftSchedule = ({
   }, []);
 
   const handleCellMouseEnter = useCallback((row, col) => {
-      // isSelecting は外部のstateに依存するため、useCallbackの依存配列に入れる必要があるが、
-      // そうすると頻繁に再生成される。
-      // ここでは関数型アップデートを利用して回避したいが、setSelectionの中で現在のisSelectingを知る必要がある。
-      // isSelectingはRefで管理するか、ここでは妥協して依存配列に入れる。
-      // ただし、StaffRow側で関数が変わっても selectionが変わらなければ再レンダリングしない制御をしているため許容。
       if (isSelecting) {
           setSelection(prev => ({ ...prev, end: { row, col } }));
       }
@@ -386,15 +370,7 @@ const ShiftSchedule = ({
 
   const handleCellContextMenu = useCallback((row, col, e) => {
       e.preventDefault();
-      // isCellSelectedのロジックが必要だが、ここでは簡易的に「現在のselectionに含まれているか」をチェック
-      // しかしselection Stateにアクセスする必要がある。
-      // ここでは常に選択範囲を更新する形にする（複雑さを避けるため）
-      // もしくは selection を Ref で持つか。
-      // 今回はシンプルに setSelection してしまう。
       setSelection(prev => {
-          // 既存ロジック: if (!isCellSelected(row, col)) setSelection(...)
-          // ここで関数内で判定するのは難しいので、一旦常にセットする形でも動作上は問題ない。
-          // 厳密には「選択済みなら変更しない」だが、右クリックで単一選択になる挙動も一般的。
           return { start: { row, col }, end: { row, col } }; 
       });
       setContextMenu({ x: e.clientX, y: e.clientY });
@@ -478,7 +454,12 @@ const ShiftSchedule = ({
                         else if (dayOfWeek === '日' || isHoliday) headerColorClass = "bg-pink-100 text-pink-800 border-pink-200";
 
                         return (
-                            <div key={day} className={`${headerCellBase} ${headerColorClass} whitespace-nowrap w-[${DAY_CELL_WIDTH}] min-w-[${DAY_CELL_WIDTH}] max-w-[${DAY_CELL_WIDTH}] flex-col`} style={{ zIndex: 40 }} data-day={day}>
+                            <div 
+                                key={day} 
+                                className={`${headerCellBase} ${headerColorClass} flex-col`} 
+                                style={{ width: DAY_CELL_WIDTH, minWidth: DAY_CELL_WIDTH, maxWidth: DAY_CELL_WIDTH, zIndex: 40 }} 
+                                data-day={day}
+                            >
                                 <div className="text-xs opacity-70 mb-1">{dayOfWeek}</div>
                                 <div className="text-base font-bold">{day}</div>
                                 {isAdmin && (
