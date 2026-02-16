@@ -45,7 +45,7 @@ const formatValue = (value) => {
  * キーボード操作（矢印キー、Enter、Delete、Tab、F2）に対応
  * 範囲選択とコンテキストメニューに対応
  */
-export const EditableCell = ({ 
+export const EditableCell = React.memo(({ 
   value, onUpdate, borderClass, disabled = false, isAdmin = false, 
   isToday = false, isHoliday = false, isWeekend = false, dayOfWeek, 
   rowIndex, colIndex, isSelected, onMouseDown, onMouseEnter, onContextMenu, onFocus
@@ -217,8 +217,6 @@ export const EditableCell = ({
     }
   };
   
-  // 文字サイズを text-sm に変更 (以前は text-xs)
-  // 幅は親側で制御するが、クラスとしては w-[80px] 程度を想定
   const baseClasses = `border-b border-r ${borderClass} text-center text-sm h-10 flex items-center justify-center w-full min-w-full max-w-full outline-none focus:ring-2 focus:ring-inset focus:ring-sky-500 z-10`;
 
   if (mode === 'view') {
@@ -295,9 +293,24 @@ export const EditableCell = ({
       )}
     </div>
   );
-};
+}, (prevProps, nextProps) => {
+    // カスタム比較関数
+    // valueがオブジェクトの場合も考慮して比較
+    const valueChanged = JSON.stringify(prevProps.value) !== JSON.stringify(nextProps.value);
+    // 選択状態の変更
+    const selectionChanged = prevProps.isSelected !== nextProps.isSelected;
+    // その他のプロパティ
+    const otherChanged = 
+        prevProps.disabled !== nextProps.disabled ||
+        prevProps.isAdmin !== nextProps.isAdmin ||
+        prevProps.isToday !== nextProps.isToday ||
+        prevProps.isHoliday !== nextProps.isHoliday;
+    
+    // 何か変更があれば false (再レンダリングする)
+    return !(valueChanged || selectionChanged || otherChanged);
+});
 
-export const EditableStaffInfoCell = ({ value, onUpdate, className, disabled = false }) => {
+export const EditableStaffInfoCell = React.memo(({ value, onUpdate, className, disabled = false }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [currentValue, setCurrentValue] = useState(value);
 
@@ -312,7 +325,6 @@ export const EditableStaffInfoCell = ({ value, onUpdate, className, disabled = f
     setIsEditing(false);
   };
 
-  // 文字サイズを text-sm に変更 (以前は text-[11px])
   const wrapperClass = `h-10 text-sm border-b border-r border-slate-300 flex items-center px-2 overflow-hidden ${className}`;
 
   if (isEditing) {
@@ -336,4 +348,4 @@ export const EditableStaffInfoCell = ({ value, onUpdate, className, disabled = f
         <div className="font-semibold truncate w-full">{value}</div>
     </div>
   );
-};
+});
