@@ -34,7 +34,7 @@ const HelpGuideModal = ({ onClose }) => {
             <div className="flex flex-col md:flex-row gap-6">
                 <div className="flex-1 space-y-4">
                     <ul className="list-disc list-inside space-y-2">
-                        <li><span className="font-bold">シフト表の各セルをクリック（またはF2キー）</span>すると、入力メニュー（ドロップダウン）が表示されます。</li>
+                        <li><span className="font-bold">シフト表の各セルをクリック（またはF2キー）</span>すると、入力メニューが表示されます。</li>
                         <li><span className="font-bold">数字キー</span>を押すか、「稼働時間入力」を選択すると、数値を直接入力できます。（例: <code className="bg-slate-100 px-1 rounded">8</code>, <code className="bg-slate-100 px-1 rounded">7.5</code>）</li>
                         <li>「有休」「シフト休」「通院休暇」などのステータスや、「遅刻」「早退」などの時間付きステータスも選択できます。</li>
                         <li><span className="font-bold">右クリック</span>するとコンテキストメニューが表示され、「シフト休」「有休」「クリア」を一括で適用できます（ドラッグでの範囲選択時にも有効）。</li>
