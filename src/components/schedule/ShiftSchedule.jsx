@@ -1,9 +1,9 @@
 import React, { useRef, useMemo, useEffect, useState, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { summarizePattern } from '../../utils/scheduleUtils.js';
-import { EditableCell, EditableStaffInfoCell } from '../common/EditableCells.jsx';
-import { DeleteIcon, SetHolidayIcon, UnlockIcon, XIcon } from '../common/Icons.jsx';
-import ScheduleShiftPatternEditor from './ScheduleShiftPatternEditor.jsx';
+import { summarizePattern } from '../../utils/scheduleUtils';
+import { EditableCell, EditableStaffInfoCell } from '../common/EditableCells';
+import { DeleteIcon, SetHolidayIcon, UnlockIcon, XIcon } from '../common/Icons';
+import ScheduleShiftPatternEditor from './ScheduleShiftPatternEditor';
 
 const TaskSkillsModal = ({ staff, tasks, onClose, position }) => {
   if (!staff) return null;
@@ -131,18 +131,15 @@ const StaffRow = React.memo(({
         </div>
     );
 }, (prevProps, nextProps) => {
-    // 高速化: JSON.stringifyを避けて参照比較にする
-    // scheduleRowは useShiftData で新しいオブジェクトが生成されるため参照比較で十分
+    // 参照比較で高速化
     if (prevProps.scheduleRow !== nextProps.scheduleRow) return false;
     if (prevProps.staff !== nextProps.staff) return false;
     
-    // 選択範囲の影響チェック
     const prevSel = prevProps.selection;
     const nextSel = nextProps.selection;
     if (prevSel !== nextSel) {
-        if (!prevSel || !nextSel) return false; // 選択開始/終了
+        if (!prevSel || !nextSel) return false;
         const r = prevProps.rowIndex;
-        // 行が選択範囲に関係する場合のみ再レンダリング
         const inPrev = r >= Math.min(prevSel.start.row, prevSel.end.row) && r <= Math.max(prevSel.start.row, prevSel.end.row);
         const inNext = r >= Math.min(nextSel.start.row, nextSel.end.row) && r <= Math.max(nextSel.start.row, nextSel.end.row);
         if (inPrev || inNext) return false;
@@ -151,7 +148,7 @@ const StaffRow = React.memo(({
     if (prevProps.year !== nextProps.year || prevProps.month !== nextProps.month) return false;
     if (prevProps.isAdmin !== nextProps.isAdmin) return false;
     
-    return true; // 変更なし
+    return true;
 });
 
 const ShiftSchedule = ({ 
