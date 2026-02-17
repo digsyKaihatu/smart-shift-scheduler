@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { doc, getDoc, setDoc, updateDoc, onSnapshot } from "firebase/firestore";
-import { db } from '../config/firebase.js';
-import { initialShiftPatterns, initialStaffData, initialAdminConfig, initialTasks } from '../constants/initialData.js';
-import { generateScheduleForMonth } from '../utils/scheduleUtils.js';
+import { db } from '../config/firebase';
+import { initialShiftPatterns, initialStaffData, initialAdminConfig, initialTasks } from '../constants/initialData';
+import { generateScheduleForMonth } from '../utils/scheduleUtils';
 
 export const useShiftData = (currentYear, currentMonth) => {
   const [isLoading, setIsLoading] = useState(true);
@@ -118,7 +118,6 @@ export const useShiftData = (currentYear, currentMonth) => {
         }
     }, (error) => {
         console.error("Config Listener Error:", error);
-        // エラーでも初期ロード完了として扱い、操作不能になるのを防ぐ
         setInitialDataLoaded(true);
         setLoadingMessage(`エラー: ${error.message}`);
     });
