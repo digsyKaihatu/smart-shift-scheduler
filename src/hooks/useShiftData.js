@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { doc, getDoc, setDoc, updateDoc, onSnapshot } from "firebase/firestore";
+import { doc, getDoc, setDoc, updateDoc } from "firebase/firestore";
 import { db } from '../config/firebase';
 import { initialShiftPatterns, initialStaffData, initialAdminConfig, initialTasks } from '../constants/initialData';
 import { generateScheduleForMonth } from '../utils/scheduleUtils';
@@ -24,7 +24,8 @@ export const useShiftData = (currentYear, currentMonth) => {
   const debouncedSaveConfig = useRef(null);
   const debouncedSaveSchedule = useRef(null);
   const isInitialLoadComplete = useRef(false);
-  
+  const lastLoadedMonthKey = useRef(null);
+
   // 変更差分を保持するRef (Key: "YYYY-MM", Value: { "scheduleData.staffId.day": value, ... })
   const pendingChanges = useRef({});
 
@@ -39,134 +40,99 @@ export const useShiftData = (currentYear, currentMonth) => {
   // 1. 初期データロード (マスタデータ)
   // ---------------------------------------------------------------------------
   useEffect(() => {
-    // マスタデータもリアルタイム同期にするか検討できますが、
-    // 頻度が低いため一旦は従来の getDoc + 内部での保存時反映ロジックのまま、
-    // あるいはここも onSnapshot にして設定変更を即時共有することも可能です。
-    // 今回は「シフトの変更」が主眼のため、Configは onSnapshot 化し、
-    // 常に最新の設定を共有できるようにします。
-    
-    setLoadingMessage("設定データを読み込んでいます...");
-    
-    const unsubscribeConfig = onSnapshot(configDocRef, (configSnap) => {
+    const loadMasterData = async () => {
+      try {
+        setLoadingMessage("設定データを読み込んでいます...");
+        const configSnap = await getDoc(configDocRef);
+
         if (configSnap.exists()) {
           const data = configSnap.data();
-          // ローカルで編集中の場合はState更新と競合する可能性がありますが、
-          // 管理画面等での設定変更を即時反映させるメリットを優先します。
-          // ただし、頻繁な更新による入力阻害を防ぐため、厳密には
-          // 「自分が編集していない項目のみ更新」等の制御が必要になる場合もあります。
-          // ここではシンプルに最新データを反映させます。
-          if (data.staff) setStaff(data.staff);
-          if (data.tasks) setTasks(data.tasks);
-          if (data.shiftPatterns) setShiftPatterns(data.shiftPatterns);
-          if (data.adminConfig) setAdminConfig(data.adminConfig);
-          
-          setInitialDataLoaded(true);
+          setStaff(data.staff || initialStaffData);
+          setTasks(data.tasks || initialTasks);
+          setShiftPatterns(data.shiftPatterns || initialShiftPatterns);
+          setAdminConfig(data.adminConfig || initialAdminConfig);
         } else {
-          // Configがない場合、Legacyデータを確認（移行用ロジック）
-          // ※ここは非同期処理が混在するため onSnapshot とは分けます。
-          // 初回のみ実行する形にします。
-          getDoc(legacyDocRef).then((legacySnap) => {
-              if (legacySnap.exists()) {
-                setLoadingMessage("データの移行処理を行っています...");
-                const legacyData = legacySnap.data();
-                setStaff(legacyData.staff || initialStaffData);
-                setTasks(legacyData.tasks || initialTasks);
-                setShiftPatterns(legacyData.shiftPatterns || initialShiftPatterns);
-                setAdminConfig(legacyData.adminConfig || initialAdminConfig);
-                if (legacyData.schedule) {
-                  setSchedule(legacyData.schedule);
-                }
-              } else {
-                setStaff(initialStaffData);
-                setTasks(initialTasks);
-                setShiftPatterns(initialShiftPatterns);
-                setAdminConfig(initialAdminConfig);
-              }
-              setInitialDataLoaded(true);
-          });
+          const legacySnap = await getDoc(legacyDocRef);
+          if (legacySnap.exists()) {
+            setLoadingMessage("データの移行処理を行っています...");
+            const legacyData = legacySnap.data();
+            setStaff(legacyData.staff || initialStaffData);
+            setTasks(legacyData.tasks || initialTasks);
+            setShiftPatterns(legacyData.shiftPatterns || initialShiftPatterns);
+            setAdminConfig(legacyData.adminConfig || initialAdminConfig);
+            if (legacyData.schedule) {
+              setSchedule(legacyData.schedule);
+            }
+          } else {
+            setStaff(initialStaffData);
+            setTasks(initialTasks);
+            setShiftPatterns(initialShiftPatterns);
+            setAdminConfig(initialAdminConfig);
+          }
         }
-    }, (error) => {
-        console.error("Config Realtime Listener Error:", error);
+        setInitialDataLoaded(true);
+      } catch (error) {
+        console.error("Master Data Load Error:", error);
         setLoadingMessage(`エラー: ${error.message}`);
-    });
+      }
+    };
 
-    return () => unsubscribeConfig();
+    loadMasterData();
   }, []);
 
   // ---------------------------------------------------------------------------
-  // 2. 月次データロード (リアルタイム同期)
+  // 2. 月次データロード
   // ---------------------------------------------------------------------------
   useEffect(() => {
     if (!initialDataLoaded) return;
 
-    const key = `${currentYear}-${currentMonth}`;
-    const monthDocRef = getMonthDocRef(currentYear, currentMonth);
+    const loadMonthlyData = async () => {
+      const key = `${currentYear}-${currentMonth}`;
+      
+      if (schedule[key] && lastLoadedMonthKey.current === key) {
+        setIsLoading(false);
+        return;
+      }
 
-    setIsLoading(true);
+      try {
+        const monthDocRef = getMonthDocRef(currentYear, currentMonth);
+        const monthSnap = await getDoc(monthDocRef);
 
-    const unsubscribe = onSnapshot(monthDocRef, (docSnap) => {
-        if (docSnap.exists()) {
-            const data = docSnap.data();
-            // サーバーデータの反映
-            // ※ pendingChanges に自分の未保存変更がある場合は、
-            // それを上書きしないようにマージする等の高度な制御も考えられますが、
-            // onSnapshotはローカル書き込み（レイテンシ補正）も即座に発火するため、
-            // 基本的には Firestore SDK のマージ動作に任せつつ、
-            // React State を最新に保つ方針とします。
-            
-            // ただし、自分が今まさに入力中で saveDebounce 待機中のデータが
-            // サーバーからの（少し古い、または他人の）データで上書きされて
-            // カーソルが飛ぶ等の挙動を防ぐため、
-            // pendingChanges がある項目の更新はスキップするなどの工夫も有効です。
-            // 今回はシンプルに「常に最新を正」として同期します。
-            
-            setSchedule(prev => ({
-                ...prev,
-                [key]: data.scheduleData || {}
-            }));
+        if (monthSnap.exists()) {
+          const data = monthSnap.data();
+          setSchedule(prev => ({
+            ...prev,
+            [key]: data.scheduleData || {}
+          }));
         } else {
-            // データが存在しない場合、初期データを生成して保存
-            // ※ここで setDoc すると無限ループの恐れがあるため、
-            // 「データがない」状態をStateに反映し、必要ならUI側または保存時に生成する形が安全ですが、
-            // 従来のロジックを踏襲し、なければ生成してStateにセット（保存はユーザー操作または自動保存ロジックに委ねる）
-            setSchedule(prev => {
-                if (prev[key]) return prev; // 既にローカルにあればそのまま
-                return {
-                    ...prev,
-                    [key]: generateScheduleForMonth(currentYear, currentMonth, staff, shiftPatterns)
-                };
-            });
+          setSchedule(prev => {
+            if (prev[key]) return prev;
+            return {
+              ...prev,
+              [key]: generateScheduleForMonth(currentYear, currentMonth, staff, shiftPatterns)
+            };
+          });
         }
+        setHistory({ past: [], future: [] });
+        lastLoadedMonthKey.current = key;
+      } catch (error) {
+        console.error("Monthly Data Load Error:", error);
+      } finally {
         setIsLoading(false);
         isInitialLoadComplete.current = true;
-    }, (error) => {
-        console.error("Schedule Realtime Listener Error:", error);
-        // エラー時はローカルデータのみで続行するか、エラー表示
-        setIsLoading(false); 
-    });
-
-    // クリーンアップ：月が変わったりアンマウントされたらリスナー解除
-    return () => {
-        unsubscribe();
-        setHistory({ past: [], future: [] }); // 月変更時に履歴リセット
+      }
     };
-  }, [currentYear, currentMonth, initialDataLoaded, staff, shiftPatterns]); // 依存配列に注意
+
+    loadMonthlyData();
+  }, [currentYear, currentMonth, initialDataLoaded, staff, shiftPatterns]);
 
   // ---------------------------------------------------------------------------
   // 3. データ保存ロジック (Config / Schedule 分離)
   // ---------------------------------------------------------------------------
 
-  // A. マスタデータの保存
+  // A. マスタデータの保存 (Staff, Tasks, Patterns, Config) - 従来通り上書き/マージ
   useEffect(() => {
     if (!isInitialLoadComplete.current) return;
-
-    // Configは onSnapshot でリッスンしているため、
-    // 自分がセットしたState変更 → 保存 → onSnapshot発火 → State更新
-    // のループにならぬよう注意が必要ですが、
-    // Firestoreはローカル書き込みを即時反映し、サーバー反映後の通知は
-    // "hasPendingWrites" メタデータ等で判別可能です。
-    // 今回の構成では、setDoc後のスナップショット更新で再レンダリングは走りますが、
-    // 値が同じならReactのDiffで吸収されます。
 
     if (debouncedSaveConfig.current) clearTimeout(debouncedSaveConfig.current);
 
@@ -187,7 +153,7 @@ export const useShiftData = (currentYear, currentMonth) => {
     return () => clearTimeout(debouncedSaveConfig.current);
   }, [staff, tasks, shiftPatterns, adminConfig]);
 
-  // B. スケジュールデータの保存
+  // B. スケジュールデータの保存 (差分更新の実装)
   const triggerScheduleSave = useCallback(() => {
     setSaveStatus('unsaved');
     if (debouncedSaveSchedule.current) clearTimeout(debouncedSaveSchedule.current);
@@ -196,13 +162,9 @@ export const useShiftData = (currentYear, currentMonth) => {
       setSaveStatus('saving');
       
       const changesByMonth = pendingChanges.current;
-      // 送信キューをコピーしてリセット（送信中に新たな変更が入るのを考慮）
-      // ※厳密には排他制御が必要ですが、JSのシングルスレッド特性を利用して
-      // ここで参照を付け替えます。
-      const currentBatchChanges = { ...changesByMonth };
-      pendingChanges.current = {}; 
+      pendingChanges.current = {}; // 送信キューをリセット
 
-      const promises = Object.entries(currentBatchChanges).map(async ([monthKey, updates]) => {
+      const promises = Object.entries(changesByMonth).map(async ([monthKey, updates]) => {
         if (Object.keys(updates).length === 0) return;
 
         const [y, m] = monthKey.split('-');
@@ -211,10 +173,13 @@ export const useShiftData = (currentYear, currentMonth) => {
         updates['updatedAt'] = new Date().toISOString();
 
         try {
-          // updateDoc で部分更新
+          // まず updateDoc で部分更新を試みる
           await updateDoc(docRef, updates);
         } catch (error) {
+          // ドキュメントが存在しない場合 (not-found) は setDoc で作成する
           if (error.code === 'not-found') {
+             // 新規作成時は、現在メモリにある完全なスケジュールデータを使って初期化
+             // ただし、updatesの内容も反映済みである必要があるため、現在のschedule stateからデータを取得して保存
              const fullScheduleData = schedule[monthKey] || {};
              await setDoc(docRef, {
                year: parseInt(y),
@@ -224,9 +189,9 @@ export const useShiftData = (currentYear, currentMonth) => {
              });
           } else {
             console.error(`Schedule update failed for ${monthKey}:`, error);
+            // 失敗した変更をキューに戻すなどの処理が必要だが、ここでは簡易的にエラーログのみ
             setSaveStatus('error');
-            // エラー時はpendingChangesに戻すなどのリカバリが望ましい
-            // 今回は簡易ログのみ
+            throw error;
           }
         }
       });
@@ -237,23 +202,25 @@ export const useShiftData = (currentYear, currentMonth) => {
       } catch (e) {
         setSaveStatus('error');
       }
-    }, 1000); 
-  }, [schedule]); // scheduleへの依存は最小限にしたいが、新規作成時の参照で必要
+    }, 1000); // 1秒デバウンス
+  }, [schedule]);
 
 
   // ---------------------------------------------------------------------------
-  // 4. データ更新用関数
+  // 4. データ更新用関数 (UIから呼び出す)
   // ---------------------------------------------------------------------------
 
   // 単一セルの更新
+  // value: "シフト休" や { type: "遅刻", hours: 2 } などの値
   const updateShiftItem = useCallback((year, month, staffId, day, value) => {
     const key = `${year}-${month}`;
 
-    // 1. React Stateの更新 (UI即時反映 - 楽観的更新)
+    // 1. React Stateの更新 (UI即時反映)
     setSchedule(prev => {
       const currentMonthData = prev[key] || {};
       const currentStaffData = currentMonthData[staffId] || {};
       
+      // 値が変わっていない場合は何もしない
       if (JSON.stringify(currentStaffData[day]) === JSON.stringify(value)) {
         return prev;
       }
@@ -266,19 +233,23 @@ export const useShiftData = (currentYear, currentMonth) => {
         }
       };
       
+      // 履歴用 (簡易)
       setHistory(h => ({ past: [...h.past, prev], future: [] }));
+
       return { ...prev, [key]: newMonthData };
     });
 
-    // 2. 変更差分の登録
+    // 2. 変更差分の登録 (Firestore用)
     if (!pendingChanges.current[key]) pendingChanges.current[key] = {};
+    // ドット記法でフィールドを指定: scheduleData.{staffId}.{day}
     pendingChanges.current[key][`scheduleData.${staffId}.${day}`] = value;
 
-    // 3. 保存
+    // 3. 保存タイマー開始
     triggerScheduleSave();
   }, [triggerScheduleSave]);
 
-  // 複数セルの更新
+  // 複数セルの更新 (一括更新、パターン適用など)
+  // updates: Array of { staffId, day, value }
   const updateShiftItems = useCallback((year, month, updates) => {
     if (!updates || updates.length === 0) return;
     const key = `${year}-${month}`;
@@ -301,6 +272,7 @@ export const useShiftData = (currentYear, currentMonth) => {
     });
 
     if (!pendingChanges.current[key]) pendingChanges.current[key] = {};
+    
     updates.forEach(({ staffId, day, value }) => {
       pendingChanges.current[key][`scheduleData.${staffId}.${day}`] = value;
     });
@@ -308,7 +280,7 @@ export const useShiftData = (currentYear, currentMonth) => {
     triggerScheduleSave();
   }, [triggerScheduleSave]);
 
-  // ユーザー月次一括更新
+  // ユーザーの1ヶ月分のデータを丸ごと更新（パターン適用時などに便利）
   const updateShiftUserMonth = useCallback((year, month, staffId, monthData) => {
     const key = `${year}-${month}`;
     
@@ -319,6 +291,7 @@ export const useShiftData = (currentYear, currentMonth) => {
     });
 
     if (!pendingChanges.current[key]) pendingChanges.current[key] = {};
+    // マップ全体を置換
     pendingChanges.current[key][`scheduleData.${staffId}`] = monthData;
     
     triggerScheduleSave();
@@ -331,17 +304,9 @@ export const useShiftData = (currentYear, currentMonth) => {
       if (past.length === 0) return prev;
       const previous = past[past.length - 1];
       const newPast = past.slice(0, past.length - 1);
-      
-      // Undo時も保存が必要（Firestoreと同期するため）
-      // Stateを戻した後、その状態を正としてFirestoreに全保存、あるいは
-      // 差分を計算して保存する必要があるが、
-      // リアルタイム同期との兼ね合いで複雑になるため、
-      // ここでは「ローカルの見た目を戻す」に留め、
-      // 次の操作で整合性が取れることを期待するか、
-      // あるいは Undo 自体を制限する（リアルタイム多人数編集ではUndoは難しい）
-      // 今回は一旦State更新のみ維持します。
-      
       setSchedule(previous);
+      // Undo時は全データ再保存（整合性のため）を検討すべきだが、
+      // 複雑になるためここではState戻しのみとし、次の変更で整合させる運用とする
       return { past: newPast, future: [schedule, ...future] };
     });
   }, [schedule]);
@@ -357,12 +322,13 @@ export const useShiftData = (currentYear, currentMonth) => {
     });
   }, [schedule]);
 
+  // 古いAPI（setSchedule）を直接使わないように注意が必要
   return {
     staff, setStaff,
     schedule, 
-    updateShiftItem,
-    updateShiftItems,
-    updateShiftUserMonth,
+    updateShiftItem,   // 単一更新用
+    updateShiftItems,  // 一括更新用
+    updateShiftUserMonth, // ユーザー月次更新用
     undo, redo, canUndo: history.past.length > 0, canRedo: history.future.length > 0,
     tasks, setTasks,
     shiftPatterns, setShiftPatterns,
