@@ -1,7 +1,3 @@
-/**
- * 必要なパッケージのインストール:
- * npm install @okta/okta-react @okta/okta-auth-js react-router-dom
- */
 import React, { useMemo, useEffect } from 'react';
 import { Routes, Route, useNavigate } from 'react-router-dom';
 import { Security, LoginCallback, useOktaAuth } from '@okta/okta-react';
