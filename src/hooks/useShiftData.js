@@ -93,10 +93,12 @@ export const useShiftData = (currentYear, currentMonth) => {
     setLoadingMessage("設定データを読み込んでいます...");
     
     const unsubscribeConfig = onSnapshot(configDocRef, (configSnap) => {
+        // ローカルの書き込みが反映された直後のイベントは無視し、無駄な再レンダリングを防ぐ
+        if (configSnap.metadata.hasPendingWrites) return;
+
         if (configSnap.exists()) {
           const data = configSnap.data();
           
-          // Use internal setters (_set) to avoid triggering save loop
           if (data.staff) {
               _setStaff(prev => JSON.stringify(prev) !== JSON.stringify(data.staff) ? data.staff : prev);
           }
@@ -155,6 +157,9 @@ export const useShiftData = (currentYear, currentMonth) => {
     setIsLoading(true);
 
     const unsubscribe = onSnapshot(monthDocRef, (docSnap) => {
+        // ローカルの書き込み(Optimistic Update済み)によるイベントは無視
+        if (docSnap.metadata.hasPendingWrites) return;
+
         if (docSnap.exists()) {
             const data = docSnap.data();
             setSchedule(prev => ({
@@ -182,9 +187,6 @@ export const useShiftData = (currentYear, currentMonth) => {
         setHistory({ past: [], future: [] });
     };
   }, [currentYear, currentMonth, initialDataLoaded]); 
-
-  // Note: The previous useEffect for saving config is removed to prevent loops.
-  // Saving is now handled by setStaff, setTasks etc wrappers.
 
   // ---------------------------------------------------------------------------
   // 3. データ保存ロジック (Schedule)
@@ -341,15 +343,15 @@ export const useShiftData = (currentYear, currentMonth) => {
   }, [schedule]);
 
   return {
-    staff, setStaff, // Export wrapper
+    staff, setStaff, 
     schedule, 
     updateShiftItem,
     updateShiftItems,
     updateShiftUserMonth,
     undo, redo, canUndo: history.past.length > 0, canRedo: history.future.length > 0,
-    tasks, setTasks, // Export wrapper
-    shiftPatterns, setShiftPatterns, // Export wrapper
-    adminConfig, setAdminConfig, // Export wrapper
+    tasks, setTasks, 
+    shiftPatterns, setShiftPatterns, 
+    adminConfig, setAdminConfig, 
     isLoading, loadingMessage, setLoadingMessage, setIsLoading,
     saveStatus, initialDataLoaded
   };
