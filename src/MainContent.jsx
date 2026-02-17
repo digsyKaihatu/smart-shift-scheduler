@@ -1,26 +1,26 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 // import { useOktaAuth } from '@okta/okta-react'; 
 
-// Hooks & Services & Utils (拡張子.jsを明記)
-import { useShiftData } from './hooks/useShiftData.js';
-import { chatService } from './services/chatService.js';
-import { downloadScheduleCSV } from './utils/csvExporter.js';
-import { getJapaneseHolidays, formatValue } from './utils/dateUtils.js';
-import { generateScheduleForMonth, summarizePattern } from './utils/scheduleUtils.js';
+// Hooks & Services & Utils (拡張子削除)
+import { useShiftData } from './hooks/useShiftData';
+import { chatService } from './services/chatService';
+import { downloadScheduleCSV } from './utils/csvExporter';
+import { getJapaneseHolidays, formatValue } from './utils/dateUtils';
+import { generateScheduleForMonth, summarizePattern } from './utils/scheduleUtils';
 
-// Components (拡張子.jsxを明記)
-import LoadingScreen from './components/common/LoadingScreen.jsx';
-import HelpGuideModal from './components/common/HelpGuideModal.jsx';
-import { ConfirmationModal, ConfirmDeleteModal } from './components/common/Modal.jsx';
-import Legend from './components/schedule/Legend.jsx';
-import ShiftSchedule from './components/schedule/ShiftSchedule.jsx';
-import MonthlyCalendar from './components/schedule/MonthlyCalendar.jsx';
-import ShiftPatternDisplay from './components/schedule/ShiftPatternDisplay.jsx';
-import ShiftApprovalModal from './components/schedule/ShiftApprovalModal.jsx';
-import TaskShortageDisplay from './components/tasks/TaskShortageDisplay.jsx';
-import TaskStaffMappingEditor from './components/tasks/TaskStaffMappingEditor.jsx';
-import MemberManagementModal from './components/admin/MemberManagementModal.jsx';
-import AdminSettingsModal from './components/admin/AdminSettingsModal.jsx';
+// Components (拡張子削除)
+import LoadingScreen from './components/common/LoadingScreen';
+import HelpGuideModal from './components/common/HelpGuideModal';
+import { ConfirmationModal, ConfirmDeleteModal } from './components/common/Modal';
+import Legend from './components/schedule/Legend';
+import ShiftSchedule from './components/schedule/ShiftSchedule';
+import MonthlyCalendar from './components/schedule/MonthlyCalendar';
+import ShiftPatternDisplay from './components/schedule/ShiftPatternDisplay';
+import ShiftApprovalModal from './components/schedule/ShiftApprovalModal';
+import TaskShortageDisplay from './components/tasks/TaskShortageDisplay';
+import TaskStaffMappingEditor from './components/tasks/TaskStaffMappingEditor';
+import MemberManagementModal from './components/admin/MemberManagementModal';
+import AdminSettingsModal from './components/admin/AdminSettingsModal';
 
 // --- Mock Okta Auth for Preview Environment ---
 const useOktaAuthMock = () => {
@@ -76,7 +76,6 @@ const MainContent = () => {
     const identifyUser = async () => {
       if (authState?.isAuthenticated) {
         const userInfo = await oktaAuth.getUser();
-        // staffがまだロードされていない場合は一旦デフォルトユーザーとして設定
         if (staff.length > 0) {
             const matchedStaff = staff.find(s => s.email === userInfo.email);
             if (matchedStaff) {
@@ -85,15 +84,13 @@ const MainContent = () => {
                 setCurrentUser({ id: 'okta-user', name: userInfo.name || 'Okta User', email: userInfo.email, role: 'OP' });
             }
         } else {
-            // 初期ロード中でstaffが空の場合の安全策
             setCurrentUser({ id: 'temp-user', name: 'Loading...', email: userInfo.email, role: 'OP' });
         }
       }
     };
     identifyUser();
-  }, [authState, oktaAuth, staff]); // staffがロードされたら再実行される
+  }, [authState, oktaAuth, staff]);
 
-  // ハンドラの定義
   const handleMigrateData = useCallback(() => {
     if (!window.confirm("データ移行（パターンA → I）を実行しますか？\n※この操作は取り消せません。")) return;
     setStaff(prevStaff => {
@@ -124,7 +121,6 @@ const MainContent = () => {
     return { day: i + 1, dayOfWeek: ['日', '月', '火', '水', '木', '金', '土'][date.getDay()] };
   }), [year, month, daysInMonth]);
 
-  // タスクカウント計算
   useEffect(() => {
     if (!initialDataLoaded) return;
     const currentMonthSchedule = schedule[key] || {};
@@ -194,7 +190,6 @@ const MainContent = () => {
     setAbsenceNotificationConfirmation(null);
   }, [absenceNotificationConfirmation, setIsLoading]);
 
-  // その他のハンドラ (useCallbackでラップ)
   const handleToggleShiftSubmitted = useCallback((staffId) => {
     const s = staff.find(x => x.id === staffId);
     if (!s) return;
@@ -238,7 +233,6 @@ const MainContent = () => {
     if (!approvalModalStaffId) return;
     const s = staff.find(x => x.id === approvalModalStaffId);
     const irregularities = [];
-    // ...特記事項生成ロジック(省略せず実装)...
     for (let day = 1; day <= daysInMonth; day++) {
         const date = new Date(year, month - 1, day);
         const dayOfWeek = date.getDay();
