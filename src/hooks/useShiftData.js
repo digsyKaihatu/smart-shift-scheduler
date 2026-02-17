@@ -44,10 +44,20 @@ export const useShiftData = (currentYear, currentMonth) => {
     const unsubscribeConfig = onSnapshot(configDocRef, (configSnap) => {
         if (configSnap.exists()) {
           const data = configSnap.data();
-          if (data.staff) setStaff(data.staff);
-          if (data.tasks) setTasks(data.tasks);
-          if (data.shiftPatterns) setShiftPatterns(data.shiftPatterns);
-          if (data.adminConfig) setAdminConfig(data.adminConfig);
+          
+          // ループ防止: 内容が同じ場合はStateを更新しない (参照の変更によるuseEffect発火を防ぐ)
+          if (data.staff) {
+              setStaff(prev => JSON.stringify(prev) !== JSON.stringify(data.staff) ? data.staff : prev);
+          }
+          if (data.tasks) {
+              setTasks(prev => JSON.stringify(prev) !== JSON.stringify(data.tasks) ? data.tasks : prev);
+          }
+          if (data.shiftPatterns) {
+              setShiftPatterns(prev => JSON.stringify(prev) !== JSON.stringify(data.shiftPatterns) ? data.shiftPatterns : prev);
+          }
+          if (data.adminConfig) {
+              setAdminConfig(prev => JSON.stringify(prev) !== JSON.stringify(data.adminConfig) ? data.adminConfig : prev);
+          }
           
           setInitialDataLoaded(true);
         } else {
