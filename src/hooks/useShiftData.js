@@ -10,12 +10,12 @@ export const useShiftData = (currentYear, currentMonth) => {
   const [saveStatus, setSaveStatus] = useState('saved');
   const [initialDataLoaded, setInitialDataLoaded] = useState(false);
 
-  // Main State
-  const [staff, setStaff] = useState([]);
-  const [schedule, setSchedule] = useState({}); // { "2024-1": {...}, "2024-2": {...} }
-  const [tasks, setTasks] = useState([]);
-  const [shiftPatterns, setShiftPatterns] = useState([]);
-  const [adminConfig, setAdminConfig] = useState(initialAdminConfig);
+  // Main State (Internal setters renamed to _set)
+  const [staff, _setStaff] = useState([]);
+  const [schedule, setSchedule] = useState({}); 
+  const [tasks, _setTasks] = useState([]);
+  const [shiftPatterns, _setShiftPatterns] = useState([]);
+  const [adminConfig, _setAdminConfig] = useState(initialAdminConfig);
 
   // Undo/Redo History State
   const [history, setHistory] = useState({ past: [], future: [] });
@@ -25,15 +25,66 @@ export const useShiftData = (currentYear, currentMonth) => {
   const debouncedSaveSchedule = useRef(null);
   const isInitialLoadComplete = useRef(false);
   
-  // 変更差分を保持するRef (Key: "YYYY-MM", Value: { "scheduleData.staffId.day": value, ... })
+  // Keep track of latest state for the debounced saver
+  const latestConfig = useRef({ staff: [], tasks: [], shiftPatterns: [], adminConfig: initialAdminConfig });
+
+  // Update ref whenever state changes
+  useEffect(() => {
+    latestConfig.current = { staff, tasks, shiftPatterns, adminConfig };
+  }, [staff, tasks, shiftPatterns, adminConfig]);
+  
+  // 変更差分を保持するRef
   const pendingChanges = useRef({});
 
   // ドキュメント参照
   const configDocRef = doc(db, "schedules", "config");
   const legacyDocRef = doc(db, "schedules", "main");
 
-  // 月ごとのドキュメント参照を取得するヘルパー
   const getMonthDocRef = (year, month) => doc(db, "schedules", `${year}-${month}`);
+
+  // ---------------------------------------------------------------------------
+  // 0. Config Saving Logic (Manual Trigger)
+  // ---------------------------------------------------------------------------
+  const triggerConfigSave = useCallback(() => {
+    if (!isInitialLoadComplete.current) return;
+    
+    if (debouncedSaveConfig.current) clearTimeout(debouncedSaveConfig.current);
+    
+    debouncedSaveConfig.current = setTimeout(async () => {
+        // Retrieve latest state from Ref to ensure we save what is currently on screen
+        const { staff, tasks, shiftPatterns, adminConfig } = latestConfig.current;
+        try {
+            await setDoc(configDocRef, { 
+                staff, tasks, shiftPatterns, adminConfig,
+                updatedAt: new Date().toISOString()
+            }, { merge: true });
+        } catch (error) {
+            console.error("Config save failed:", error);
+        }
+    }, 2000);
+  }, []);
+
+  // Wrappers to trigger save on user update
+  const setStaff = useCallback((value) => {
+      _setStaff(value);
+      triggerConfigSave();
+  }, [triggerConfigSave]);
+
+  const setTasks = useCallback((value) => {
+      _setTasks(value);
+      triggerConfigSave();
+  }, [triggerConfigSave]);
+
+  const setShiftPatterns = useCallback((value) => {
+      _setShiftPatterns(value);
+      triggerConfigSave();
+  }, [triggerConfigSave]);
+
+  const setAdminConfig = useCallback((value) => {
+      _setAdminConfig(value);
+      triggerConfigSave();
+  }, [triggerConfigSave]);
+
 
   // ---------------------------------------------------------------------------
   // 1. 初期データロード (マスタデータ)
@@ -45,39 +96,41 @@ export const useShiftData = (currentYear, currentMonth) => {
         if (configSnap.exists()) {
           const data = configSnap.data();
           
-          // ループ防止: 内容が同じ場合はStateを更新しない (参照の変更によるuseEffect発火を防ぐ)
+          // Use internal setters (_set) to avoid triggering save loop
           if (data.staff) {
-              setStaff(prev => JSON.stringify(prev) !== JSON.stringify(data.staff) ? data.staff : prev);
+              _setStaff(prev => JSON.stringify(prev) !== JSON.stringify(data.staff) ? data.staff : prev);
           }
           if (data.tasks) {
-              setTasks(prev => JSON.stringify(prev) !== JSON.stringify(data.tasks) ? data.tasks : prev);
+              _setTasks(prev => JSON.stringify(prev) !== JSON.stringify(data.tasks) ? data.tasks : prev);
           }
           if (data.shiftPatterns) {
-              setShiftPatterns(prev => JSON.stringify(prev) !== JSON.stringify(data.shiftPatterns) ? data.shiftPatterns : prev);
+              _setShiftPatterns(prev => JSON.stringify(prev) !== JSON.stringify(data.shiftPatterns) ? data.shiftPatterns : prev);
           }
           if (data.adminConfig) {
-              setAdminConfig(prev => JSON.stringify(prev) !== JSON.stringify(data.adminConfig) ? data.adminConfig : prev);
+              _setAdminConfig(prev => JSON.stringify(prev) !== JSON.stringify(data.adminConfig) ? data.adminConfig : prev);
           }
           
           setInitialDataLoaded(true);
         } else {
-          // Configがない場合、Legacyデータを確認（移行用ロジック）
+          // Configがない場合、Legacyデータを確認
           getDoc(legacyDocRef).then((legacySnap) => {
               if (legacySnap.exists()) {
                 setLoadingMessage("データの移行処理を行っています...");
                 const legacyData = legacySnap.data();
-                setStaff(legacyData.staff || initialStaffData);
-                setTasks(legacyData.tasks || initialTasks);
-                setShiftPatterns(legacyData.shiftPatterns || initialShiftPatterns);
-                setAdminConfig(legacyData.adminConfig || initialAdminConfig);
+                _setStaff(legacyData.staff || initialStaffData);
+                _setTasks(legacyData.tasks || initialTasks);
+                _setShiftPatterns(legacyData.shiftPatterns || initialShiftPatterns);
+                _setAdminConfig(legacyData.adminConfig || initialAdminConfig);
                 if (legacyData.schedule) {
                   setSchedule(legacyData.schedule);
                 }
+                // Trigger initial save to create config doc
+                triggerConfigSave();
               } else {
-                setStaff(initialStaffData);
-                setTasks(initialTasks);
-                setShiftPatterns(initialShiftPatterns);
-                setAdminConfig(initialAdminConfig);
+                _setStaff(initialStaffData);
+                _setTasks(initialTasks);
+                _setShiftPatterns(initialShiftPatterns);
+                _setAdminConfig(initialAdminConfig);
               }
               setInitialDataLoaded(true);
           });
@@ -88,7 +141,7 @@ export const useShiftData = (currentYear, currentMonth) => {
     });
 
     return () => unsubscribeConfig();
-  }, []);
+  }, [triggerConfigSave]);
 
   // ---------------------------------------------------------------------------
   // 2. 月次データロード (リアルタイム同期)
@@ -99,8 +152,6 @@ export const useShiftData = (currentYear, currentMonth) => {
     const key = `${currentYear}-${currentMonth}`;
     const monthDocRef = getMonthDocRef(currentYear, currentMonth);
 
-    // 月が変更された時などはロード表示を行うが、
-    // staff更新時にはここを通らないように依存配列を調整済み
     setIsLoading(true);
 
     const unsubscribe = onSnapshot(monthDocRef, (docSnap) => {
@@ -113,8 +164,6 @@ export const useShiftData = (currentYear, currentMonth) => {
         } else {
             setSchedule(prev => {
                 if (prev[key]) return prev;
-                // 注意: ここでクロージャ内の古いstaffを参照する可能性があるが、
-                // データが存在しない(=新規月)かつ初期ロード直後であれば問題ない。
                 return {
                     ...prev,
                     [key]: generateScheduleForMonth(currentYear, currentMonth, staff, shiftPatterns)
@@ -128,43 +177,18 @@ export const useShiftData = (currentYear, currentMonth) => {
         setIsLoading(false); 
     });
 
-    // クリーンアップ：月が変わったりアンマウントされたらリスナー解除
     return () => {
         unsubscribe();
-        setHistory({ past: [], future: [] }); // 月変更時に履歴リセット
+        setHistory({ past: [], future: [] });
     };
-    // 修正: staff, shiftPatterns を依存配列から削除しました。
-    // これにより、承認操作などでstaff情報が更新されても、スケジュールの再ロード(ローディング画面)が発生しません。
   }, [currentYear, currentMonth, initialDataLoaded]); 
 
+  // Note: The previous useEffect for saving config is removed to prevent loops.
+  // Saving is now handled by setStaff, setTasks etc wrappers.
+
   // ---------------------------------------------------------------------------
-  // 3. データ保存ロジック (Config / Schedule 分離)
+  // 3. データ保存ロジック (Schedule)
   // ---------------------------------------------------------------------------
-
-  // A. マスタデータの保存
-  useEffect(() => {
-    if (!isInitialLoadComplete.current) return;
-
-    if (debouncedSaveConfig.current) clearTimeout(debouncedSaveConfig.current);
-
-    debouncedSaveConfig.current = setTimeout(async () => {
-      try {
-        await setDoc(configDocRef, { 
-          staff, 
-          tasks, 
-          shiftPatterns, 
-          adminConfig,
-          updatedAt: new Date().toISOString()
-        }, { merge: true });
-      } catch (error) {
-        console.error("Config save failed:", error);
-      }
-    }, 2000);
-
-    return () => clearTimeout(debouncedSaveConfig.current);
-  }, [staff, tasks, shiftPatterns, adminConfig]);
-
-  // B. スケジュールデータの保存
   const triggerScheduleSave = useCallback(() => {
     setSaveStatus('unsaved');
     if (debouncedSaveSchedule.current) clearTimeout(debouncedSaveSchedule.current);
@@ -317,15 +341,15 @@ export const useShiftData = (currentYear, currentMonth) => {
   }, [schedule]);
 
   return {
-    staff, setStaff,
+    staff, setStaff, // Export wrapper
     schedule, 
     updateShiftItem,
     updateShiftItems,
     updateShiftUserMonth,
     undo, redo, canUndo: history.past.length > 0, canRedo: history.future.length > 0,
-    tasks, setTasks,
-    shiftPatterns, setShiftPatterns,
-    adminConfig, setAdminConfig,
+    tasks, setTasks, // Export wrapper
+    shiftPatterns, setShiftPatterns, // Export wrapper
+    adminConfig, setAdminConfig, // Export wrapper
     isLoading, loadingMessage, setLoadingMessage, setIsLoading,
     saveStatus, initialDataLoaded
   };
