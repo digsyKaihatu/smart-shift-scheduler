@@ -39,22 +39,11 @@ export const useShiftData = (currentYear, currentMonth) => {
   // 1. 初期データロード (マスタデータ)
   // ---------------------------------------------------------------------------
   useEffect(() => {
-    // マスタデータもリアルタイム同期にするか検討できますが、
-    // 頻度が低いため一旦は従来の getDoc + 内部での保存時反映ロジックのまま、
-    // あるいはここも onSnapshot にして設定変更を即時共有することも可能です。
-    // 今回は「シフトの変更」が主眼のため、Configは onSnapshot 化し、
-    // 常に最新の設定を共有できるようにします。
-    
     setLoadingMessage("設定データを読み込んでいます...");
     
     const unsubscribeConfig = onSnapshot(configDocRef, (configSnap) => {
         if (configSnap.exists()) {
           const data = configSnap.data();
-          // ローカルで編集中の場合はState更新と競合する可能性がありますが、
-          // 管理画面等での設定変更を即時反映させるメリットを優先します。
-          // ただし、頻繁な更新による入力阻害を防ぐため、厳密には
-          // 「自分が編集していない項目のみ更新」等の制御が必要になる場合もあります。
-          // ここではシンプルに最新データを反映させます。
           if (data.staff) setStaff(data.staff);
           if (data.tasks) setTasks(data.tasks);
           if (data.shiftPatterns) setShiftPatterns(data.shiftPatterns);
@@ -63,8 +52,6 @@ export const useShiftData = (currentYear, currentMonth) => {
           setInitialDataLoaded(true);
         } else {
           // Configがない場合、Legacyデータを確認（移行用ロジック）
-          // ※ここは非同期処理が混在するため onSnapshot とは分けます。
-          // 初回のみ実行する形にします。
           getDoc(legacyDocRef).then((legacySnap) => {
               if (legacySnap.exists()) {
                 setLoadingMessage("データの移行処理を行っています...");
@@ -102,35 +89,22 @@ export const useShiftData = (currentYear, currentMonth) => {
     const key = `${currentYear}-${currentMonth}`;
     const monthDocRef = getMonthDocRef(currentYear, currentMonth);
 
+    // 月が変更された時などはロード表示を行うが、
+    // staff更新時にはここを通らないように依存配列を調整済み
     setIsLoading(true);
 
     const unsubscribe = onSnapshot(monthDocRef, (docSnap) => {
         if (docSnap.exists()) {
             const data = docSnap.data();
-            // サーバーデータの反映
-            // ※ pendingChanges に自分の未保存変更がある場合は、
-            // それを上書きしないようにマージする等の高度な制御も考えられますが、
-            // onSnapshotはローカル書き込み（レイテンシ補正）も即座に発火するため、
-            // 基本的には Firestore SDK のマージ動作に任せつつ、
-            // React State を最新に保つ方針とします。
-            
-            // ただし、自分が今まさに入力中で saveDebounce 待機中のデータが
-            // サーバーからの（少し古い、または他人の）データで上書きされて
-            // カーソルが飛ぶ等の挙動を防ぐため、
-            // pendingChanges がある項目の更新はスキップするなどの工夫も有効です。
-            // 今回はシンプルに「常に最新を正」として同期します。
-            
             setSchedule(prev => ({
                 ...prev,
                 [key]: data.scheduleData || {}
             }));
         } else {
-            // データが存在しない場合、初期データを生成して保存
-            // ※ここで setDoc すると無限ループの恐れがあるため、
-            // 「データがない」状態をStateに反映し、必要ならUI側または保存時に生成する形が安全ですが、
-            // 従来のロジックを踏襲し、なければ生成してStateにセット（保存はユーザー操作または自動保存ロジックに委ねる）
             setSchedule(prev => {
-                if (prev[key]) return prev; // 既にローカルにあればそのまま
+                if (prev[key]) return prev;
+                // 注意: ここでクロージャ内の古いstaffを参照する可能性があるが、
+                // データが存在しない(=新規月)かつ初期ロード直後であれば問題ない。
                 return {
                     ...prev,
                     [key]: generateScheduleForMonth(currentYear, currentMonth, staff, shiftPatterns)
@@ -141,7 +115,6 @@ export const useShiftData = (currentYear, currentMonth) => {
         isInitialLoadComplete.current = true;
     }, (error) => {
         console.error("Schedule Realtime Listener Error:", error);
-        // エラー時はローカルデータのみで続行するか、エラー表示
         setIsLoading(false); 
     });
 
@@ -150,7 +123,9 @@ export const useShiftData = (currentYear, currentMonth) => {
         unsubscribe();
         setHistory({ past: [], future: [] }); // 月変更時に履歴リセット
     };
-  }, [currentYear, currentMonth, initialDataLoaded, staff, shiftPatterns]); // 依存配列に注意
+    // 修正: staff, shiftPatterns を依存配列から削除しました。
+    // これにより、承認操作などでstaff情報が更新されても、スケジュールの再ロード(ローディング画面)が発生しません。
+  }, [currentYear, currentMonth, initialDataLoaded]); 
 
   // ---------------------------------------------------------------------------
   // 3. データ保存ロジック (Config / Schedule 分離)
@@ -159,14 +134,6 @@ export const useShiftData = (currentYear, currentMonth) => {
   // A. マスタデータの保存
   useEffect(() => {
     if (!isInitialLoadComplete.current) return;
-
-    // Configは onSnapshot でリッスンしているため、
-    // 自分がセットしたState変更 → 保存 → onSnapshot発火 → State更新
-    // のループにならぬよう注意が必要ですが、
-    // Firestoreはローカル書き込みを即時反映し、サーバー反映後の通知は
-    // "hasPendingWrites" メタデータ等で判別可能です。
-    // 今回の構成では、setDoc後のスナップショット更新で再レンダリングは走りますが、
-    // 値が同じならReactのDiffで吸収されます。
 
     if (debouncedSaveConfig.current) clearTimeout(debouncedSaveConfig.current);
 
@@ -196,9 +163,6 @@ export const useShiftData = (currentYear, currentMonth) => {
       setSaveStatus('saving');
       
       const changesByMonth = pendingChanges.current;
-      // 送信キューをコピーしてリセット（送信中に新たな変更が入るのを考慮）
-      // ※厳密には排他制御が必要ですが、JSのシングルスレッド特性を利用して
-      // ここで参照を付け替えます。
       const currentBatchChanges = { ...changesByMonth };
       pendingChanges.current = {}; 
 
@@ -211,7 +175,6 @@ export const useShiftData = (currentYear, currentMonth) => {
         updates['updatedAt'] = new Date().toISOString();
 
         try {
-          // updateDoc で部分更新
           await updateDoc(docRef, updates);
         } catch (error) {
           if (error.code === 'not-found') {
@@ -225,8 +188,6 @@ export const useShiftData = (currentYear, currentMonth) => {
           } else {
             console.error(`Schedule update failed for ${monthKey}:`, error);
             setSaveStatus('error');
-            // エラー時はpendingChangesに戻すなどのリカバリが望ましい
-            // 今回は簡易ログのみ
           }
         }
       });
@@ -238,7 +199,7 @@ export const useShiftData = (currentYear, currentMonth) => {
         setSaveStatus('error');
       }
     }, 1000); 
-  }, [schedule]); // scheduleへの依存は最小限にしたいが、新規作成時の参照で必要
+  }, [schedule]);
 
 
   // ---------------------------------------------------------------------------
@@ -249,7 +210,6 @@ export const useShiftData = (currentYear, currentMonth) => {
   const updateShiftItem = useCallback((year, month, staffId, day, value) => {
     const key = `${year}-${month}`;
 
-    // 1. React Stateの更新 (UI即時反映 - 楽観的更新)
     setSchedule(prev => {
       const currentMonthData = prev[key] || {};
       const currentStaffData = currentMonthData[staffId] || {};
@@ -270,11 +230,9 @@ export const useShiftData = (currentYear, currentMonth) => {
       return { ...prev, [key]: newMonthData };
     });
 
-    // 2. 変更差分の登録
     if (!pendingChanges.current[key]) pendingChanges.current[key] = {};
     pendingChanges.current[key][`scheduleData.${staffId}.${day}`] = value;
 
-    // 3. 保存
     triggerScheduleSave();
   }, [triggerScheduleSave]);
 
@@ -331,15 +289,6 @@ export const useShiftData = (currentYear, currentMonth) => {
       if (past.length === 0) return prev;
       const previous = past[past.length - 1];
       const newPast = past.slice(0, past.length - 1);
-      
-      // Undo時も保存が必要（Firestoreと同期するため）
-      // Stateを戻した後、その状態を正としてFirestoreに全保存、あるいは
-      // 差分を計算して保存する必要があるが、
-      // リアルタイム同期との兼ね合いで複雑になるため、
-      // ここでは「ローカルの見た目を戻す」に留め、
-      // 次の操作で整合性が取れることを期待するか、
-      // あるいは Undo 自体を制限する（リアルタイム多人数編集ではUndoは難しい）
-      // 今回は一旦State更新のみ維持します。
       
       setSchedule(previous);
       return { past: newPast, future: [schedule, ...future] };
