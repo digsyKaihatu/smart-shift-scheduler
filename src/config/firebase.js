@@ -11,5 +11,18 @@ const firebaseConfig = {
   measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID
 };
 
-const app = initializeApp(firebaseConfig);
-export const db = getFirestore(app);
+// 設定値が不十分な場合でもアプリがクラッシュしないようにする
+// (実際にFirestoreにアクセスした時点でエラーになるが、画面表示は可能にする)
+let app;
+let db;
+
+try {
+    app = initializeApp(firebaseConfig);
+    db = getFirestore(app);
+} catch (error) {
+    console.error("Firebase initialization failed. Check your .env file.", error);
+    // ダミーのDBオブジェクトを作成せず、undefinedのままにしてエラーを検知させるか、
+    // あるいはUI側でハンドリングする。ここではログ出力に留める。
+}
+
+export { db };
