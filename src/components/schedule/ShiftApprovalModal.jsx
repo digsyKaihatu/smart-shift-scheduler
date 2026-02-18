@@ -1,7 +1,5 @@
-
 import React, { useRef, useMemo } from 'react';
-import { summarizePattern } from '../../utils/scheduleUtils';
-import { formatValue } from '../../utils/dateUtils';
+import { summarizePattern, calculateIrregularities } from '../../utils/scheduleUtils';
 
 const ShiftApprovalModal = ({ staffMember, schedule, shiftPatterns, holidays, year, month, onConfirm, onClose }) => {
     const remarksRef = useRef(null);
@@ -15,67 +13,16 @@ const ShiftApprovalModal = ({ staffMember, schedule, shiftPatterns, holidays, ye
         );
     }, [staffMember.defaultShift.pattern, staffMember.defaultShift.hasBreakArray, shiftPatterns]);
 
-    // イレギュラー勤務（基本パターンと異なる日）の抽出ロジック
+    // イレギュラー勤務（基本パターンと異なる日）の抽出ロジック（共通関数を使用）
     const irregularPatterns = useMemo(() => {
-        const irregularities = [];
-        const daysInMonth = new Date(year, month, 0).getDate();
-
-        for (let day = 1; day <= daysInMonth; day++) {
-            const date = new Date(year, month - 1, day);
-            const dayOfWeek = date.getDay(); // 0 = Sunday
-            const isHoliday = holidays.includes(day);
-            const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
-
-            let expectedValue = '';
-            
-            if (isWeekend || isHoliday) {
-                expectedValue = 'シフト休';
-            } else {
-                const patternIndex = dayOfWeek - 1; // 0 = Monday
-                if (patternIndex >= 0 && patternIndex < 5) {
-                    const patternId = staffMember.defaultShift.pattern[patternIndex];
-                    if (patternId === 'シフト休') {
-                        expectedValue = 'シフト休';
-                    } else if (patternId) {
-                        const pattern = shiftPatterns.find(p => p.id === patternId);
-                        expectedValue = pattern ? pattern.workHours : '';
-                    }
-                }
-            }
-            
-            const actualValue = schedule?.[day] ?? '';
-
-            // 比較用に値を正規化（ロックされた休日オブジェクト等の場合は type を使用）
-            let actualCompare = actualValue;
-            if (typeof actualValue === 'object' && actualValue !== null) {
-                actualCompare = actualValue.type || '';
-            }
-
-            // 一致判定の強化（より柔軟に判定する）
-            let isEffectivelySame = (actualCompare === expectedValue);
-
-            if (!isEffectivelySame) {
-                if (expectedValue === 'シフト休') {
-                    // 想定が休日の場合、実質的に休みを意味する値（空欄、0、休など）であれば一致とみなす
-                    const emptyOrRestValues = ['', 0, '0', '休', 'シフト休', null, undefined];
-                    if (emptyOrRestValues.includes(actualCompare)) {
-                        isEffectivelySame = true;
-                    }
-                } else if (expectedValue !== '') {
-                    // 想定が数値(稼働時間)の場合、文字列や小数点表記の違いを吸収 (例: 8 と "8.0")
-                    if (!isNaN(parseFloat(actualCompare)) && !isNaN(parseFloat(expectedValue)) && parseFloat(actualCompare) === parseFloat(expectedValue)) {
-                        isEffectivelySame = true;
-                    }
-                }
-            }
-
-            if (!isEffectivelySame) {
-                const dayOfWeekStr = ['日', '月', '火', '水', '木', '金', '土'][dayOfWeek];
-                const formattedActual = formatValue(actualValue);
-                irregularities.push(`${month}/${day}(${dayOfWeekStr}): ${String(formattedActual) || '未入力'}`);
-            }
-        }
-        return irregularities;
+        return calculateIrregularities(
+            staffMember, 
+            schedule, // 当該スタッフの月次スケジュールオブジェクト
+            shiftPatterns, 
+            holidays, 
+            year, 
+            month
+        );
     }, [staffMember, schedule, shiftPatterns, holidays, year, month]);
     
     const InfoSection = ({ title, children }) => (
