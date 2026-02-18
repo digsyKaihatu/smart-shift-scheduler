@@ -45,27 +45,27 @@ export const useShiftData = (currentYear, currentMonth) => {
 
         if (configSnap.exists()) {
           const data = configSnap.data();
-          setStaff(data.staff || initialStaffData);
-          setTasks(data.tasks || initialTasks);
-          setShiftPatterns(data.shiftPatterns || initialShiftPatterns);
-          setAdminConfig(data.adminConfig || initialAdminConfig);
+          _setStaff(data.staff || initialStaffData);
+          _setTasks(data.tasks || initialTasks);
+          _setShiftPatterns(data.shiftPatterns || initialShiftPatterns);
+          _setAdminConfig(data.adminConfig || initialAdminConfig);
         } else {
           const legacySnap = await getDoc(legacyDocRef);
           if (legacySnap.exists()) {
             setLoadingMessage("データの移行処理を行っています...");
             const legacyData = legacySnap.data();
-            setStaff(legacyData.staff || initialStaffData);
-            setTasks(legacyData.tasks || initialTasks);
-            setShiftPatterns(legacyData.shiftPatterns || initialShiftPatterns);
-            setAdminConfig(legacyData.adminConfig || initialAdminConfig);
+            _setStaff(legacyData.staff || initialStaffData);
+            _setTasks(legacyData.tasks || initialTasks);
+            _setShiftPatterns(legacyData.shiftPatterns || initialShiftPatterns);
+            _setAdminConfig(legacyData.adminConfig || initialAdminConfig);
             if (legacyData.schedule) {
               setSchedule(legacyData.schedule);
             }
           } else {
-            setStaff(initialStaffData);
-            setTasks(initialTasks);
-            setShiftPatterns(initialShiftPatterns);
-            setAdminConfig(initialAdminConfig);
+            _setStaff(initialStaffData);
+            _setTasks(initialTasks);
+            _setShiftPatterns(initialShiftPatterns);
+            _setAdminConfig(initialAdminConfig);
           }
         }
         setInitialDataLoaded(true);
@@ -310,13 +310,19 @@ export const useShiftData = (currentYear, currentMonth) => {
 
   // 古いAPI（setSchedule）を直接使わないように注意が必要
   return {
-    staff, setStaff,
+    staff, 
+    setStaff: _setStaff, // _setStaffをsetStaffとして外部に公開
     schedule, 
     updateShiftItem,   // 単一更新用
     updateShiftItems,  // 一括更新用
     updateShiftUserMonth, // ユーザー月次更新用
     undo, redo, canUndo: history.past.length > 0, canRedo: history.future.length > 0,
-    tasks, setTasks, shiftPatterns, setShiftPatterns, adminConfig, setAdminConfig, 
+    tasks, 
+    setTasks: _setTasks, // 同様に_setTasksを公開
+    shiftPatterns, 
+    setShiftPatterns: _setShiftPatterns, // 同様に_setShiftPatternsを公開
+    adminConfig, 
+    setAdminConfig: _setAdminConfig, // 同様に_setAdminConfigを公開
     isLoading, loadingMessage, setLoadingMessage, setIsLoading, saveStatus, initialDataLoaded
   };
 };
