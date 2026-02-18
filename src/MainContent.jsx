@@ -6,7 +6,7 @@ import { useShiftData } from './hooks/useShiftData';
 import { chatService } from './services/chatService';
 import { downloadScheduleCSV } from './utils/csvExporter';
 import { getJapaneseHolidays, formatValue } from './utils/dateUtils';
-import { generateScheduleForMonth, summarizePattern } from './utils/scheduleUtils';
+import { generateScheduleForMonth, summarizePattern, calculateIrregularities } from './utils/scheduleUtils';
 
 // Components
 import LoadingScreen from './components/common/LoadingScreen';
@@ -59,28 +59,22 @@ const MainContent = () => {
     const identifyUser = async () => {
       if (authState?.isAuthenticated) {
         const userInfo = await oktaAuth.getUser();
-        // staffがまだロードされていない場合は一旦デフォルトユーザーとして設定せずに待機するか、
-        // またはロード済みならマッチングを行う
         if (staff.length > 0) {
             const matchedStaff = staff.find(s => s.email === userInfo.email);
             if (matchedStaff) {
                 setCurrentUser({ ...matchedStaff, email: userInfo.email });
             } else {
-                // メールアドレスが一致しない場合はOktaユーザー情報を使用
                 setCurrentUser({ id: 'okta-user', name: userInfo.name || 'Okta User', email: userInfo.email, role: 'OP' });
             }
         } else {
-            // 初期ロード中でstaffが空の場合の安全策
-            // ローディングが完了するまでcurrentUserをセットしない、あるいは仮のユーザーをセットする
-            // ここでは一旦セットし、staffロード後の再レンダリングで正しい情報に更新されることを期待
             setCurrentUser({ id: 'temp-user', name: userInfo.name || 'Loading...', email: userInfo.email, role: 'OP' });
         }
       }
     };
     identifyUser();
-  }, [authState, oktaAuth, staff]); // staffがロードされたら再実行される
+  }, [authState, oktaAuth, staff]);
 
-  // ハンドラの定義（useCallbackでメモ化して再レンダリング抑制）
+  // ハンドラの定義
   const handleMigrateData = useCallback(() => {
     if (!window.confirm("データ移行（パターンA → I）を実行しますか？\n※この操作は取り消せません。")) return;
     setStaff(prevStaff => {
@@ -147,9 +141,7 @@ const MainContent = () => {
             const strOld = formatValue(currentVal);
             const strNew = formatValue(value);
             if (strOld !== strNew) {
-                // 承認解除
                 setStaff(prev => prev.map(s => s.id === staffId ? { ...s, shiftApproved: { ...s.shiftApproved, [key]: false } } : s));
-                // 変更通知確認
                 setShiftChangeConfirmation({ staffMember: target, day, oldValue: strOld, newValue: strNew });
                 return; 
             }
@@ -160,24 +152,37 @@ const MainContent = () => {
     }
   }, [schedule, key, staff, year, month, isAdmin, updateShiftItem, setStaff]);
 
+  // 承認済みシフト変更通知
   const handleShiftChangeNotificationResponse = useCallback(async (send) => {
       if (!shiftChangeConfirmation) return;
       const { staffMember, day, oldValue, newValue } = shiftChangeConfirmation;
       if (send) {
+          console.log("[MainContent] Sending Shift Change Notification:", { staffMember, day, oldValue, newValue });
           setIsLoading(true);
-          try { await chatService.sendShiftChange(staffMember, year, month, day, oldValue, newValue); }
-          catch (e) { alert('通知送信に失敗しました: ' + e.message); }
+          try { 
+              await chatService.sendShiftChange(staffMember, year, month, day, oldValue, newValue); 
+          } catch (e) { 
+              console.error("[MainContent] Shift Change Notification Failed:", e);
+              alert('通知送信に失敗しました: ' + e.message); 
+          }
           setIsLoading(false);
       }
       setShiftChangeConfirmation(null);
   }, [shiftChangeConfirmation, year, month, setIsLoading]);
 
+  // 欠勤通知
   const handleAbsenceNotificationResponse = useCallback(async (send) => {
     if (!absenceNotificationConfirmation) return;
     const { staffMember } = absenceNotificationConfirmation;
     if (send) {
+      console.log("[MainContent] Sending Absence Notification:", { name: staffMember.name });
       setIsLoading(true);
-      try { await chatService.sendAbsence(staffMember.name); } catch (e) { alert(e.message); }
+      try { 
+          await chatService.sendAbsence(staffMember.name); 
+      } catch (e) { 
+          console.error("[MainContent] Absence Notification Failed:", e);
+          alert('通知送信に失敗しました: ' + e.message); 
+      }
       setIsLoading(false);
     }
     setAbsenceNotificationConfirmation(null);
@@ -190,14 +195,23 @@ const MainContent = () => {
     else setSubmissionConfirmation({ staffId, name: s.name });
   }, [staff, key, setStaff]);
 
+  // 提出通知
   const handleConfirmSubmission = useCallback(async () => {
     if (!submissionConfirmation) return;
     const { staffId, name } = submissionConfirmation;
     let mentions = '';
     if (adminConfig?.submissionNotificationIds) mentions = adminConfig.submissionNotificationIds.split(',').map(id => id.trim()).filter(id => id !== '').map(id => `<users/${id}>`).join(' ');
+    
+    console.log("[MainContent] Sending Submission Notification:", { name, year, month, mentions });
+    
     setIsLoading(true);
     setLoadingMessage('提出通知を送信中...');
-    try { await chatService.sendSubmission(name, year, month, mentions); } catch (e) { alert('通知送信に失敗しました'); }
+    try { 
+        await chatService.sendSubmission(name, year, month, mentions); 
+    } catch (e) { 
+        console.error("[MainContent] Submission Notification Failed:", e);
+        alert('通知送信に失敗しました: ' + e.message); 
+    }
     setIsLoading(false);
     setStaff(prev => prev.map(x => x.id === staffId ? { ...x, shiftSubmitted: { ...x.shiftSubmitted, [key]: true } } : x));
     setSubmissionConfirmation(null);
@@ -210,53 +224,71 @@ const MainContent = () => {
     else setRemandConfirmation({ staffId, name: s.name });
   }, [staff, key, setStaff]);
 
+  // 差戻通知
   const handleConfirmRemand = useCallback(async () => {
     if (!remandConfirmation) return;
     const { staffId, name } = remandConfirmation;
     const s = staff.find(x => x.id === staffId);
+    
+    console.log("[MainContent] Sending Remand Notification:", { name, chatUserId: s.chatUserId });
+
     setIsLoading(true);
     setLoadingMessage('差戻通知を送信中...');
-    try { await chatService.sendRemand(name, s.chatUserId); } catch (e) { alert('通知送信に失敗しました'); }
+    try { 
+        await chatService.sendRemand(name, s.chatUserId); 
+    } catch (e) { 
+        console.error("[MainContent] Remand Notification Failed:", e);
+        alert('通知送信に失敗しました: ' + e.message); 
+    }
     setIsLoading(false);
     setStaff(prev => prev.map(x => x.id === staffId ? { ...x, shiftRemanded: { ...x.shiftRemanded, [key]: true } } : x));
     setRemandConfirmation(null);
   }, [remandConfirmation, staff, setIsLoading, setLoadingMessage, setStaff, key]);
 
+  // 承認通知
   const handleConfirmApproval = useCallback(async (remarks) => {
     if (!approvalModalStaffId) return;
     const s = staff.find(x => x.id === approvalModalStaffId);
-    const irregularities = [];
-    for (let day = 1; day <= daysInMonth; day++) {
-        const date = new Date(year, month - 1, day);
-        const dayOfWeek = date.getDay();
-        const isHoliday = currentMonthHolidays.includes(day);
-        let expected = (dayOfWeek === 0 || dayOfWeek === 6 || isHoliday) ? 'シフト休' : '';
-        if (expected === '') {
-             const pIdx = dayOfWeek - 1;
-             const pId = s.defaultShift.pattern[pIdx];
-             if (pId === 'シフト休') expected = 'シフト休';
-             else { const p = shiftPatterns.find(x => x.id === pId); expected = p ? p.workHours : ''; }
-        }
-        const actual = schedule[key]?.[s.id]?.[day] ?? '';
-        let actualCompare = (typeof actual === 'object' && actual !== null) ? actual.type || '' : actual;
-        let isEffectivelySame = (actualCompare === expected);
-        if (!isEffectivelySame) {
-            if (expected === 'シフト休') { if (['', 0, '0', '休', 'シフト休', null, undefined].includes(actualCompare)) isEffectivelySame = true; }
-            else if (expected !== '') { if (parseFloat(actualCompare) === parseFloat(expected)) isEffectivelySame = true; }
-        }
-        if (!isEffectivelySame) {
-            const wStr = ['日', '月', '火', '水', '木', '金', '土'][dayOfWeek];
-            irregularities.push(`${month}/${day}(${wStr}): ${formatValue(actual) || '未入力'}`);
-        }
-    }
     
+    // 共通関数を使用してイレギュラー勤務を抽出
+    const irregularities = calculateIrregularities(
+        s, 
+        schedule[key]?.[s.id], 
+        shiftPatterns, 
+        currentMonthHolidays, 
+        year, 
+        month
+    );
+    
+    const patternSummary = summarizePattern(s.defaultShift.pattern, shiftPatterns, s.defaultShift.hasBreakArray);
+    const irregularitiesText = irregularities.join('\n') || 'なし';
+
+    console.log("[MainContent] Sending Approval Notification:", { 
+        staff: s.name, 
+        patternSummary, 
+        irregularitiesText, 
+        remarks 
+    });
+
     setIsLoading(true);
     setLoadingMessage('承認通知を送信中...');
-    try { await chatService.sendApproval(s, year, month, summarizePattern(s.defaultShift.pattern, shiftPatterns, s.defaultShift.hasBreakArray), irregularities.join('\n') || 'なし', remarks); } catch (e) { alert('通知送信に失敗しました'); }
+    try { 
+        await chatService.sendApproval(
+            s, 
+            year, 
+            month, 
+            patternSummary, 
+            irregularitiesText, 
+            remarks
+        ); 
+    } catch (e) { 
+        console.error("[MainContent] Approval Notification Failed:", e);
+        alert('通知送信に失敗しました: ' + e.message); 
+    }
     setIsLoading(false);
     setStaff(prev => prev.map(x => x.id === approvalModalStaffId ? { ...x, shiftApproved: { ...x.shiftApproved, [key]: true } } : x));
     setApprovalModalStaffId(null);
-  }, [approvalModalStaffId, staff, daysInMonth, year, month, currentMonthHolidays, schedule, key, shiftPatterns, setIsLoading, setLoadingMessage, setStaff]);
+  }, [approvalModalStaffId, staff, year, month, schedule, key, shiftPatterns, currentMonthHolidays, setIsLoading, setLoadingMessage, setStaff]);
 
   const handleToggleShiftApproved = useCallback((staffId) => {
       const s = staff.find(x => x.id === staffId);
