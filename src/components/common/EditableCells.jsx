@@ -229,7 +229,7 @@ export const EditableCell = ({
     }
   };
   
-  // スタイルを元に戻す: text-xs, h-8
+  // サイズを元に戻す: text-sm -> text-xs, h-10 -> h-8
   const baseClasses = `border-b border-r ${borderClass} text-center text-xs h-8 flex items-center justify-center w-full min-w-full max-w-full outline-none focus:ring-2 focus:ring-inset focus:ring-sky-500 z-10`;
 
   if (mode === 'view') {
@@ -263,6 +263,7 @@ export const EditableCell = ({
           onBlur={() => {
               if (mode !== 'input') setMode('view');
           }}
+          // サイズを元に戻す: text-sm -> text-xs
           className="absolute inset-0 w-full h-full opacity-100 bg-transparent text-center text-xs cursor-pointer appearance-none outline-none focus:ring-2 focus:ring-sky-500"
           defaultValue=""
         >
@@ -299,6 +300,7 @@ export const EditableCell = ({
                     setTimeout(() => moveFocus(moveDir, e), 0);
                 }
             }}
+            // サイズを元に戻す: text-sm -> text-xs
             className="absolute inset-0 w-full h-full p-0 m-0 bg-transparent text-center text-xs outline-none"
             style={{ paddingLeft: editingSpecialShift ? '1.5rem' : '0' }}
           />
@@ -323,7 +325,7 @@ export const EditableStaffInfoCell = ({ value, onUpdate, className, disabled = f
     setIsEditing(false);
   };
 
-  // スタイルを元に戻す: text-[11px], h-8
+  // サイズを元に戻す: text-sm -> text-[11px], h-10 -> h-8
   const wrapperClass = `h-8 text-[11px] border-b border-r border-slate-300 flex items-center px-2 overflow-hidden ${className}`;
 
   if (isEditing) {
