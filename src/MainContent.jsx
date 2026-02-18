@@ -122,11 +122,9 @@ const MainContent = () => {
   }), [year, month, daysInMonth]);
 
   // 初回ロード時や月変更時に、まだデータがない場合はスケジュールを初期生成する
-  // ※ useShiftData側でロード時に空なら生成するロジックが入ったため、ここでは補完的な役割
   useEffect(() => {
     if (initialDataLoaded && !schedule[key]) {
-        // useShiftData内でhandleしているので、ここでは明示的にupdateShiftUserMonth等を呼ばなくても
-        // useShiftData側で初期データがセットされるのを待つ
+        // useShiftData内でhandleしているので待機
     }
   }, [year, month, schedule, staff, shiftPatterns, initialDataLoaded]);
 
@@ -158,15 +156,36 @@ const MainContent = () => {
     const currentVal = schedule[key]?.[staffId]?.[day];
     const isDiff = JSON.stringify(currentVal) !== JSON.stringify(value);
 
+    // 承認ステータスを取得
+    const targetStaff = staff.find(s => s.id === staffId);
+    const isApproved = targetStaff?.shiftApproved?.[key];
+
+    let newValue = value;
+
+    // 承認済み状態で変更があった場合、変更フラグ(modified)を付与したオブジェクトに変換する
+    if (isApproved && isDiff) {
+        if (typeof value === 'number') {
+            // 数値（稼働時間）の場合 -> { type: '稼働', hours: 8, modified: true }
+            newValue = { type: '稼働', hours: value, modified: true };
+        } else if (typeof value === 'string' && value !== '') {
+            // 文字列（ステータス）の場合 -> { type: value, modified: true }
+            newValue = { type: value, modified: true };
+        } else if (typeof value === 'object' && value !== null) {
+            // 既にオブジェクトの場合 -> { ..., modified: true }
+            newValue = { ...value, modified: true };
+        } else if (value === '') {
+            // クリア（空）の場合 -> { type: '', modified: true }
+            newValue = { type: '', modified: true };
+        }
+    }
+
     // データの更新
-    handleUpdateScheduleGeneric(year, month, staffId, day, value);
+    handleUpdateScheduleGeneric(year, month, staffId, day, newValue);
 
     // 変更があった場合のみ追加処理を実行
     if (isDiff) {
-        const targetStaff = staff.find(s => s.id === staffId);
-        
-        // 【追加】承認済みかつ管理者以外の変更の場合、通知＆承認解除
-        if (targetStaff?.shiftApproved?.[key] && !isAdmin) {
+        // 【変更点】承認済みなら（管理者かどうかに関わらず）通知＆承認解除
+        if (isApproved) {
             // 承認ステータスを解除
             setStaff(prev => prev.map(s => {
                 if (s.id === staffId) {
@@ -192,8 +211,8 @@ const MainContent = () => {
 
         // 管理者による欠勤変更時の確認モーダル表示
         if (isAdmin && value === '欠') {
-          const target = staff.find(s => s.id === staffId);
-          setAbsenceNotificationConfirmation({ staffMember: target, day, value });
+          // targetStaffは上で定義済み
+          setAbsenceNotificationConfirmation({ staffMember: targetStaff, day, value });
         }
     }
   };
@@ -201,10 +220,6 @@ const MainContent = () => {
   const handleAbsenceNotificationResponse = async (send) => {
     if (!absenceNotificationConfirmation) return;
     const { staffMember, day, value } = absenceNotificationConfirmation;
-    // 更新処理は確認前に行われる可能性があるため、ここでも念のため呼ぶか、もしくは確認後に更新するか。
-    // 元のロジックでは handleUpdateSchedule 内で更新済みのケースと分かれていたが、
-    // ここでは確認後に確定させるフローとするなら、handleUpdateScheduleで呼んだ更新は既に行われている。
-    // 通知のみ行う。
     if (send) {
       setIsLoading(true);
       try { await chatService.sendAbsence(staffMember.name); } catch (e) { alert(e.message); }
@@ -307,6 +322,37 @@ const MainContent = () => {
     try { await chatService.sendApproval(s, year, month, summarizePattern(s.defaultShift.pattern, shiftPatterns, s.defaultShift.hasBreakArray), irregularities.join('\n') || 'なし', remarks); } catch (e) { alert('通知送信に失敗しました'); }
     setIsLoading(false);
     
+    // 【変更点】承認時にmodifiedフラグ（変更ハイライト用）をクリアする
+    const staffSchedule = schedule[key]?.[s.id] || {};
+    const updates = [];
+    Object.entries(staffSchedule).forEach(([day, val]) => {
+        if (typeof val === 'object' && val?.modified) {
+            // modifiedフラグを除去した値を作成
+            let cleanedVal;
+            const { modified, ...rest } = val;
+            
+            // 元のデータ形式への復元を試みる
+            if (rest.type === '稼働' && typeof rest.hours === 'number' && Object.keys(rest).length === 2) {
+                // { type: '稼働', hours: 8 } -> 8
+                cleanedVal = rest.hours;
+            } else if (rest.type === '' && Object.keys(rest).length === 1) {
+                // { type: '' } -> ''
+                cleanedVal = '';
+            } else if (Object.keys(rest).length === 1 && typeof rest.type === 'string') {
+                // { type: '有休' } -> '有休'
+                cleanedVal = rest.type;
+            } else {
+                // 複雑なオブジェクト（時間単位休など）はオブジェクトのままプロパティ削除だけ反映
+                cleanedVal = rest;
+            }
+            updates.push({ staffId: s.id, day: Number(day), value: cleanedVal });
+        }
+    });
+    
+    if (updates.length > 0) {
+        updateShiftItems(year, month, updates);
+    }
+
     setStaff(prev => prev.map(x => {
         if (x.id === approvalModalStaffId) {
             const currentApproved = x.shiftApproved || {};
@@ -401,12 +447,6 @@ const MainContent = () => {
     if (confirmDelete.type === 'staff') {
         const deletedId = confirmDelete.id;
         setStaff(prev => prev.filter(s => s.id !== deletedId));
-        // スケジュールデータからも削除が必要だが、Firestore上ではフィールド削除が必要。
-        // updateShiftUserMonthでnullや空オブジェクトを送るなどの対応が考えられるが、
-        // 現状のupdateShiftItems等は値更新用。
-        // 簡易的にローカルは消えるが、DBに残るゴミデータは許容するか、
-        // useShiftDataにdelete用の関数を追加するのがベスト。
-        // 今回はとりあえず表示上消える処理のみ（DBには残る可能性があるが実害は少ない）
     } else {
         setTasks(prev => prev.filter(t => t.id !== confirmDelete.id));
         setStaff(prev => prev.map(s => ({ ...s, possibleTasks: s.possibleTasks.filter(tid => tid !== confirmDelete.id) })));
@@ -442,7 +482,6 @@ const MainContent = () => {
 
       if (isAlreadyLockedHoliday) {
         setHolidayConfirmation({ day, isUnlocking: true, onConfirm: () => {
-                // 解除時は一括更新用の配列を作成
                 const updates = [];
                 staff.forEach(s => {
                     const date = new Date(year, month - 1, day);
@@ -543,7 +582,7 @@ const MainContent = () => {
             currentUser={currentUser} 
             schedule={currentMonthSchedule} 
             staff={staff} 
-            tasks={tasks} // Tasksを渡すように修正
+            tasks={tasks}
             days={days} 
             holidays={currentMonthHolidays} 
             shiftPatterns={shiftPatterns} 
