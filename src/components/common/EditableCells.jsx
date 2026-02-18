@@ -18,12 +18,6 @@ const formatValue = (value) => {
   }
 
   if (value && typeof value === 'object' && 'type' in value) {
-    // 承認後変更（modifiedフラグ付き）の数値データ（稼働時間）の表示対応
-    if (value.type === '稼働' && 'hours' in value) {
-      const num = value.hours;
-      return num % 1 === 0 ? Math.floor(num) : num.toFixed(1);
-    }
-
     let displayType = value.type;
     if (mapping[value.type]) {
       displayType = mapping[value.type];
@@ -36,7 +30,7 @@ const formatValue = (value) => {
     if ('locked' in value) {
       return displayType;
     }
-    return `${displayType}${value.hours ? `(${value.hours})` : ''}`;
+    return `${displayType}(${value.hours})`;
   }
 
   if (typeof value === 'string') {
@@ -197,11 +191,6 @@ export const EditableCell = ({
         return `bg-sky-200 ring-2 ring-inset ring-sky-500 z-20 ${isEffectivelyDisabled ? '' : 'hover:bg-sky-300'}`;
     }
 
-    // 承認後の変更ハイライト（オレンジ色の枠線）
-    if (typeof value === 'object' && value?.modified) {
-        return `bg-orange-50 ring-2 ring-inset ring-orange-400 ${isEffectivelyDisabled ? '' : 'hover:bg-orange-100'}`;
-    }
-
     const hoverClass = isEffectivelyDisabled ? '' : 'hover:bg-opacity-80';
     let baseBg = 'bg-white';
     if (isToday && value === '') baseBg = 'bg-yellow-50';
@@ -210,7 +199,6 @@ export const EditableCell = ({
 
     if (typeof value === 'number' && value > 0) return `bg-green-100 ${hoverClass}`;
     if (typeof value === 'object' && value !== null && 'type' in value) {
-        if (value.type === '稼働') return `bg-green-100 ${hoverClass}`; // modifiedされた稼働時間
         if (value.type.includes('有休')) return `bg-yellow-100 ${hoverClass}`;
         if (value.type === 'シフト休') {
              if (!isHoliday && !isWeekend) return `bg-white text-black ${hoverClass}`;
@@ -229,8 +217,9 @@ export const EditableCell = ({
     }
   };
   
-  // スタイルを元に戻す: text-xs, h-8
-  const baseClasses = `border-b border-r ${borderClass} text-center text-xs h-8 flex items-center justify-center w-full min-w-full max-w-full outline-none focus:ring-2 focus:ring-inset focus:ring-sky-500 z-10`;
+  // 文字サイズを text-sm に変更 (以前は text-xs)
+  // 幅は親側で制御するが、クラスとしては w-[80px] 程度を想定
+  const baseClasses = `border-b border-r ${borderClass} text-center text-sm h-10 flex items-center justify-center w-full min-w-full max-w-full outline-none focus:ring-2 focus:ring-inset focus:ring-sky-500 z-10`;
 
   if (mode === 'view') {
     return (
@@ -263,7 +252,7 @@ export const EditableCell = ({
           onBlur={() => {
               if (mode !== 'input') setMode('view');
           }}
-          className="absolute inset-0 w-full h-full opacity-100 bg-transparent text-center text-xs cursor-pointer appearance-none outline-none focus:ring-2 focus:ring-sky-500"
+          className="absolute inset-0 w-full h-full opacity-100 bg-transparent text-center text-sm cursor-pointer appearance-none outline-none focus:ring-2 focus:ring-sky-500"
           defaultValue=""
         >
           <option value="" disabled hidden>選択...</option>
@@ -299,7 +288,7 @@ export const EditableCell = ({
                     setTimeout(() => moveFocus(moveDir, e), 0);
                 }
             }}
-            className="absolute inset-0 w-full h-full p-0 m-0 bg-transparent text-center text-xs outline-none"
+            className="absolute inset-0 w-full h-full p-0 m-0 bg-transparent text-center text-sm outline-none"
             style={{ paddingLeft: editingSpecialShift ? '1.5rem' : '0' }}
           />
         </>
@@ -323,8 +312,8 @@ export const EditableStaffInfoCell = ({ value, onUpdate, className, disabled = f
     setIsEditing(false);
   };
 
-  // スタイルを元に戻す: text-[11px], h-8
-  const wrapperClass = `h-8 text-[11px] border-b border-r border-slate-300 flex items-center px-2 overflow-hidden ${className}`;
+  // 文字サイズを text-sm に変更 (以前は text-[11px])
+  const wrapperClass = `h-10 text-sm border-b border-r border-slate-300 flex items-center px-2 overflow-hidden ${className}`;
 
   if (isEditing) {
     return (
