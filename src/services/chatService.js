@@ -71,5 +71,12 @@ export const chatService = {
       }]
     };
     await sendToChat(url, cardPayload);
+  },
+
+  // 承認後の変更通知 (新規追加)
+  sendChangeAfterApproval: async (name, year, month, day, valueStr, mentions = '') => {
+    const url = import.meta.env.VITE_CHAT_WEBHOOK_SUBMISSION; // 管理者向けなので提出用Webhookを使用
+    const message = `${mentions} 【変更通知】\n${name}さんの承認済みシフトが変更されました。\n日付: ${month}/${day}\n変更内容: ${valueStr}\n※承認ステータスを解除しました。`;
+    await sendToChat(url, { text: message });
   }
 };
