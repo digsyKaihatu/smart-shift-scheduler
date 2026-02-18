@@ -10,17 +10,17 @@ export const useShiftData = (currentYear, currentMonth) => {
   const [saveStatus, setSaveStatus] = useState('saved');
   const [initialDataLoaded, setInitialDataLoaded] = useState(false);
 
-  // Main State (内部更新用セッターは _set プレフィックス)
-  const [staff, _setStaff] = useState([]);
-  const [schedule, setSchedule] = useState({}); 
-  const [tasks, _setTasks] = useState([]);
-  const [shiftPatterns, _setShiftPatterns] = useState([]);
-  const [adminConfig, _setAdminConfig] = useState(initialAdminConfig);
+  // Main State
+  const [staff, setStaff] = useState([]);
+  const [schedule, setSchedule] = useState({}); // { "2024-1": {...}, "2024-2": {...} }
+  const [tasks, setTasks] = useState([]);
+  const [shiftPatterns, setShiftPatterns] = useState([]);
+  const [adminConfig, setAdminConfig] = useState(initialAdminConfig);
 
-  // Undo/Redo History
+  // Undo/Redo History State
   const [history, setHistory] = useState({ past: [], future: [] });
 
-  // Refs
+  // Refs for debouncing and tracking
   const debouncedSaveConfig = useRef(null);
   const debouncedSaveSchedule = useRef(null);
   const isInitialLoadComplete = useRef(false);
@@ -29,9 +29,11 @@ export const useShiftData = (currentYear, currentMonth) => {
   // 変更差分を保持するRef (Key: "YYYY-MM", Value: { "scheduleData.staffId.day": value, ... })
   const pendingChanges = useRef({});
 
-  // Firestore Refs
+  // ドキュメント参照
   const configDocRef = doc(db, "schedules", "config");
   const legacyDocRef = doc(db, "schedules", "main");
+
+  // 月ごとのドキュメント参照を取得するヘルパー
   const getMonthDocRef = (year, month) => doc(db, "schedules", `${year}-${month}`);
 
   // ---------------------------------------------------------------------------
@@ -45,27 +47,27 @@ export const useShiftData = (currentYear, currentMonth) => {
 
         if (configSnap.exists()) {
           const data = configSnap.data();
-          _setStaff(data.staff || initialStaffData);
-          _setTasks(data.tasks || initialTasks);
-          _setShiftPatterns(data.shiftPatterns || initialShiftPatterns);
-          _setAdminConfig(data.adminConfig || initialAdminConfig);
+          setStaff(data.staff || initialStaffData);
+          setTasks(data.tasks || initialTasks);
+          setShiftPatterns(data.shiftPatterns || initialShiftPatterns);
+          setAdminConfig(data.adminConfig || initialAdminConfig);
         } else {
           const legacySnap = await getDoc(legacyDocRef);
           if (legacySnap.exists()) {
             setLoadingMessage("データの移行処理を行っています...");
             const legacyData = legacySnap.data();
-            _setStaff(legacyData.staff || initialStaffData);
-            _setTasks(legacyData.tasks || initialTasks);
-            _setShiftPatterns(legacyData.shiftPatterns || initialShiftPatterns);
-            _setAdminConfig(legacyData.adminConfig || initialAdminConfig);
+            setStaff(legacyData.staff || initialStaffData);
+            setTasks(legacyData.tasks || initialTasks);
+            setShiftPatterns(legacyData.shiftPatterns || initialShiftPatterns);
+            setAdminConfig(legacyData.adminConfig || initialAdminConfig);
             if (legacyData.schedule) {
               setSchedule(legacyData.schedule);
             }
           } else {
-            _setStaff(initialStaffData);
-            _setTasks(initialTasks);
-            _setShiftPatterns(initialShiftPatterns);
-            _setAdminConfig(initialAdminConfig);
+            setStaff(initialStaffData);
+            setTasks(initialTasks);
+            setShiftPatterns(initialShiftPatterns);
+            setAdminConfig(initialAdminConfig);
           }
         }
         setInitialDataLoaded(true);
@@ -158,13 +160,16 @@ export const useShiftData = (currentYear, currentMonth) => {
 
     debouncedSaveSchedule.current = setTimeout(async () => {
       setSaveStatus('saving');
+      
       const changesByMonth = pendingChanges.current;
       pendingChanges.current = {}; // 送信キューをリセット
 
       const promises = Object.entries(changesByMonth).map(async ([monthKey, updates]) => {
         if (Object.keys(updates).length === 0) return;
+
         const [y, m] = monthKey.split('-');
         const docRef = getMonthDocRef(y, m);
+        
         updates['updatedAt'] = new Date().toISOString();
 
         try {
@@ -248,9 +253,11 @@ export const useShiftData = (currentYear, currentMonth) => {
   const updateShiftItems = useCallback((year, month, updates) => {
     if (!updates || updates.length === 0) return;
     const key = `${year}-${month}`;
+
     setSchedule(prev => {
       const currentMonthData = { ...(prev[key] || {}) };
       let hasChange = false;
+
       updates.forEach(({ staffId, day, value }) => {
         if (!currentMonthData[staffId]) currentMonthData[staffId] = {};
         if (JSON.stringify(currentMonthData[staffId][day]) !== JSON.stringify(value)) {
@@ -258,32 +265,39 @@ export const useShiftData = (currentYear, currentMonth) => {
            hasChange = true;
         }
       });
+
       if (!hasChange) return prev;
       setHistory(h => ({ past: [...h.past, prev], future: [] }));
       return { ...prev, [key]: currentMonthData };
     });
+
     if (!pendingChanges.current[key]) pendingChanges.current[key] = {};
     
     updates.forEach(({ staffId, day, value }) => {
       pendingChanges.current[key][`scheduleData.${staffId}.${day}`] = value;
     });
+
     triggerScheduleSave();
   }, [triggerScheduleSave]);
 
   // ユーザーの1ヶ月分のデータを丸ごと更新（パターン適用時などに便利）
   const updateShiftUserMonth = useCallback((year, month, staffId, monthData) => {
     const key = `${year}-${month}`;
+    
     setSchedule(prev => {
       const currentMonthData = { ...(prev[key] || {}) };
       currentMonthData[staffId] = monthData;
       return { ...prev, [key]: currentMonthData };
     });
+
     if (!pendingChanges.current[key]) pendingChanges.current[key] = {};
     // マップ全体を置換
     pendingChanges.current[key][`scheduleData.${staffId}`] = monthData;
+    
     triggerScheduleSave();
   }, [triggerScheduleSave]);
 
+  // Undo / Redo
   const undo = useCallback(() => {
     setHistory(prev => {
       const { past, future } = prev;
@@ -310,19 +324,16 @@ export const useShiftData = (currentYear, currentMonth) => {
 
   // 古いAPI（setSchedule）を直接使わないように注意が必要
   return {
-    staff, 
-    setStaff: _setStaff, // _setStaffをsetStaffとして外部に公開
+    staff, setStaff,
     schedule, 
     updateShiftItem,   // 単一更新用
     updateShiftItems,  // 一括更新用
     updateShiftUserMonth, // ユーザー月次更新用
     undo, redo, canUndo: history.past.length > 0, canRedo: history.future.length > 0,
-    tasks, 
-    setTasks: _setTasks, // 同様に_setTasksを公開
-    shiftPatterns, 
-    setShiftPatterns: _setShiftPatterns, // 同様に_setShiftPatternsを公開
-    adminConfig, 
-    setAdminConfig: _setAdminConfig, // 同様に_setAdminConfigを公開
-    isLoading, loadingMessage, setLoadingMessage, setIsLoading, saveStatus, initialDataLoaded
+    tasks, setTasks,
+    shiftPatterns, setShiftPatterns,
+    adminConfig, setAdminConfig,
+    isLoading, loadingMessage, setLoadingMessage, setIsLoading,
+    saveStatus, initialDataLoaded
   };
 };
