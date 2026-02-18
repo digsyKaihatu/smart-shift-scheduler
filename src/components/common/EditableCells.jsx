@@ -229,7 +229,8 @@ export const EditableCell = ({
     }
   };
   
-  const baseClasses = `border-b border-r ${borderClass} text-center text-sm h-10 flex items-center justify-center w-full min-w-full max-w-full outline-none focus:ring-2 focus:ring-inset focus:ring-sky-500 z-10`;
+  // スタイルを元に戻す: text-xs, h-8
+  const baseClasses = `border-b border-r ${borderClass} text-center text-xs h-8 flex items-center justify-center w-full min-w-full max-w-full outline-none focus:ring-2 focus:ring-inset focus:ring-sky-500 z-10`;
 
   if (mode === 'view') {
     return (
@@ -262,7 +263,7 @@ export const EditableCell = ({
           onBlur={() => {
               if (mode !== 'input') setMode('view');
           }}
-          className="absolute inset-0 w-full h-full opacity-100 bg-transparent text-center text-sm cursor-pointer appearance-none outline-none focus:ring-2 focus:ring-sky-500"
+          className="absolute inset-0 w-full h-full opacity-100 bg-transparent text-center text-xs cursor-pointer appearance-none outline-none focus:ring-2 focus:ring-sky-500"
           defaultValue=""
         >
           <option value="" disabled hidden>選択...</option>
@@ -298,7 +299,7 @@ export const EditableCell = ({
                     setTimeout(() => moveFocus(moveDir, e), 0);
                 }
             }}
-            className="absolute inset-0 w-full h-full p-0 m-0 bg-transparent text-center text-sm outline-none"
+            className="absolute inset-0 w-full h-full p-0 m-0 bg-transparent text-center text-xs outline-none"
             style={{ paddingLeft: editingSpecialShift ? '1.5rem' : '0' }}
           />
         </>
@@ -322,7 +323,8 @@ export const EditableStaffInfoCell = ({ value, onUpdate, className, disabled = f
     setIsEditing(false);
   };
 
-  const wrapperClass = `h-10 text-sm border-b border-r border-slate-300 flex items-center px-2 overflow-hidden ${className}`;
+  // スタイルを元に戻す: text-[11px], h-8
+  const wrapperClass = `h-8 text-[11px] border-b border-r border-slate-300 flex items-center px-2 overflow-hidden ${className}`;
 
   if (isEditing) {
     return (
