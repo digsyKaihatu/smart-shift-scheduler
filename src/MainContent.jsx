@@ -154,10 +154,46 @@ const MainContent = () => {
   };
 
   const handleUpdateSchedule = (staffId, day, value) => {
+    // 変更前の値を取得し、実際に変更があったかチェック
+    const currentVal = schedule[key]?.[staffId]?.[day];
+    const isDiff = JSON.stringify(currentVal) !== JSON.stringify(value);
+
+    // データの更新
     handleUpdateScheduleGeneric(year, month, staffId, day, value);
-    if (isAdmin && value === '欠') {
-      const target = staff.find(s => s.id === staffId);
-      setAbsenceNotificationConfirmation({ staffMember: target, day, value });
+
+    // 変更があった場合のみ追加処理を実行
+    if (isDiff) {
+        const targetStaff = staff.find(s => s.id === staffId);
+        
+        // 【追加】承認済みかつ管理者以外の変更の場合、通知＆承認解除
+        if (targetStaff?.shiftApproved?.[key] && !isAdmin) {
+            // 承認ステータスを解除
+            setStaff(prev => prev.map(s => {
+                if (s.id === staffId) {
+                    const newApproved = { ...s.shiftApproved };
+                    newApproved[key] = false; // 承認を取り消す
+                    return { ...s, shiftApproved: newApproved };
+                }
+                return s;
+            }));
+
+            // 通知の送信
+            let mentions = '';
+            if (adminConfig?.submissionNotificationIds) {
+                mentions = adminConfig.submissionNotificationIds.split(',').map(id => id.trim()).filter(id => id !== '').map(id => `<users/${id}>`).join(' ');
+            }
+            
+            // 表示用の値を整形
+            const displayValue = formatValue(value) || '未入力(クリア)';
+            
+            chatService.sendChangeAfterApproval(targetStaff.name, year, month, day, displayValue, mentions)
+                .catch(err => console.error("Notification failed", err));
+        }
+
+        // 管理者による欠勤変更時の確認モーダル表示
+        if (isAdmin && value === '欠') {
+          setAbsenceNotificationConfirmation({ staffMember: targetStaff, day, value });
+        }
     }
   };
 
