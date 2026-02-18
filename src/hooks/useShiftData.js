@@ -29,24 +29,16 @@ export const useShiftData = (currentYear, currentMonth) => {
   // 変更差分を保持するRef (Key: "YYYY-MM", Value: { "scheduleData.staffId.day": value, ... })
   const pendingChanges = useRef({});
 
-  // Firestore Refs (dbが存在しない場合のクラッシュを防ぐため条件分岐を追加)
-  const configDocRef = db ? doc(db, "schedules", "config") : null;
-  const legacyDocRef = db ? doc(db, "schedules", "main") : null;
-  const getMonthDocRef = (year, month) => db ? doc(db, "schedules", `${year}-${month}`) : null;
+  // Firestore Refs
+  const configDocRef = doc(db, "schedules", "config");
+  const legacyDocRef = doc(db, "schedules", "main");
+  const getMonthDocRef = (year, month) => doc(db, "schedules", `${year}-${month}`);
 
   // ---------------------------------------------------------------------------
   // 1. 初期データロード (マスタデータ)
   // ---------------------------------------------------------------------------
   useEffect(() => {
     const loadMasterData = async () => {
-      // DB接続がない場合のエラーハンドリング
-      if (!db || !configDocRef) {
-        setLoadingMessage("エラー: Firebase設定が見つかりません。.envファイルを確認してください。");
-        // 初期データ（ローカル）でフォールバック表示させる場合はここでセットする手もあるが、
-        // 根本解決を促すためローディング表示のままメッセージを出す
-        return;
-      }
-
       try {
         setLoadingMessage("設定データを読み込んでいます...");
         const configSnap = await getDoc(configDocRef);
@@ -91,7 +83,6 @@ export const useShiftData = (currentYear, currentMonth) => {
   // ---------------------------------------------------------------------------
   useEffect(() => {
     if (!initialDataLoaded) return;
-    if (!db) return; // DB未接続ならスキップ
 
     const loadMonthlyData = async () => {
       const key = `${currentYear}-${currentMonth}`;
@@ -139,7 +130,7 @@ export const useShiftData = (currentYear, currentMonth) => {
 
   // A. マスタデータの保存 (Staff, Tasks, Patterns, Config) - 従来通り上書き/マージ
   useEffect(() => {
-    if (!isInitialLoadComplete.current || !db) return;
+    if (!isInitialLoadComplete.current) return;
 
     if (debouncedSaveConfig.current) clearTimeout(debouncedSaveConfig.current);
 
@@ -162,7 +153,6 @@ export const useShiftData = (currentYear, currentMonth) => {
 
   // B. スケジュールデータの保存 (差分更新の実装)
   const triggerScheduleSave = useCallback(() => {
-    if (!db) return;
     setSaveStatus('unsaved');
     if (debouncedSaveSchedule.current) clearTimeout(debouncedSaveSchedule.current);
 
