@@ -18,7 +18,7 @@ const formatValue = (value) => {
   }
 
   if (value && typeof value === 'object' && 'type' in value) {
-    // 機能追加: 承認後変更（modifiedフラグ付き）の数値データ（稼働時間）の表示対応
+    // 承認後変更（modifiedフラグ付き）の数値データ（稼働時間）の表示対応
     if (value.type === '稼働' && 'hours' in value) {
       const num = value.hours;
       return num % 1 === 0 ? Math.floor(num) : num.toFixed(1);
@@ -50,7 +50,7 @@ const formatValue = (value) => {
  * シフト入力セル
  * キーボード操作（矢印キー、Enter、Delete、Tab、F2）に対応
  * 範囲選択とコンテキストメニューに対応
- * * 安定化機能: React.memo でラップし、不要な再レンダリングを抑制
+ * * 安定化のために React.memo でラップしています
  */
 export const EditableCell = React.memo(({ 
   value, onUpdate, borderClass, disabled = false, isAdmin = false, 
@@ -198,7 +198,7 @@ export const EditableCell = React.memo(({
         return `bg-sky-200 ring-2 ring-inset ring-sky-500 z-20 ${isEffectivelyDisabled ? '' : 'hover:bg-sky-300'}`;
     }
 
-    // 機能追加: 承認後の変更ハイライト（オレンジ色の枠線）
+    // 承認後の変更ハイライト（オレンジ色の枠線）
     if (typeof value === 'object' && value?.modified) {
         return `bg-orange-50 ring-2 ring-inset ring-orange-400 ${isEffectivelyDisabled ? '' : 'hover:bg-orange-100'}`;
     }
@@ -230,7 +230,7 @@ export const EditableCell = React.memo(({
     }
   };
   
-  // サイズ指定: text-sm, h-10 (ユーザー提示のベースコード準拠)
+  // サイズ指定: text-sm, h-10 に戻す
   const baseClasses = `border-b border-r ${borderClass} text-center text-sm h-10 flex items-center justify-center w-full min-w-full max-w-full outline-none focus:ring-2 focus:ring-inset focus:ring-sky-500 z-10`;
 
   if (mode === 'view') {
@@ -309,9 +309,6 @@ export const EditableCell = React.memo(({
   );
 });
 
-/**
- * 安定化機能: React.memo でラップ
- */
 export const EditableStaffInfoCell = React.memo(({ value, onUpdate, className, disabled = false }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [currentValue, setCurrentValue] = useState(value);
@@ -327,7 +324,7 @@ export const EditableStaffInfoCell = React.memo(({ value, onUpdate, className, d
     setIsEditing(false);
   };
 
-  // 文字サイズを text-sm に変更 (以前は text-[11px])
+  // サイズ指定: text-sm, h-10 に戻す
   const wrapperClass = `h-10 text-sm border-b border-r border-slate-300 flex items-center px-2 overflow-hidden ${className}`;
 
   if (isEditing) {
