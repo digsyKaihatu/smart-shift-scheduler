@@ -199,6 +199,12 @@ const MainContent = () => {
     if (isDiff) {
         // 承認済みシフトの変更処理
         if (isApproved) {
+            // 表示用の値を生成し、(undefined)が含まれる場合は削除する
+            let safeDisplayValue = formatValue(newValue) || '未入力(クリア)';
+            if (typeof safeDisplayValue === 'string') {
+                safeDisplayValue = safeDisplayValue.replace(/\(undefined\)/g, '');
+            }
+
             // 変更情報を一時リストに追加（通知はまだ送らない）
             setPendingChanges(prev => {
                 // 同じ日付の修正が既にある場合は上書きする
@@ -207,7 +213,7 @@ const MainContent = () => {
                     staffId,
                     name: targetStaff.name,
                     day,
-                    displayValue: formatValue(newValue) || '未入力(クリア)',
+                    displayValue: safeDisplayValue,
                     rawYear: year,
                     rawMonth: month
                 }];
@@ -254,10 +260,14 @@ const MainContent = () => {
                   
                   // 詳細な変更内容のリスト作成
                   const changeDetails = sortedChanges
-                      .map(c => `${c.rawMonth}/${c.day}: ${c.displayValue}`)
+                      .map(c => {
+                          // 安全策: displayValueが文字列であることを期待しつつ、(undefined)を除去
+                          const valStr = String(c.displayValue || '');
+                          return `${c.rawMonth}/${c.day}: ${valStr.replace(/\(undefined\)/g, '')}`;
+                      })
                       .join('\n');
 
-                  // ①通知のタイトル用日付文字列を作成 (例: "1, 3") -> 月の重複を避けるため日付のみ
+                  // ①通知のタイトル用日付文字列を作成 (例: "1, 3")
                   const dateSummary = sortedChanges
                       .map(c => c.day)
                       .join(', ');
