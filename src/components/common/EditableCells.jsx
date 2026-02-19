@@ -231,8 +231,9 @@ export const EditableCell = React.memo(({
     }
   };
   
-  // 修正: min-w-full, max-w-full を復活させ、セル幅を親要素（80px）に強制固定します。
-  const baseClasses = `border-b border-r ${borderClass} text-center text-sm h-10 flex items-center justify-center w-full min-w-full max-w-full outline-none focus:ring-2 focus:ring-inset focus:ring-sky-500 z-10 ${className}`;
+  // 修正: w-[80px] min-w-[80px] max-w-[80px] を明示的に指定して幅を固定します。
+  // flex-shrink-0 で縮小を防ぎ、overflow-hidden で文字数による拡張を防ぎます。
+  const baseClasses = `border-b border-r ${borderClass} text-center text-sm h-10 flex items-center justify-center w-[80px] min-w-[80px] max-w-[80px] flex-shrink-0 outline-none focus:ring-2 focus:ring-inset focus:ring-sky-500 z-10 overflow-hidden ${className}`;
 
   if (mode === 'view') {
     return (
