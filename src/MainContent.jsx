@@ -54,6 +54,10 @@ const MainContent = () => {
   const [remandConfirmation, setRemandConfirmation] = useState(null);
   const [approvalCancellationConfirmation, setApprovalCancellationConfirmation] = useState(null);
 
+  // 承認後の変更フロー用State
+  const [pendingChanges, setPendingChanges] = useState([]);
+  const [showModificationConfirm, setShowModificationConfirm] = useState(false);
+
   useEffect(() => {
     const identifyUser = async () => {
       if (authState?.isAuthenticated) {
@@ -121,7 +125,6 @@ const MainContent = () => {
     return { day: i + 1, dayOfWeek: ['日', '月', '火', '水', '木', '金', '土'][date.getDay()] };
   }), [year, month, daysInMonth]);
 
-  // 初回ロード時や月変更時に、まだデータがない場合はスケジュールを初期生成する
   useEffect(() => {
     if (initialDataLoaded && !schedule[key]) {
         // useShiftData内でhandleしているので待機
@@ -184,37 +187,89 @@ const MainContent = () => {
 
     // 変更があった場合のみ追加処理を実行
     if (isDiff) {
-        // 【変更点】承認済みなら（管理者かどうかに関わらず）通知＆承認解除
+        // 【変更点】承認済みシフトの変更処理
         if (isApproved) {
-            // 承認ステータスを解除
-            setStaff(prev => prev.map(s => {
-                if (s.id === staffId) {
-                    const newApproved = { ...s.shiftApproved };
-                    newApproved[key] = false; // 承認を取り消す
-                    return { ...s, shiftApproved: newApproved };
-                }
-                return s;
-            }));
-
-            // 通知の送信
-            let mentions = '';
-            if (adminConfig?.submissionNotificationIds) {
-                mentions = adminConfig.submissionNotificationIds.split(',').map(id => id.trim()).filter(id => id !== '').map(id => `<users/${id}>`).join(' ');
+            // 変更情報を一時リストに追加（通知はまだ送らない）
+            setPendingChanges(prev => {
+                // 同じ日付の修正が既にある場合は上書きする
+                const filtered = prev.filter(c => !(c.staffId === staffId && c.day === day));
+                return [...filtered, {
+                    staffId,
+                    name: targetStaff.name,
+                    day,
+                    displayValue: formatValue(newValue) || '未入力(クリア)',
+                    rawYear: year,
+                    rawMonth: month
+                }];
+            });
+            
+            // 「続けて修正しますか？」モーダルを表示
+            setShowModificationConfirm(true);
+        } else {
+            // 通常の変更時の処理（管理者による欠勤変更時の確認など）
+            if (isAdmin && value === '欠') {
+                setAbsenceNotificationConfirmation({ staffMember: targetStaff, day, value });
             }
-            
-            // 表示用の値を整形
-            const displayValue = formatValue(value) || '未入力(クリア)';
-            
-            chatService.sendChangeAfterApproval(targetStaff.name, year, month, day, displayValue, mentions)
-                .catch(err => console.error("Notification failed", err));
-        }
-
-        // 管理者による欠勤変更時の確認モーダル表示
-        if (isAdmin && value === '欠') {
-          // targetStaffは上で定義済み
-          setAbsenceNotificationConfirmation({ staffMember: targetStaff, day, value });
         }
     }
+  };
+
+  // 承認後変更の確定処理
+  const handleFinalizeModification = async () => {
+      // 変更があったスタッフを特定
+      const targetStaffIds = [...new Set(pendingChanges.map(c => c.staffId))];
+      
+      setIsLoading(true);
+      setLoadingMessage('変更を確定し、通知を送信中...');
+      
+      try {
+          // スタッフごとにまとめて通知＆承認解除
+          for (const sId of targetStaffIds) {
+              const staffChanges = pendingChanges.filter(c => c.staffId === sId);
+              const targetStaff = staff.find(s => s.id === sId);
+              
+              if (!targetStaff) continue;
+
+              // 通知用メッセージ作成 (例: 4/1: 有休, 4/2: 稼働(8.0))
+              const changeDetails = staffChanges
+                  .sort((a, b) => a.day - b.day)
+                  .map(c => `${c.rawMonth}/${c.day}: ${c.displayValue}`)
+                  .join('\n');
+
+              // メンション設定
+              let mentions = '';
+              if (adminConfig?.submissionNotificationIds) {
+                  mentions = adminConfig.submissionNotificationIds.split(',').map(id => id.trim()).filter(id => id !== '').map(id => `<users/${id}>`).join(' ');
+              }
+
+              // 通知送信
+              await chatService.sendChangeAfterApproval(
+                  targetStaff.name, 
+                  year, 
+                  month, 
+                  '複数箇所', // day引数の代わりに概要を渡す
+                  changeDetails, 
+                  mentions
+              );
+
+              // 承認ステータス解除
+              setStaff(prev => prev.map(s => {
+                  if (s.id === sId) {
+                      const newApproved = { ...s.shiftApproved };
+                      newApproved[key] = false; 
+                      return { ...s, shiftApproved: newApproved };
+                  }
+                  return s;
+              }));
+          }
+      } catch (error) {
+          console.error("Notification failed", error);
+          alert('通知の送信に失敗しました。');
+      }
+
+      setIsLoading(false);
+      setPendingChanges([]);
+      setShowModificationConfirm(false);
   };
 
   const handleAbsenceNotificationResponse = async (send) => {
@@ -322,27 +377,21 @@ const MainContent = () => {
     try { await chatService.sendApproval(s, year, month, summarizePattern(s.defaultShift.pattern, shiftPatterns, s.defaultShift.hasBreakArray), irregularities.join('\n') || 'なし', remarks); } catch (e) { alert('通知送信に失敗しました'); }
     setIsLoading(false);
     
-    // 【変更点】承認時にmodifiedフラグ（変更ハイライト用）をクリアする
+    // 承認時にmodifiedフラグ（変更ハイライト用）をクリアする
     const staffSchedule = schedule[key]?.[s.id] || {};
     const updates = [];
     Object.entries(staffSchedule).forEach(([day, val]) => {
         if (typeof val === 'object' && val?.modified) {
-            // modifiedフラグを除去した値を作成
             let cleanedVal;
             const { modified, ...rest } = val;
             
-            // 元のデータ形式への復元を試みる
             if (rest.type === '稼働' && typeof rest.hours === 'number' && Object.keys(rest).length === 2) {
-                // { type: '稼働', hours: 8 } -> 8
                 cleanedVal = rest.hours;
             } else if (rest.type === '' && Object.keys(rest).length === 1) {
-                // { type: '' } -> ''
                 cleanedVal = '';
             } else if (Object.keys(rest).length === 1 && typeof rest.type === 'string') {
-                // { type: '有休' } -> '有休'
                 cleanedVal = rest.type;
             } else {
-                // 複雑なオブジェクト（時間単位休など）はオブジェクトのままプロパティ削除だけ反映
                 cleanedVal = rest;
             }
             updates.push({ staffId: s.id, day: Number(day), value: cleanedVal });
@@ -438,7 +487,6 @@ const MainContent = () => {
         }
         newMonthScheduleForStaff[day] = shiftValue;
     }
-    // 単一セル更新ではなく、ユーザー月次一括更新関数を使用
     updateShiftUserMonth(year, month, staffId, newMonthScheduleForStaff);
   };
 
@@ -535,8 +583,26 @@ const MainContent = () => {
   );
 
   return (
-    <div className="min-h-screen bg-[#FFF9F6] text-slate-800 p-2 sm:p-4 font-sans">
-      <div className="max-w-screen-2xl mx-auto">
+    <div className="min-h-screen bg-[#FFF9F6] text-slate-800 p-2 sm:p-4 font-sans relative">
+      {/* 未確定の変更がある場合の通知バー */}
+      {pendingChanges.length > 0 && !showModificationConfirm && (
+        <div className="fixed top-0 left-0 right-0 bg-orange-100 border-b border-orange-300 text-orange-800 px-4 py-2 z-[60] shadow-md flex justify-between items-center animate-slideDown">
+          <div className="flex items-center gap-2">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-orange-500" viewBox="0 0 20 20" fill="currentColor">
+              <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+            </svg>
+            <span className="font-bold">承認済みシフトの変更が {pendingChanges.length} 件保留されています。</span>
+          </div>
+          <button 
+            onClick={handleFinalizeModification} 
+            className="px-4 py-1 bg-orange-500 text-white text-sm font-bold rounded hover:bg-orange-600 shadow transition-colors"
+          >
+            変更を確定して通知
+          </button>
+        </div>
+      )}
+
+      <div className="max-w-screen-2xl mx-auto pt-2">
         <header className="mb-4 bg-[#F4B896] text-white rounded-md shadow-lg p-3 flex justify-between items-center sticky top-0 z-40">
           <div className="flex items-center gap-4">
             <select value={year} onChange={(e) => setYear(Number(e.target.value))} className="bg-transparent border-none rounded p-1 text-2xl font-bold text-black focus:ring-2 focus:ring-white">
@@ -582,7 +648,7 @@ const MainContent = () => {
             currentUser={currentUser} 
             schedule={currentMonthSchedule} 
             staff={staff} 
-            tasks={tasks}
+            tasks={tasks} 
             days={days} 
             holidays={currentMonthHolidays} 
             shiftPatterns={shiftPatterns} 
@@ -637,6 +703,20 @@ const MainContent = () => {
         {holidayConfirmation && <ConfirmationModal title={holidayConfirmation.isUnlocking ? "休日設定解除" : "休日設定"} message="全メンバーに適用しますか？" onConfirm={holidayConfirmation.onConfirm} onCancel={() => setHolidayConfirmation(null)} />}
         {absenceNotificationConfirmation && <ConfirmationModal title="欠勤の周知" message={`${absenceNotificationConfirmation.staffMember.name}さんの欠勤をチャットで周知しますか？`} onConfirm={() => handleAbsenceNotificationResponse(true)} onCancel={() => handleAbsenceNotificationResponse(false)} />}
         {approvalCancellationConfirmation && <ConfirmationModal title="承認の取り消し" message={`${approvalCancellationConfirmation.name}さんの承認を取り消しますか？`} onConfirm={handleConfirmApprovalCancellation} onCancel={() => setApprovalCancellationConfirmation(null)} />}
+        
+        {/* 承認後変更確認モーダル */}
+        {showModificationConfirm && (
+            <ConfirmationModal 
+                title="承認済みシフトの変更" 
+                message="承認済みのシフトが変更されました。\n続けて他の箇所も修正しますか？それとも変更を確定して通知を送りますか？" 
+                confirmText="修正を確定"
+                cancelText="続けて修正"
+                confirmColor="bg-orange-500 hover:bg-orange-600"
+                onConfirm={handleFinalizeModification} 
+                onCancel={() => setShowModificationConfirm(false)} 
+            />
+        )}
+
         <footer className="text-center mt-6 text-sm text-slate-500 pb-8"><p>Powered by Gemini & React</p></footer>
       </div>
     </div>
