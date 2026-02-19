@@ -30,7 +30,7 @@ const MainContent = () => {
 
   const {
     staff, setStaff, 
-    schedule, // setSchedule は直接使わず、以下のupdate関数を使用する
+    schedule, 
     updateShiftItem,
     updateShiftItems,
     updateShiftUserMonth,
@@ -187,7 +187,7 @@ const MainContent = () => {
 
     // 変更があった場合のみ追加処理を実行
     if (isDiff) {
-        // 【変更点】承認済みシフトの変更処理
+        // 承認済みシフトの変更処理
         if (isApproved) {
             // 変更情報を一時リストに追加（通知はまだ送らない）
             setPendingChanges(prev => {
@@ -230,11 +230,18 @@ const MainContent = () => {
               
               if (!targetStaff) continue;
 
-              // 通知用メッセージ作成 (例: 4/1: 有休, 4/2: 稼働(8.0))
-              const changeDetails = staffChanges
-                  .sort((a, b) => a.day - b.day)
+              // 日付順にソート
+              const sortedChanges = staffChanges.sort((a, b) => a.day - b.day);
+
+              // 詳細な変更内容のリスト作成
+              const changeDetails = sortedChanges
                   .map(c => `${c.rawMonth}/${c.day}: ${c.displayValue}`)
                   .join('\n');
+
+              // 通知のタイトル用日付文字列を作成 (例: "4/1, 4/3")
+              const dateSummary = sortedChanges
+                  .map(c => `${c.rawMonth}/${c.day}`)
+                  .join(', ');
 
               // メンション設定
               let mentions = '';
@@ -247,7 +254,7 @@ const MainContent = () => {
                   targetStaff.name, 
                   year, 
                   month, 
-                  '複数箇所', // day引数の代わりに概要を渡す
+                  dateSummary, // 日付引数に具体的な日付リストを渡す
                   changeDetails, 
                   mentions
               );
