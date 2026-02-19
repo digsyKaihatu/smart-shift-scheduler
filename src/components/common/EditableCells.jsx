@@ -325,8 +325,8 @@ export const EditableStaffInfoCell = ({ value, onUpdate, className, disabled = f
     setIsEditing(false);
   };
 
-  // サイズを元に戻す: text-sm -> text-[11px], h-10 -> h-8
-  const wrapperClass = `h-8 text-[11px] border-b border-r border-slate-300 flex items-center px-2 overflow-hidden ${className}`;
+  // 文字サイズを text-sm に変更 (以前は text-[11px])
+  const wrapperClass = `h-10 text-sm border-b border-r border-slate-300 flex items-center px-2 overflow-hidden ${className}`;
 
   if (isEditing) {
     return (
