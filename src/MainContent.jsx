@@ -149,6 +149,16 @@ const MainContent = () => {
     setTaskCountsByDay(counts);
   }, [schedule, year, month, staff, tasks, daysInMonth, initialDataLoaded]);
 
+  // 月変更時のチェック
+  const handleYearMonthChange = (newYear, newMonth) => {
+    if (pendingChanges.length > 0) {
+      alert("未確定の修正があります。\n月ごとに修正を確定してください。");
+      return;
+    }
+    setYear(newYear);
+    setMonth(newMonth);
+  };
+
   // スケジュール更新の汎用ハンドラ（単一セル）
   const handleUpdateScheduleGeneric = (targetYear, targetMonth, staffId, day, value) => {
     updateShiftItem(targetYear, targetMonth, staffId, day, value);
@@ -223,51 +233,61 @@ const MainContent = () => {
       setLoadingMessage('変更を確定し、通知を送信中...');
       
       try {
-          // スタッフごとにまとめて通知＆承認解除
           for (const sId of targetStaffIds) {
               const staffChanges = pendingChanges.filter(c => c.staffId === sId);
               const targetStaff = staff.find(s => s.id === sId);
               
               if (!targetStaff) continue;
 
-              // 日付順にソート
-              const sortedChanges = staffChanges.sort((a, b) => a.day - b.day);
+              // 月ごとにグループ化して処理（基本は1ヶ月分だが、安全策として）
+              const changesByMonth = staffChanges.reduce((acc, change) => {
+                  const key = `${change.rawYear}-${change.rawMonth}`;
+                  if (!acc[key]) acc[key] = [];
+                  acc[key].push(change);
+                  return acc;
+              }, {});
 
-              // 詳細な変更内容のリスト作成
-              const changeDetails = sortedChanges
-                  .map(c => `${c.rawMonth}/${c.day}: ${c.displayValue}`)
-                  .join('\n');
+              for (const [ymKey, changes] of Object.entries(changesByMonth)) {
+                  const [cYear, cMonth] = ymKey.split('-').map(Number);
+                  
+                  const sortedChanges = changes.sort((a, b) => a.day - b.day);
+                  
+                  // 詳細な変更内容のリスト作成
+                  const changeDetails = sortedChanges
+                      .map(c => `${c.rawMonth}/${c.day}: ${c.displayValue}`)
+                      .join('\n');
 
-              // 通知のタイトル用日付文字列を作成 (例: "4/1, 4/3")
-              const dateSummary = sortedChanges
-                  .map(c => `${c.rawMonth}/${c.day}`)
-                  .join(', ');
+                  // ①通知のタイトル用日付文字列を作成 (例: "1, 3") -> 月の重複を避けるため日付のみ
+                  const dateSummary = sortedChanges
+                      .map(c => c.day)
+                      .join(', ');
 
-              // メンション設定
-              let mentions = '';
-              if (adminConfig?.submissionNotificationIds) {
-                  mentions = adminConfig.submissionNotificationIds.split(',').map(id => id.trim()).filter(id => id !== '').map(id => `<users/${id}>`).join(' ');
-              }
-
-              // 通知送信
-              await chatService.sendChangeAfterApproval(
-                  targetStaff.name, 
-                  year, 
-                  month, 
-                  dateSummary, // 日付引数に具体的な日付リストを渡す
-                  changeDetails, 
-                  mentions
-              );
-
-              // 承認ステータス解除
-              setStaff(prev => prev.map(s => {
-                  if (s.id === sId) {
-                      const newApproved = { ...s.shiftApproved };
-                      newApproved[key] = false; 
-                      return { ...s, shiftApproved: newApproved };
+                  // メンション設定
+                  let mentions = '';
+                  if (adminConfig?.submissionNotificationIds) {
+                      mentions = adminConfig.submissionNotificationIds.split(',').map(id => id.trim()).filter(id => id !== '').map(id => `<users/${id}>`).join(' ');
                   }
-                  return s;
-              }));
+
+                  // 通知送信 (データ内の年月を使用)
+                  await chatService.sendChangeAfterApproval(
+                      targetStaff.name, 
+                      cYear, 
+                      cMonth, 
+                      dateSummary, 
+                      changeDetails, 
+                      mentions
+                  );
+
+                  // ②承認ステータス解除 (データ内の年月キーを使用)
+                  setStaff(prev => prev.map(s => {
+                      if (s.id === sId) {
+                          const newApproved = { ...s.shiftApproved };
+                          newApproved[ymKey] = false; 
+                          return { ...s, shiftApproved: newApproved };
+                      }
+                      return s;
+                  }));
+              }
           }
       } catch (error) {
           console.error("Notification failed", error);
@@ -612,11 +632,11 @@ const MainContent = () => {
       <div className="max-w-screen-2xl mx-auto pt-2">
         <header className="mb-4 bg-[#F4B896] text-white rounded-md shadow-lg p-3 flex justify-between items-center sticky top-0 z-40">
           <div className="flex items-center gap-4">
-            <select value={year} onChange={(e) => setYear(Number(e.target.value))} className="bg-transparent border-none rounded p-1 text-2xl font-bold text-black focus:ring-2 focus:ring-white">
+            <select value={year} onChange={(e) => handleYearMonthChange(Number(e.target.value), month)} className="bg-transparent border-none rounded p-1 text-2xl font-bold text-black focus:ring-2 focus:ring-white">
               {Array.from({length: 10}, (_, i) => 2020 + i).map(y => <option key={y} value={y} className="text-black">{y}</option>)}
             </select>
             <span className="text-xl">年</span>
-            <select value={month} onChange={(e) => setMonth(Number(e.target.value))} className="bg-transparent border-none rounded p-1 text-2xl font-bold text-black focus:ring-2 focus:ring-white">
+            <select value={month} onChange={(e) => handleYearMonthChange(year, Number(e.target.value))} className="bg-transparent border-none rounded p-1 text-2xl font-bold text-black focus:ring-2 focus:ring-white">
               {Array.from({length: 12}, (_, i) => i + 1).map(m => <option key={m} value={m} className="text-black">{m}</option>)}
             </select>
             <span className="text-xl">月</span>
