@@ -230,7 +230,7 @@ export const EditableCell = React.memo(({
     }
   };
   
-  // サイズ指定: text-sm, h-10 に戻す
+  // サイズ指定: text-sm, h-10 に設定
   // 修正: min-w-full, max-w-full を削除し、overflow-hiddenを追加して幅の自動拡張（レイアウト崩れ）を防ぐ
   const baseClasses = `border-b border-r ${borderClass} text-center text-sm h-10 flex items-center justify-center w-full outline-none focus:ring-2 focus:ring-inset focus:ring-sky-500 z-10 overflow-hidden`;
 
@@ -325,7 +325,7 @@ export const EditableStaffInfoCell = React.memo(({ value, onUpdate, className, d
     setIsEditing(false);
   };
 
-  // サイズ指定: text-sm, h-10 に戻す
+  // サイズ指定: text-sm, h-10
   const wrapperClass = `h-10 text-sm border-b border-r border-slate-300 flex items-center px-2 overflow-hidden ${className}`;
 
   if (isEditing) {
