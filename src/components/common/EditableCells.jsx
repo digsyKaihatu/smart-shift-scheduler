@@ -56,7 +56,7 @@ export const EditableCell = React.memo(({
   value, onUpdate, borderClass, disabled = false, isAdmin = false, 
   isToday = false, isHoliday = false, isWeekend = false, dayOfWeek, 
   rowIndex, colIndex, isSelected, onMouseDown, onMouseEnter, onContextMenu, onFocus,
-  className = "" // 親からのクラス指定を受け取れるように追加
+  className = "" 
 }) => {
   const [mode, setMode] = useState('view');
   const [inputValue, setInputValue] = useState('');
@@ -231,9 +231,8 @@ export const EditableCell = React.memo(({
     }
   };
   
-  // 高さ指定を h-10 から h-full に変更し、親コンテナの高さに依存させます
-  // min-w-full, max-w-full を削除し、overflow-hiddenを追加して幅の自動拡張を防ぎます
-  const baseClasses = `border-b border-r ${borderClass} text-center text-sm h-full flex items-center justify-center w-full outline-none focus:ring-2 focus:ring-inset focus:ring-sky-500 z-10 overflow-hidden ${className}`;
+  // 修正: min-w-full, max-w-full を復活させ、セル幅を親要素（80px）に強制固定します。
+  const baseClasses = `border-b border-r ${borderClass} text-center text-sm h-10 flex items-center justify-center w-full min-w-full max-w-full outline-none focus:ring-2 focus:ring-inset focus:ring-sky-500 z-10 ${className}`;
 
   if (mode === 'view') {
     return (
@@ -326,8 +325,8 @@ export const EditableStaffInfoCell = React.memo(({ value, onUpdate, className, d
     setIsEditing(false);
   };
 
-  // 高さ指定を h-10 から h-full に変更
-  const wrapperClass = `h-full text-sm border-b border-r border-slate-300 flex items-center px-2 overflow-hidden ${className}`;
+  // 高さ指定を h-10 に戻す
+  const wrapperClass = `h-10 text-sm border-b border-r border-slate-300 flex items-center px-2 overflow-hidden ${className}`;
 
   if (isEditing) {
     return (
