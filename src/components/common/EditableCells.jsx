@@ -210,7 +210,7 @@ export const EditableCell = ({
 
     if (typeof value === 'number' && value > 0) return `bg-green-100 ${hoverClass}`;
     if (typeof value === 'object' && value !== null && 'type' in value) {
-        if (value.type === '稼働') return `bg-green-100 ${hoverClass}`; // modifiedされた稼働時間
+        if (value.type === '稼働') return `bg-green-100 ${hoverClass}`;
         if (value.type.includes('有休')) return `bg-yellow-100 ${hoverClass}`;
         if (value.type === 'シフト休') {
              if (!isHoliday && !isWeekend) return `bg-white text-black ${hoverClass}`;
@@ -229,7 +229,7 @@ export const EditableCell = ({
     }
   };
   
-  // サイズを元に戻す: text-sm -> text-xs, h-10 -> h-8
+  // サイズを戻す: text-xs, h-8
   const baseClasses = `border-b border-r ${borderClass} text-center text-xs h-8 flex items-center justify-center w-full min-w-full max-w-full outline-none focus:ring-2 focus:ring-inset focus:ring-sky-500 z-10`;
 
   if (mode === 'view') {
@@ -263,7 +263,6 @@ export const EditableCell = ({
           onBlur={() => {
               if (mode !== 'input') setMode('view');
           }}
-          // サイズを元に戻す: text-sm -> text-xs
           className="absolute inset-0 w-full h-full opacity-100 bg-transparent text-center text-xs cursor-pointer appearance-none outline-none focus:ring-2 focus:ring-sky-500"
           defaultValue=""
         >
@@ -300,7 +299,6 @@ export const EditableCell = ({
                     setTimeout(() => moveFocus(moveDir, e), 0);
                 }
             }}
-            // サイズを元に戻す: text-sm -> text-xs
             className="absolute inset-0 w-full h-full p-0 m-0 bg-transparent text-center text-xs outline-none"
             style={{ paddingLeft: editingSpecialShift ? '1.5rem' : '0' }}
           />
@@ -325,8 +323,8 @@ export const EditableStaffInfoCell = ({ value, onUpdate, className, disabled = f
     setIsEditing(false);
   };
 
-  // 文字サイズを text-sm に変更 (以前は text-[11px])
-  const wrapperClass = `h-10 text-sm border-b border-r border-slate-300 flex items-center px-2 overflow-hidden ${className}`;
+  // サイズを戻す: text-[11px], h-8
+  const wrapperClass = `h-8 text-[11px] border-b border-r border-slate-300 flex items-center px-2 overflow-hidden ${className}`;
 
   if (isEditing) {
     return (
