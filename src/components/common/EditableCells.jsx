@@ -18,6 +18,12 @@ const formatValue = (value) => {
   }
 
   if (value && typeof value === 'object' && 'type' in value) {
+    // 機能追加: 承認後変更（modifiedフラグ付き）の数値データ（稼働時間）の表示対応
+    if (value.type === '稼働' && 'hours' in value) {
+      const num = value.hours;
+      return num % 1 === 0 ? Math.floor(num) : num.toFixed(1);
+    }
+
     let displayType = value.type;
     if (mapping[value.type]) {
       displayType = mapping[value.type];
@@ -30,7 +36,7 @@ const formatValue = (value) => {
     if ('locked' in value) {
       return displayType;
     }
-    return `${displayType}(${value.hours})`;
+    return `${displayType}${value.hours ? `(${value.hours})` : ''}`;
   }
 
   if (typeof value === 'string') {
@@ -44,8 +50,9 @@ const formatValue = (value) => {
  * シフト入力セル
  * キーボード操作（矢印キー、Enter、Delete、Tab、F2）に対応
  * 範囲選択とコンテキストメニューに対応
+ * * 安定化機能: React.memo でラップし、不要な再レンダリングを抑制
  */
-export const EditableCell = ({ 
+export const EditableCell = React.memo(({ 
   value, onUpdate, borderClass, disabled = false, isAdmin = false, 
   isToday = false, isHoliday = false, isWeekend = false, dayOfWeek, 
   rowIndex, colIndex, isSelected, onMouseDown, onMouseEnter, onContextMenu, onFocus
@@ -191,6 +198,11 @@ export const EditableCell = ({
         return `bg-sky-200 ring-2 ring-inset ring-sky-500 z-20 ${isEffectivelyDisabled ? '' : 'hover:bg-sky-300'}`;
     }
 
+    // 機能追加: 承認後の変更ハイライト（オレンジ色の枠線）
+    if (typeof value === 'object' && value?.modified) {
+        return `bg-orange-50 ring-2 ring-inset ring-orange-400 ${isEffectivelyDisabled ? '' : 'hover:bg-orange-100'}`;
+    }
+
     const hoverClass = isEffectivelyDisabled ? '' : 'hover:bg-opacity-80';
     let baseBg = 'bg-white';
     if (isToday && value === '') baseBg = 'bg-yellow-50';
@@ -199,6 +211,7 @@ export const EditableCell = ({
 
     if (typeof value === 'number' && value > 0) return `bg-green-100 ${hoverClass}`;
     if (typeof value === 'object' && value !== null && 'type' in value) {
+        if (value.type === '稼働') return `bg-green-100 ${hoverClass}`;
         if (value.type.includes('有休')) return `bg-yellow-100 ${hoverClass}`;
         if (value.type === 'シフト休') {
              if (!isHoliday && !isWeekend) return `bg-white text-black ${hoverClass}`;
@@ -217,8 +230,7 @@ export const EditableCell = ({
     }
   };
   
-  // 文字サイズを text-sm に変更 (以前は text-xs)
-  // 幅は親側で制御するが、クラスとしては w-[80px] 程度を想定
+  // サイズ指定: text-sm, h-10 (ユーザー提示のベースコード準拠)
   const baseClasses = `border-b border-r ${borderClass} text-center text-sm h-10 flex items-center justify-center w-full min-w-full max-w-full outline-none focus:ring-2 focus:ring-inset focus:ring-sky-500 z-10`;
 
   if (mode === 'view') {
@@ -295,9 +307,12 @@ export const EditableCell = ({
       )}
     </div>
   );
-};
+});
 
-export const EditableStaffInfoCell = ({ value, onUpdate, className, disabled = false }) => {
+/**
+ * 安定化機能: React.memo でラップ
+ */
+export const EditableStaffInfoCell = React.memo(({ value, onUpdate, className, disabled = false }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [currentValue, setCurrentValue] = useState(value);
 
@@ -336,4 +351,4 @@ export const EditableStaffInfoCell = ({ value, onUpdate, className, disabled = f
         <div className="font-semibold truncate w-full">{value}</div>
     </div>
   );
-};
+});
