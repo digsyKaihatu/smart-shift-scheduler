@@ -1,60 +1,60 @@
 import React from 'react';
-import { createPortal } from 'react-dom';
 
-// -----------------------------------------------------------------------------
-// ConfirmDeleteModal: 削除確認用モーダル
-// -----------------------------------------------------------------------------
-export const ConfirmDeleteModal = ({ itemType, itemName, onConfirm, onCancel }) => {
+export const Modal = ({ children, onClose }) => {
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4" onClick={onCancel}>
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-sm flex flex-col" onClick={(e) => e.stopPropagation()}>
-        <header className="p-5 border-b border-slate-200">
-          <h2 className="text-lg font-bold text-slate-800">{itemType}の削除の確認</h2>
-        </header>
-
-        <main className="p-6 text-center">
-          <p className="text-sm text-slate-700">
-            {itemType}「<span className="font-bold text-red-600">{itemName}</span>」を本当に削除しますか？
-          </p>
-          <p className="text-xs text-slate-500 mt-2">この操作は元に戻せません。</p>
-        </main>
-        
-        <footer className="p-4 border-t border-slate-200 flex justify-end gap-3 bg-slate-50 rounded-b-lg">
-          <button onClick={onCancel} className="px-4 py-2 text-sm bg-slate-200 text-slate-800 rounded-md hover:bg-slate-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-slate-400">
-            キャンセル
-          </button>
-          <button onClick={onConfirm} className="px-4 py-2 text-sm bg-red-600 text-white rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500">
-            削除する
-          </button>
-        </footer>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 backdrop-blur-sm p-4">
+      <div className="bg-white rounded-lg shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto relative animate-fadeIn">
+        <button 
+          onClick={onClose}
+          className="absolute top-3 right-3 text-gray-400 hover:text-gray-600 transition-colors"
+        >
+          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+        <div className="p-6">
+          {children}
+        </div>
       </div>
     </div>
   );
 };
 
-// -----------------------------------------------------------------------------
-// ConfirmationModal: 汎用的な確認モーダル (Portal使用)
-// -----------------------------------------------------------------------------
-export const ConfirmationModal = ({ title, message, onConfirm, onCancel }) => {
-  return createPortal(
-    <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4" onClick={onCancel}>
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-sm flex flex-col" onClick={(e) => e.stopPropagation()}>
-        <header className="p-5 border-b border-slate-200">
-          <h2 className="text-lg font-bold text-slate-800">{title}</h2>
-        </header>
-        <main className="p-6">
-          <p className="text-sm text-slate-700 whitespace-pre-wrap">{message}</p>
-        </main>
-        <footer className="p-4 border-t border-slate-200 flex justify-end gap-3 bg-slate-50 rounded-b-lg">
-          <button onClick={onCancel} className="px-4 py-2 text-sm bg-slate-200 text-slate-800 rounded-md hover:bg-slate-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-slate-400">
-            いいえ
+export const ConfirmationModal = ({ title, message, onConfirm, onCancel, confirmText = "はい", cancelText = "いいえ", confirmColor = "bg-blue-600 hover:bg-blue-700" }) => {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 backdrop-blur-sm p-4">
+      <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-6 animate-scaleIn">
+        <h3 className="text-lg font-bold text-gray-900 mb-2">{title}</h3>
+        <p className="text-gray-600 mb-6 whitespace-pre-wrap">{message}</p>
+        <div className="flex justify-end gap-3">
+          <button
+            onClick={onCancel}
+            className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200 transition-colors"
+          >
+            {cancelText}
           </button>
-          <button onClick={onConfirm} className="px-4 py-2 text-sm bg-[#F4B896] text-white rounded-md hover:bg-[#E8A680] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#F4B896]">
-            はい
+          <button
+            onClick={onConfirm}
+            className={`px-4 py-2 text-sm font-medium text-white rounded-md transition-colors shadow-sm ${confirmColor}`}
+          >
+            {confirmText}
           </button>
-        </footer>
+        </div>
       </div>
-    </div>,
-    document.body
+    </div>
   );
+};
+
+export const ConfirmDeleteModal = ({ itemType, itemName, onConfirm, onCancel }) => {
+    return (
+      <ConfirmationModal
+        title={`${itemType}の削除`}
+        message={`本当に「${itemName}」を削除しますか？\nこの操作は取り消せません。`}
+        onConfirm={onConfirm}
+        onCancel={onCancel}
+        confirmText="削除する"
+        cancelText="キャンセル"
+        confirmColor="bg-red-600 hover:bg-red-700"
+      />
+    );
 };
