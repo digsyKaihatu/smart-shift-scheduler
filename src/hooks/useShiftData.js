@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { db } from '../config/firebase';
-import { doc, getDoc, setDoc, writeBatch } from 'firebase/firestore';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
 
-// 既存の初期データインポート（エクスポート名の不一致によるビルドエラーを回避するため一括インポート）
+// 既存の初期データインポート
 import * as initData from '../constants/initialData';
 
 export const useShiftData = (year, month) => {
@@ -27,16 +27,15 @@ export const useShiftData = (year, month) => {
         const masterRef = doc(db, 'master', 'settings');
         const masterSnap = await getDoc(masterRef);
         
-        // export名の違いを吸収して安全に取得
-        const defaultStaff = initData.initialStaff || initData.staff || [];
-        const defaultTasks = initData.initialTasks || initData.tasks || [];
-        const defaultPatterns = initData.initialShiftPatterns || initData.shiftPatterns || [];
-        const defaultAdminConfig = initData.initialAdminConfig || initData.adminConfig || {};
+        // 確実な初期データの取得（デフォルトエクスポートにも対応）
+        const defaultStaff = initData.initialStaff || initData.staff || (initData.default && initData.default.staff) || [];
+        const defaultTasks = initData.initialTasks || initData.tasks || (initData.default && initData.default.tasks) || [];
+        const defaultPatterns = initData.initialShiftPatterns || initData.shiftPatterns || (initData.default && initData.default.shiftPatterns) || [];
+        const defaultAdminConfig = initData.initialAdminConfig || initData.adminConfig || (initData.default && initData.default.adminConfig) || {};
 
         let currentStaff = defaultStaff;
         if (masterSnap.exists()) {
           const data = masterSnap.data();
-          // 空配列[]がTruthy判定されてしまうのを防ぎ、確実にデータがあるか判定するよう修正
           currentStaff = (data.staff && data.staff.length > 0) ? data.staff : defaultStaff;
           setStaff(currentStaff);
           setTasks((data.tasks && data.tasks.length > 0) ? data.tasks : defaultTasks);
@@ -49,30 +48,28 @@ export const useShiftData = (year, month) => {
           setAdminConfig(defaultAdminConfig);
         }
 
-        // 2. シフトスケジュールの取得
+        // 2. シフトスケジュールの取得（元通り、1ヶ月全員分のデータを一度に取得）
         const monthSchedule = {};
-        
-        // 旧フォーマット（月単位ドキュメント）の取得（後方互換性のため）
-        const oldDocRef = doc(db, 'schedules', monthKey);
-        const oldDocSnap = await getDoc(oldDocRef);
-        if (oldDocSnap.exists()) {
-          Object.assign(monthSchedule, oldDocSnap.data());
+        const docRef = doc(db, 'schedules', monthKey);
+        const docSnap = await getDoc(docRef);
+        if (docSnap.exists()) {
+          Object.assign(monthSchedule, docSnap.data());
         }
 
-        // 新フォーマット（スタッフ単位ドキュメント）の取得
-        const staffSchedulePromises = currentStaff.map(async (s) => {
-            const docRef = doc(db, 'schedules', `${monthKey}_${s.id}`);
-            const docSnap = await getDoc(docRef);
-            if (docSnap.exists()) {
-                // 新フォーマットのデータがあれば、それで上書き
-                monthSchedule[s.id] = { ...(monthSchedule[s.id] || {}), ...docSnap.data() };
-            }
-        });
-        
-        // 全スタッフのデータを並列取得
-        await Promise.all(staffSchedulePromises);
+        // ★緊急復旧措置：マスタが空になってしまった場合、シフトデータからメンバー行を自動復元
+        if (currentStaff.length === 0 && Object.keys(monthSchedule).length > 0) {
+            currentStaff = Object.keys(monthSchedule).map((id, index) => ({
+                id,
+                name: `メンバー ${index + 1}`,
+                employeeId: `EMP-${index + 1}`,
+                role: 'OP',
+                possibleTasks: [],
+                defaultShift: { pattern: ['I','I','I','I','I'], hasBreak: true },
+                shiftSubmitted: {}, shiftRemanded: {}, shiftApproved: {}
+            }));
+            setStaff(currentStaff);
+        }
 
-        // 取得したデータをこれまでのフォーマットでStateにセット（UI/CSV影響回避）
         setSchedule(prev => ({ ...prev, [monthKey]: monthSchedule }));
         setInitialDataLoaded(true);
 
@@ -102,19 +99,19 @@ export const useShiftData = (year, month) => {
       }
     };
     
-    const timer = setTimeout(saveMasterData, 1000); // 連続保存を防ぐデバウンス
+    const timer = setTimeout(saveMasterData, 1000); 
     return () => clearTimeout(timer);
   }, [staff, tasks, shiftPatterns, adminConfig, initialDataLoaded]);
 
   // -------------------------------------------------------------
-  // シフトデータの更新（スタッフ単位で個別に保存）
+  // シフトデータの更新（表示は全員、更新は選択されたメンバーのみ）
   // -------------------------------------------------------------
 
   // 単一セルの更新
   const updateShiftItem = useCallback(async (y, m, staffId, day, value) => {
     const targetMonthKey = `${y}-${m}`;
     
-    // UIを即時反映（Stateは既存の構造を維持）
+    // UIを即時反映
     setSchedule(prev => {
       const currentMonth = prev[targetMonthKey] || {};
       const currentStaffSchedule = currentMonth[staffId] || {};
@@ -127,11 +124,13 @@ export const useShiftData = (year, month) => {
       };
     });
 
-    // Firestoreへの保存（対象スタッフのドキュメントのみ更新）
     setSaveStatus('saving');
     try {
-      const docRef = doc(db, 'schedules', `${targetMonthKey}_${staffId}`);
-      await setDoc(docRef, { [day]: value }, { merge: true });
+      const docRef = doc(db, 'schedules', targetMonthKey);
+      // { merge: true } により、他のメンバーのデータは消えずに、指定したメンバーの日付のみが更新されます
+      await setDoc(docRef, { 
+          [staffId]: { [day]: value } 
+      }, { merge: true });
       setSaveStatus('saved');
     } catch (error) {
       console.error("Error updating shift item:", error);
@@ -156,10 +155,9 @@ export const useShiftData = (year, month) => {
       return newSchedule;
     });
 
-    // Firestoreへの保存（バッチ処理で複数スタッフのドキュメントを同時更新）
     setSaveStatus('saving');
     try {
-      const batch = writeBatch(db);
+      const docRef = doc(db, 'schedules', targetMonthKey);
       const updatesByStaff = {};
       
       // 更新データをスタッフごとに仕分け
@@ -169,13 +167,8 @@ export const useShiftData = (year, month) => {
          updatesByStaff[staffId][day] = value;
       });
 
-      // 操作されたスタッフのデータだけを保存
-      Object.entries(updatesByStaff).forEach(([staffId, days]) => {
-          const docRef = doc(db, 'schedules', `${targetMonthKey}_${staffId}`);
-          batch.set(docRef, days, { merge: true });
-      });
-
-      await batch.commit();
+      // 操作されたスタッフのデータだけをマージ保存（他人のデータは無事）
+      await setDoc(docRef, updatesByStaff, { merge: true });
       setSaveStatus('saved');
     } catch (error) {
       console.error("Error batch updating shift items:", error);
@@ -194,8 +187,10 @@ export const useShiftData = (year, month) => {
 
     setSaveStatus('saving');
     try {
-      const docRef = doc(db, 'schedules', `${targetMonthKey}_${staffId}`);
-      await setDoc(docRef, monthData); 
+      const docRef = doc(db, 'schedules', targetMonthKey);
+      await setDoc(docRef, {
+          [staffId]: monthData
+      }, { merge: true }); 
       setSaveStatus('saved');
     } catch (error) {
       console.error("Error updating user month schedule:", error);
