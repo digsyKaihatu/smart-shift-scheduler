@@ -4,6 +4,19 @@ import { db } from '../config/firebase';
 import { initialShiftPatterns, initialStaffData, initialAdminConfig, initialTasks } from '../constants/initialData';
 import { generateScheduleForMonth } from '../utils/scheduleUtils';
 
+// オブジェクトの浅い比較（順番に依存しない安全な比較）を行うユーティリティ
+const isStaffDataEqual = (data1, data2) => {
+  if (data1 === data2) return true;
+  if (!data1 || !data2) return false;
+  const keys1 = Object.keys(data1);
+  const keys2 = Object.keys(data2);
+  if (keys1.length !== keys2.length) return false;
+  for (const k of keys1) {
+    if (JSON.stringify(data1[k]) !== JSON.stringify(data2[k])) return false;
+  }
+  return true;
+};
+
 export const useShiftData = (currentYear, currentMonth) => {
   const [isLoading, setIsLoading] = useState(true);
   const [loadingMessage, setLoadingMessage] = useState("データベースに接続しています...");
@@ -27,6 +40,8 @@ export const useShiftData = (currentYear, currentMonth) => {
 
   // 変更差分を保持するRef (Key: "YYYY-MM", Value: { "scheduleData.staffId.day": value, ... })
   const pendingChanges = useRef({});
+  // 通信中（保存中）の差分を保持するRef（通信タイムラグによる画面のチラつき防止用）
+  const inflightChanges = useRef({});
 
   // ドキュメント参照
   const configDocRef = doc(db, "schedules", "config");
@@ -107,32 +122,37 @@ export const useShiftData = (currentYear, currentMonth) => {
             const localStaffData = prevMonthData[staffId] || {};
 
             // スタッフごとのデータが異なる場合のみ更新処理を行う
-            if (JSON.stringify(serverStaffData) !== JSON.stringify(localStaffData)) {
-              // 自分がまさに編集して送信待ちのデータがあるかチェック
+            if (!isStaffDataEqual(serverStaffData, localStaffData)) {
+              
+              // 自分が編集して送信待ち、または送信中のデータ（activeChanges）を取得
+              const activeChanges = { 
+                ...(inflightChanges.current[key] || {}), 
+                ...(pendingChanges.current[key] || {}) 
+              };
+              
               let hasPendingForThisStaff = false;
-              if (pendingChanges.current[key]) {
-                 for (const pendingKey in pendingChanges.current[key]) {
-                    if (pendingKey.startsWith(`scheduleData.${staffId}.`)) {
-                       hasPendingForThisStaff = true;
-                       break;
-                    }
-                 }
+              for (const activeKey in activeChanges) {
+                if (activeKey.startsWith(`scheduleData.${staffId}.`)) {
+                   hasPendingForThisStaff = true;
+                   break;
+                }
               }
 
-              // 自分の未送信変更がなければ、サーバーのデータを採用（更新は変更されたセルのメンバー個人分の行のみ）
+              // 自分の未送信・送信中変更がなければ、サーバーのデータをそのまま採用
               if (!hasPendingForThisStaff) {
                  nextMonthData[staffId] = serverStaffData;
                  hasChange = true;
               } else {
-                 // 送信待ちがある場合は、サーバーデータと送信待ちデータをマージする
+                 // 自分の変更がある場合は、サーバーの最新データに自分の変更をマージして保持（上書き防止）
                  const mergedStaffData = { ...serverStaffData };
-                 for (const pendingKey in pendingChanges.current[key]) {
-                     if (pendingKey.startsWith(`scheduleData.${staffId}.`)) {
-                         const dayStr = pendingKey.split('.').pop();
-                         mergedStaffData[dayStr] = pendingChanges.current[key][pendingKey];
+                 for (const activeKey in activeChanges) {
+                     if (activeKey.startsWith(`scheduleData.${staffId}.`)) {
+                         const dayStr = activeKey.split('.').pop();
+                         mergedStaffData[dayStr] = activeChanges[activeKey];
                      }
                  }
-                 if (JSON.stringify(mergedStaffData) !== JSON.stringify(localStaffData)) {
+                 // マージした結果、ローカルと差分がある場合のみ更新フラグを立てる
+                 if (!isStaffDataEqual(mergedStaffData, localStaffData)) {
                      nextMonthData[staffId] = mergedStaffData;
                      hasChange = true;
                  }
@@ -208,8 +228,18 @@ export const useShiftData = (currentYear, currentMonth) => {
     debouncedSaveSchedule.current = setTimeout(async () => {
       setSaveStatus('saving');
       
-      const changesByMonth = pendingChanges.current;
-      pendingChanges.current = {}; // 送信キューをリセット
+      // 送信対象のデータを取得し、未送信キューからは削除
+      const changesByMonth = { ...pendingChanges.current };
+      pendingChanges.current = {}; 
+
+      // 送信中の状態として保持（タイムラグ中のonSnapshotでの上書き防止用）
+      inflightChanges.current = { ...inflightChanges.current };
+      for (const mKey in changesByMonth) {
+          inflightChanges.current[mKey] = {
+              ...(inflightChanges.current[mKey] || {}),
+              ...changesByMonth[mKey]
+          };
+      }
 
       const promises = Object.entries(changesByMonth).map(async ([monthKey, updates]) => {
         if (Object.keys(updates).length === 0) return;
@@ -225,7 +255,6 @@ export const useShiftData = (currentYear, currentMonth) => {
         } catch (error) {
           // ドキュメントが存在しない場合 (not-found) は setDoc で作成する
           if (error.code === 'not-found') {
-             // 他の人の同時作成と競合しないよう、階層化オブジェクトにして merge: true で保存
              const nestedData = {
                year: parseInt(y),
                month: parseInt(m),
@@ -233,7 +262,6 @@ export const useShiftData = (currentYear, currentMonth) => {
                scheduleData: {}
              };
              
-             // updatesのキー (例: "scheduleData.staff1.1") を解析して階層化
              for (const [key, value] of Object.entries(updates)) {
                  if (key.startsWith('scheduleData.')) {
                      const parts = key.split('.');
@@ -260,6 +288,15 @@ export const useShiftData = (currentYear, currentMonth) => {
         setSaveStatus('saved');
       } catch (e) {
         setSaveStatus('error');
+      } finally {
+        // 送信が完了したら inflight（送信中キュー）から該当分を削除する
+        for (const mKey in changesByMonth) {
+           if (inflightChanges.current[mKey]) {
+               for (const updateKey in changesByMonth[mKey]) {
+                   delete inflightChanges.current[mKey][updateKey];
+               }
+           }
+        }
       }
     }, 1000); // 1秒デバウンス
   }, []);
