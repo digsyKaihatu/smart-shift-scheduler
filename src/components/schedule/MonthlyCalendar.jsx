@@ -76,32 +76,24 @@ const MonthlyCalendar = ({ schedule, staff, tasks, shiftPatterns, initialYear, i
         if (!staffMember) return;
 
         Object.entries(days).forEach(([day, value]) => {
-            if (value === null || value === undefined || value === '') return;
+            if (!value || value === '') return;
 
             let displayText = value;
             let isHoliday = false;
             
-            let valForCheck = value;
-            if (typeof value === 'object' && value.type !== undefined) {
-                 valForCheck = value.type;
-            }
-
-            const holidayKeywords = ['休', '欠', '通'];
-            
-            if (typeof valForCheck === 'string') {
-                 if (holidayKeywords.some(kw => valForCheck.includes(kw)) || valForCheck === '0' || valForCheck === '0.0') {
-                     isHoliday = true;
-                 }
-                 displayText = typeof value === 'object' ? 
-                     (value.type === 'シフト休' ? 'シフト休' : `${value.type}${value.hours ? `(${value.hours})` : ''}`) 
-                     : value;
-            } else if (typeof valForCheck === 'number') {
-                 if (valForCheck === 0) {
-                     isHoliday = true;
-                     displayText = '休';
-                 } else {
-                     displayText = `${valForCheck}h`;
-                 }
+            if (typeof value === 'object' && value.type) {
+                displayText = value.type === 'シフト休' ? 'シフト休' : `${value.type}${value.hours ? `(${value.hours})` : ''}`;
+                // オブジェクト型の場合の休日判定（通休を追加）
+                if (['シフト休', '欠勤', '有休', '午前休', '午後休', '通休'].some(type => value.type.includes(type))) {
+                    isHoliday = true;
+                }
+            } else if (typeof value === 'number') {
+                displayText = `${value}h`;
+            } else if (typeof value === 'string') {
+                // 文字列型の場合の休日判定を拡張
+                if (['シフト休', '有休', '通休', '欠勤'].includes(value)) {
+                    isHoliday = true;
+                }
             }
 
             eventList.push({
@@ -154,6 +146,7 @@ const MonthlyCalendar = ({ schedule, staff, tasks, shiftPatterns, initialYear, i
   
   const CELL_WIDTH = "100px"; 
 
+  // ヘッダー（日付部分）のスタイルクラス
   const getDayHeaderClass = (dayOfWeekIndex, isHoliday, isToday) => {
       let baseClasses = `sticky top-0 z-30 p-2 text-xs font-semibold text-center border-b border-r whitespace-nowrap min-w-[${CELL_WIDTH}] w-[${CELL_WIDTH}] box-border flex-shrink-0 flex items-center justify-center`; 
       
@@ -161,12 +154,15 @@ const MonthlyCalendar = ({ schedule, staff, tasks, shiftPatterns, initialYear, i
           return `${baseClasses} bg-yellow-100 text-yellow-900 border-yellow-300 shadow-inner ring-2 ring-yellow-300 ring-inset`;
       }
 
+      // 土曜日: 青系
       if (dayOfWeekIndex === 6) {
            return `${baseClasses} bg-sky-100 text-sky-800 border-sky-200`;
       }
+      // 日曜日または祝日: 赤系
       if (dayOfWeekIndex === 0 || isHoliday) {
            return `${baseClasses} bg-pink-100 text-pink-800 border-pink-200`;
       }
+      // 平日: デフォルト
       return `${baseClasses} bg-slate-100 text-slate-900 border-slate-300`;
   };
 
@@ -212,13 +208,13 @@ const MonthlyCalendar = ({ schedule, staff, tasks, shiftPatterns, initialYear, i
                 onClick={() => setViewMode('active_shifts')}
                 className={`px-4 py-1.5 rounded-md text-xs font-bold transition-all ${viewMode === 'active_shifts' ? 'bg-white text-[#D9824D] shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
             >
-                出勤
+                出勤日
             </button>
             <button
                 onClick={() => setViewMode('holidays')}
                 className={`px-4 py-1.5 rounded-md text-xs font-bold transition-all ${viewMode === 'holidays' ? 'bg-white text-[#D9824D] shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
             >
-                休み
+                休暇日
             </button>
         </div>
       </div>
@@ -254,7 +250,7 @@ const MonthlyCalendar = ({ schedule, staff, tasks, shiftPatterns, initialYear, i
 
             <div className="flex">
                 <div className="sticky left-0 z-30 bg-slate-50 p-2 border-r border-slate-300 font-semibold text-xs text-center min-w-[100px] w-[100px] flex-shrink-0 flex items-center justify-center border-b border-slate-200 box-border">
-                    メンバー
+                    {viewMode === 'active_shifts' ? '出勤者' : '休日者'}
                 </div>
                 
                 {daysInMonth.map((d) => {
