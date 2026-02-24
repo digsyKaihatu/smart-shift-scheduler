@@ -27,11 +27,11 @@ export const useShiftData = (year, month) => {
         const masterRef = doc(db, 'master', 'settings');
         const masterSnap = await getDoc(masterRef);
         
-        // 確実な初期データの取得（デフォルトエクスポートにも対応）
-        const defaultStaff = initData.initialStaff || initData.staff || (initData.default && initData.default.staff) || [];
-        const defaultTasks = initData.initialTasks || initData.tasks || (initData.default && initData.default.tasks) || [];
-        const defaultPatterns = initData.initialShiftPatterns || initData.shiftPatterns || (initData.default && initData.default.shiftPatterns) || [];
-        const defaultAdminConfig = initData.initialAdminConfig || initData.adminConfig || (initData.default && initData.default.adminConfig) || { adminEmails: "admin@example.com" };
+        // 本番環境の `initialData.js` の名前に合わせて取得
+        const defaultStaff = initData.initialStaffData || initData.initialStaff || [];
+        const defaultTasks = initData.initialTasks || [];
+        const defaultPatterns = initData.initialShiftPatterns || [];
+        const defaultAdminConfig = initData.initialAdminConfig || { adminEmails: "admin@example.com", submissionNotificationIds: "" };
 
         let currentStaff = defaultStaff;
         if (masterSnap.exists()) {
