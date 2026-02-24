@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useOktaAuth } from '@okta/okta-react';
 
 // Hooks & Services & Utils
@@ -53,48 +53,63 @@ const MainContent = () => {
   const [absenceNotificationConfirmation, setAbsenceNotificationConfirmation] = useState(null);
   const [remandConfirmation, setRemandConfirmation] = useState(null);
   const [approvalCancellationConfirmation, setApprovalCancellationConfirmation] = useState(null);
-  const [shiftChangeConfirmation, setShiftChangeConfirmation] = useState(null);
+
+  // 承認後の変更フロー用State
+  const [pendingChanges, setPendingChanges] = useState([]);
+  const [showModificationConfirm, setShowModificationConfirm] = useState(false);
 
   useEffect(() => {
     const identifyUser = async () => {
       if (authState?.isAuthenticated) {
         const userInfo = await oktaAuth.getUser();
-        // staffがまだロードされていない場合は一旦デフォルトユーザーとして設定せずに待機するか、
-        // またはロード済みならマッチングを行う
-        if (staff.length > 0) {
-            const matchedStaff = staff.find(s => s.email === userInfo.email);
-            if (matchedStaff) {
-                setCurrentUser({ ...matchedStaff, email: userInfo.email });
-            } else {
-                // メールアドレスが一致しない場合はOktaユーザー情報を使用
-                setCurrentUser({ id: 'okta-user', name: userInfo.name || 'Okta User', email: userInfo.email, role: 'OP' });
-            }
+        const matchedStaff = staff.find(s => s.email === userInfo.email);
+        if (matchedStaff) {
+          setCurrentUser({ ...matchedStaff, email: userInfo.email });
         } else {
-            // 初期ロード中でstaffが空の場合の安全策
-            // ローディングが完了するまでcurrentUserをセットしない、あるいは仮のユーザーをセットする
-            // ここでは一旦セットし、staffロード後の再レンダリングで正しい情報に更新されることを期待
-            setCurrentUser({ id: 'temp-user', name: userInfo.name || 'Loading...', email: userInfo.email, role: 'OP' });
+          setCurrentUser({
+            id: 'okta-user',
+            name: userInfo.name || 'Okta User',
+            email: userInfo.email,
+            role: 'OP'
+          });
         }
+      } else {
+        setCurrentUser(null);
       }
     };
-    identifyUser();
-  }, [authState, oktaAuth, staff]); // staffがロードされたら再実行される
+    if (authState?.isAuthenticated && staff.length > 0) identifyUser();
+  }, [authState, oktaAuth, staff]);
 
-  // ハンドラの定義（useCallbackでメモ化して再レンダリング抑制）
-  const handleMigrateData = useCallback(() => {
+  // データ移行処理 (手動実行用に変更)
+  const handleMigrateData = () => {
     if (!window.confirm("データ移行（パターンA → I）を実行しますか？\n※この操作は取り消せません。")) return;
+
     setStaff(prevStaff => {
       let isChanged = false;
       const newStaff = prevStaff.map(s => {
         const isAllA = s.defaultShift?.pattern?.every(p => p === 'A');
-        if (isAllA) { isChanged = true; return { ...s, defaultShift: { ...s.defaultShift, pattern: ['I', 'I', 'I', 'I', 'I'] } }; }
+        if (isAllA) {
+          isChanged = true;
+          return {
+            ...s,
+            defaultShift: {
+              ...s.defaultShift,
+              pattern: ['I', 'I', 'I', 'I', 'I']
+            }
+          };
+        }
         return s;
       });
-      if (isChanged) alert("データの移行が完了しました。");
-      else alert("移行対象のデータはありませんでした。");
-      return newStaff;
+      
+      if (isChanged) {
+        alert("データの移行が完了しました。");
+        return newStaff;
+      } else {
+        alert("移行対象のデータはありませんでした。");
+        return prevStaff;
+      }
     });
-  }, [setStaff]);
+  };
 
   const firebaseAdminEmails = useMemo(() => {
     if (!adminConfig?.adminEmails) return [];
@@ -102,7 +117,6 @@ const MainContent = () => {
   }, [adminConfig]);
 
   const isAdmin = currentUser?.id === 'admin' || (currentUser?.email && firebaseAdminEmails.includes(currentUser.email));
-  
   const key = `${year}-${month}`;
   const daysInMonth = new Date(year, month, 0).getDate();
   const currentMonthHolidays = useMemo(() => getJapaneseHolidays(year, month), [year, month]);
@@ -111,7 +125,12 @@ const MainContent = () => {
     return { day: i + 1, dayOfWeek: ['日', '月', '火', '水', '木', '金', '土'][date.getDay()] };
   }), [year, month, daysInMonth]);
 
-  // タスクカウント計算
+  useEffect(() => {
+    if (initialDataLoaded && !schedule[key]) {
+        // useShiftData内でhandleしているので待機
+    }
+  }, [year, month, schedule, staff, shiftPatterns, initialDataLoaded]);
+
   useEffect(() => {
     if (!initialDataLoaded) return;
     const currentMonthSchedule = schedule[key] || {};
@@ -130,87 +149,211 @@ const MainContent = () => {
     setTaskCountsByDay(counts);
   }, [schedule, year, month, staff, tasks, daysInMonth, initialDataLoaded]);
 
-  const handleUpdateScheduleGeneric = useCallback((targetYear, targetMonth, staffId, day, value) => {
+  // 月変更時のチェック
+  const handleYearMonthChange = (newYear, newMonth) => {
+    if (pendingChanges.length > 0) {
+      alert("未確定の修正があります。\n月ごとに修正を確定してください。");
+      return;
+    }
+    setYear(newYear);
+    setMonth(newMonth);
+  };
+
+  // スケジュール更新の汎用ハンドラ（単一セル）
+  const handleUpdateScheduleGeneric = (targetYear, targetMonth, staffId, day, value) => {
     updateShiftItem(targetYear, targetMonth, staffId, day, value);
-  }, [updateShiftItem]);
+  };
 
-  const handleUpdateSchedule = useCallback((staffId, day, value) => {
-    const currentVal = schedule[key]?.[staffId]?.[day] ?? '';
-    updateShiftItem(year, month, staffId, day, value);
+  const handleUpdateSchedule = (staffId, day, value) => {
+    // 変更前の値を取得し、実際に変更があったかチェック
+    const currentVal = schedule[key]?.[staffId]?.[day];
+    const isDiff = JSON.stringify(currentVal) !== JSON.stringify(value);
 
-    const target = staff.find(s => s.id === staffId);
-    if (!target) return;
+    // 承認ステータスを取得
+    const targetStaff = staff.find(s => s.id === staffId);
+    const isApproved = targetStaff?.shiftApproved?.[key];
 
-    if (isAdmin) {
-        const isApproved = target.shiftApproved?.[key];
-        if (isApproved) {
-            const strOld = formatValue(currentVal);
-            const strNew = formatValue(value);
-            if (strOld !== strNew) {
-                // 承認解除
-                setStaff(prev => prev.map(s => s.id === staffId ? { ...s, shiftApproved: { ...s.shiftApproved, [key]: false } } : s));
-                // 変更通知確認
-                setShiftChangeConfirmation({ staffMember: target, day, oldValue: strOld, newValue: strNew });
-                return; 
-            }
-        }
-        if (value === '欠' || (typeof value === 'object' && value.type === '欠勤')) {
-             setAbsenceNotificationConfirmation({ staffMember: target, day, value });
+    let newValue = value;
+
+    // 承認済み状態で変更があった場合、変更フラグ(modified)を付与したオブジェクトに変換する
+    if (isApproved && isDiff) {
+        if (typeof value === 'number') {
+            // 数値（稼働時間）の場合 -> { type: '稼働', hours: 8, modified: true }
+            newValue = { type: '稼働', hours: value, modified: true };
+        } else if (typeof value === 'string' && value !== '') {
+            // 文字列（ステータス）の場合 -> { type: value, modified: true }
+            newValue = { type: value, modified: true };
+        } else if (typeof value === 'object' && value !== null) {
+            // 既にオブジェクトの場合 -> { ..., modified: true }
+            newValue = { ...value, modified: true };
+        } else if (value === '') {
+            // クリア（空）の場合 -> { type: '', modified: true }
+            newValue = { type: '', modified: true };
         }
     }
-  }, [schedule, key, staff, year, month, isAdmin, updateShiftItem, setStaff]);
 
-  const handleShiftChangeNotificationResponse = useCallback(async (send) => {
-      if (!shiftChangeConfirmation) return;
-      const { staffMember, day, oldValue, newValue } = shiftChangeConfirmation;
-      if (send) {
-          setIsLoading(true);
-          try { await chatService.sendShiftChange(staffMember, year, month, day, oldValue, newValue); }
-          catch (e) { alert('通知送信に失敗しました: ' + e.message); }
-          setIsLoading(false);
+    // データの更新
+    handleUpdateScheduleGeneric(year, month, staffId, day, newValue);
+
+    // 変更があった場合のみ追加処理を実行
+    if (isDiff) {
+        // 承認済みシフトの変更処理
+        if (isApproved) {
+            // 表示用の値を生成し、(undefined)が含まれる場合は削除する
+            let safeDisplayValue = formatValue(newValue) || '未入力(クリア)';
+            if (typeof safeDisplayValue === 'string') {
+                safeDisplayValue = safeDisplayValue.replace(/\(undefined\)/g, '');
+            }
+
+            // 変更情報を一時リストに追加（通知はまだ送らない）
+            setPendingChanges(prev => {
+                // 同じ日付の修正が既にある場合は上書きする
+                const filtered = prev.filter(c => !(c.staffId === staffId && c.day === day));
+                return [...filtered, {
+                    staffId,
+                    name: targetStaff.name,
+                    day,
+                    displayValue: safeDisplayValue,
+                    rawYear: year,
+                    rawMonth: month
+                }];
+            });
+            
+            // 「続けて修正しますか？」モーダルを表示
+            setShowModificationConfirm(true);
+        } else {
+            // 通常の変更時の処理（管理者による欠勤変更時の確認など）
+            if (isAdmin && value === '欠') {
+                setAbsenceNotificationConfirmation({ staffMember: targetStaff, day, value });
+            }
+        }
+    }
+  };
+
+  // 承認後変更の確定処理
+  const handleFinalizeModification = async () => {
+      // 変更があったスタッフを特定
+      const targetStaffIds = [...new Set(pendingChanges.map(c => c.staffId))];
+      
+      setIsLoading(true);
+      setLoadingMessage('変更を確定し、通知を送信中...');
+      
+      try {
+          for (const sId of targetStaffIds) {
+              const staffChanges = pendingChanges.filter(c => c.staffId === sId);
+              const targetStaff = staff.find(s => s.id === sId);
+              
+              if (!targetStaff) continue;
+
+              // 月ごとにグループ化して処理（基本は1ヶ月分だが、安全策として）
+              const changesByMonth = staffChanges.reduce((acc, change) => {
+                  const key = `${change.rawYear}-${change.rawMonth}`;
+                  if (!acc[key]) acc[key] = [];
+                  acc[key].push(change);
+                  return acc;
+              }, {});
+
+              for (const [ymKey, changes] of Object.entries(changesByMonth)) {
+                  const [cYear, cMonth] = ymKey.split('-').map(Number);
+                  
+                  const sortedChanges = changes.sort((a, b) => a.day - b.day);
+                  
+                  // 詳細な変更内容のリスト作成
+                  const changeDetails = sortedChanges
+                      .map(c => {
+                          // 安全策: displayValueが文字列であることを期待しつつ、(undefined)を除去
+                          const valStr = String(c.displayValue || '');
+                          return `${c.rawMonth}/${c.day}: ${valStr.replace(/\(undefined\)/g, '')}`;
+                      })
+                      .join('\n');
+
+                  // ①通知のタイトル用日付文字列を作成 (例: "1, 3")
+                  const dateSummary = sortedChanges
+                      .map(c => c.day)
+                      .join(', ');
+
+                  // メンション設定
+                  let mentions = '';
+                  if (adminConfig?.submissionNotificationIds) {
+                      mentions = adminConfig.submissionNotificationIds.split(',').map(id => id.trim()).filter(id => id !== '').map(id => `<users/${id}>`).join(' ');
+                  }
+
+                  // 通知送信 (データ内の年月を使用)
+                  await chatService.sendChangeAfterApproval(
+                      targetStaff.name, 
+                      cYear, 
+                      cMonth, 
+                      dateSummary, 
+                      changeDetails, 
+                      mentions
+                  );
+
+                  // ②承認ステータス解除 (データ内の年月キーを使用)
+                  setStaff(prev => prev.map(s => {
+                      if (s.id === sId) {
+                          const newApproved = { ...s.shiftApproved };
+                          newApproved[ymKey] = false; 
+                          return { ...s, shiftApproved: newApproved };
+                      }
+                      return s;
+                  }));
+              }
+          }
+      } catch (error) {
+          console.error("Notification failed", error);
+          alert('通知の送信に失敗しました。');
       }
-      setShiftChangeConfirmation(null);
-  }, [shiftChangeConfirmation, year, month, setIsLoading]);
 
-  const handleAbsenceNotificationResponse = useCallback(async (send) => {
+      setIsLoading(false);
+      setPendingChanges([]);
+      setShowModificationConfirm(false);
+  };
+
+  const handleAbsenceNotificationResponse = async (send) => {
     if (!absenceNotificationConfirmation) return;
-    const { staffMember } = absenceNotificationConfirmation;
+    const { staffMember, day, value } = absenceNotificationConfirmation;
     if (send) {
       setIsLoading(true);
       try { await chatService.sendAbsence(staffMember.name); } catch (e) { alert(e.message); }
       setIsLoading(false);
     }
     setAbsenceNotificationConfirmation(null);
-  }, [absenceNotificationConfirmation, setIsLoading]);
+  };
 
-  const handleToggleShiftSubmitted = useCallback((staffId) => {
+  const handleToggleShiftSubmitted = (staffId) => {
     const s = staff.find(x => x.id === staffId);
-    if (!s) return;
-    if (s?.shiftSubmitted?.[key]) setStaff(prev => prev.map(x => x.id === staffId ? { ...x, shiftSubmitted: { ...x.shiftSubmitted, [key]: false } } : x));
-    else setSubmissionConfirmation({ staffId, name: s.name });
-  }, [staff, key, setStaff]);
+    if (s?.shiftSubmitted?.[key]) {
+      setStaff(prev => prev.map(x => x.id === staffId ? { ...x, shiftSubmitted: { ...x.shiftSubmitted, [key]: false } } : x));
+    } else {
+      setSubmissionConfirmation({ staffId, name: s.name });
+    }
+  };
 
-  const handleConfirmSubmission = useCallback(async () => {
+  const handleConfirmSubmission = async () => {
     if (!submissionConfirmation) return;
     const { staffId, name } = submissionConfirmation;
     let mentions = '';
-    if (adminConfig?.submissionNotificationIds) mentions = adminConfig.submissionNotificationIds.split(',').map(id => id.trim()).filter(id => id !== '').map(id => `<users/${id}>`).join(' ');
+    if (adminConfig?.submissionNotificationIds) {
+        mentions = adminConfig.submissionNotificationIds.split(',').map(id => id.trim()).filter(id => id !== '').map(id => `<users/${id}>`).join(' ');
+    }
     setIsLoading(true);
     setLoadingMessage('提出通知を送信中...');
     try { await chatService.sendSubmission(name, year, month, mentions); } catch (e) { alert('通知送信に失敗しました'); }
     setIsLoading(false);
     setStaff(prev => prev.map(x => x.id === staffId ? { ...x, shiftSubmitted: { ...x.shiftSubmitted, [key]: true } } : x));
     setSubmissionConfirmation(null);
-  }, [submissionConfirmation, adminConfig, year, month, setIsLoading, setLoadingMessage, setStaff, key]);
+  };
 
-  const handleToggleShiftRemanded = useCallback((staffId) => {
+  const handleToggleShiftRemanded = (staffId) => {
     const s = staff.find(x => x.id === staffId);
-    if (!s) return;
-    if (s?.shiftRemanded?.[key]) setStaff(prev => prev.map(x => x.id === staffId ? { ...x, shiftRemanded: { ...x.shiftRemanded, [key]: false } } : x));
-    else setRemandConfirmation({ staffId, name: s.name });
-  }, [staff, key, setStaff]);
+    if (s?.shiftRemanded?.[key]) {
+        setStaff(prev => prev.map(x => x.id === staffId ? { ...x, shiftRemanded: { ...x.shiftRemanded, [key]: false } } : x));
+    } else {
+        setRemandConfirmation({ staffId, name: s.name });
+    }
+  };
 
-  const handleConfirmRemand = useCallback(async () => {
+  const handleConfirmRemand = async () => {
     if (!remandConfirmation) return;
     const { staffId, name } = remandConfirmation;
     const s = staff.find(x => x.id === staffId);
@@ -220,9 +363,9 @@ const MainContent = () => {
     setIsLoading(false);
     setStaff(prev => prev.map(x => x.id === staffId ? { ...x, shiftRemanded: { ...x.shiftRemanded, [key]: true } } : x));
     setRemandConfirmation(null);
-  }, [remandConfirmation, staff, setIsLoading, setLoadingMessage, setStaff, key]);
+  };
 
-  const handleConfirmApproval = useCallback(async (remarks) => {
+  const handleConfirmApproval = async (remarks) => {
     if (!approvalModalStaffId) return;
     const s = staff.find(x => x.id === approvalModalStaffId);
     const irregularities = [];
@@ -235,116 +378,202 @@ const MainContent = () => {
              const pIdx = dayOfWeek - 1;
              const pId = s.defaultShift.pattern[pIdx];
              if (pId === 'シフト休') expected = 'シフト休';
-             else { const p = shiftPatterns.find(x => x.id === pId); expected = p ? p.workHours : ''; }
+             else {
+                 const p = shiftPatterns.find(x => x.id === pId);
+                 expected = p ? p.workHours : '';
+             }
         }
         const actual = schedule[key]?.[s.id]?.[day] ?? '';
-        let actualCompare = (typeof actual === 'object' && actual !== null) ? actual.type || '' : actual;
+        
+        let actualCompare = actual;
+        if (typeof actual === 'object' && actual !== null) {
+            actualCompare = actual.type || '';
+        }
+
         let isEffectivelySame = (actualCompare === expected);
         if (!isEffectivelySame) {
-            if (expected === 'シフト休') { if (['', 0, '0', '休', 'シフト休', null, undefined].includes(actualCompare)) isEffectivelySame = true; }
-            else if (expected !== '') { if (parseFloat(actualCompare) === parseFloat(expected)) isEffectivelySame = true; }
+            if (expected === 'シフト休') {
+                const emptyOrRestValues = ['', 0, '0', '休', 'シフト休', null, undefined];
+                if (emptyOrRestValues.includes(actualCompare)) {
+                    isEffectivelySame = true;
+                }
+            } else if (expected !== '') {
+                if (!isNaN(parseFloat(actualCompare)) && !isNaN(parseFloat(expected)) && parseFloat(actualCompare) === parseFloat(expected)) {
+                    isEffectivelySame = true;
+                }
+            }
         }
+
         if (!isEffectivelySame) {
             const wStr = ['日', '月', '火', '水', '木', '金', '土'][dayOfWeek];
             irregularities.push(`${month}/${day}(${wStr}): ${formatValue(actual) || '未入力'}`);
         }
     }
-    
     setIsLoading(true);
     setLoadingMessage('承認通知を送信中...');
     try { await chatService.sendApproval(s, year, month, summarizePattern(s.defaultShift.pattern, shiftPatterns, s.defaultShift.hasBreakArray), irregularities.join('\n') || 'なし', remarks); } catch (e) { alert('通知送信に失敗しました'); }
     setIsLoading(false);
-    setStaff(prev => prev.map(x => x.id === approvalModalStaffId ? { ...x, shiftApproved: { ...x.shiftApproved, [key]: true } } : x));
+    
+    // 承認時にmodifiedフラグ（変更ハイライト用）をクリアする
+    const staffSchedule = schedule[key]?.[s.id] || {};
+    const updates = [];
+    Object.entries(staffSchedule).forEach(([day, val]) => {
+        if (typeof val === 'object' && val?.modified) {
+            let cleanedVal;
+            const { modified, ...rest } = val;
+            
+            if (rest.type === '稼働' && typeof rest.hours === 'number' && Object.keys(rest).length === 2) {
+                cleanedVal = rest.hours;
+            } else if (rest.type === '' && Object.keys(rest).length === 1) {
+                cleanedVal = '';
+            } else if (Object.keys(rest).length === 1 && typeof rest.type === 'string') {
+                cleanedVal = rest.type;
+            } else {
+                cleanedVal = rest;
+            }
+            updates.push({ staffId: s.id, day: Number(day), value: cleanedVal });
+        }
+    });
+    
+    if (updates.length > 0) {
+        updateShiftItems(year, month, updates);
+    }
+
+    setStaff(prev => prev.map(x => {
+        if (x.id === approvalModalStaffId) {
+            const currentApproved = x.shiftApproved || {};
+            return { 
+                ...x, 
+                shiftApproved: { ...currentApproved, [key]: true } 
+            };
+        }
+        return x;
+    }));
     setApprovalModalStaffId(null);
-  }, [approvalModalStaffId, staff, daysInMonth, year, month, currentMonthHolidays, schedule, key, shiftPatterns, setIsLoading, setLoadingMessage, setStaff]);
+  };
 
-  const handleToggleShiftApproved = useCallback((staffId) => {
+  const handleToggleShiftApproved = (staffId) => {
       const s = staff.find(x => x.id === staffId);
-      if (!s) return;
-      if (s?.shiftApproved && s.shiftApproved[key]) setApprovalCancellationConfirmation({ staffId, name: s.name });
-      else setApprovalModalStaffId(staffId);
-  }, [staff, key]);
+      if (s?.shiftApproved && s.shiftApproved[key]) {
+          setApprovalCancellationConfirmation({ staffId, name: s.name });
+      } else {
+          setApprovalModalStaffId(staffId);
+      }
+  };
 
-  const handleConfirmApprovalCancellation = useCallback(() => {
+  const handleConfirmApprovalCancellation = () => {
     if (!approvalCancellationConfirmation) return;
     const { staffId } = approvalCancellationConfirmation;
-    setStaff(prev => prev.map(x => x.id === staffId ? { ...x, shiftApproved: { ...x.shiftApproved, [key]: false } } : x));
+    setStaff(prev => prev.map(x => {
+        if (x.id === staffId) {
+            const currentApproved = x.shiftApproved || {};
+            return { 
+                ...x, 
+                shiftApproved: { ...currentApproved, [key]: false } 
+            };
+        }
+        return x;
+    }));
     setApprovalCancellationConfirmation(null);
-  }, [approvalCancellationConfirmation, setStaff, key]);
+  };
 
-  const handleUpdateStaffInfo = useCallback((id, field, val) => setStaff(prev => prev.map(s => s.id === id ? { ...s, [field]: val } : s)), [setStaff]);
-  const handleDeleteStaff = useCallback((id) => setConfirmDelete({ type: 'staff', id, name: staff.find(s => s.id === id)?.name }), [staff]);
-  const handleDeleteTask = useCallback((id) => setConfirmDelete({ type: 'task', id, name: tasks.find(t => t.id === id)?.name }), [tasks]);
-  const handleExportCSV = useCallback(() => downloadScheduleCSV(staff, schedule, shiftPatterns, year, month), [staff, schedule, shiftPatterns, year, month]);
-  const handleBulkUpdateStaffTasks = useCallback((taskStaffMap) => {
-      const staffTaskMap = {}; staff.forEach(s => staffTaskMap[s.id] = []);
-      Object.entries(taskStaffMap).forEach(([taskId, staffIds]) => { staffIds.forEach(staffId => { if (staffTaskMap[staffId]) staffTaskMap[staffId].push(taskId); }); });
-      setStaff(prev => prev.map(s => ({ ...s, possibleTasks: staffTaskMap[s.id] || [] })));
+  const handleUpdateStaffInfo = (id, field, val) => setStaff(prev => prev.map(s => s.id === id ? { ...s, [field]: val } : s));
+  const handleDeleteStaff = (id) => setConfirmDelete({ type: 'staff', id, name: staff.find(s => s.id === id)?.name });
+  const handleDeleteTask = (id) => setConfirmDelete({ type: 'task', id, name: tasks.find(t => t.id === id)?.name });
+  
+  const handleExportCSV = () => downloadScheduleCSV(staff, schedule, shiftPatterns, year, month);
+   
+  const handleBulkUpdateStaffTasks = (taskStaffMap) => {
+      const staffTaskMap = {};
+      staff.forEach(s => staffTaskMap[s.id] = []);
+      Object.entries(taskStaffMap).forEach(([taskId, staffIds]) => {
+          staffIds.forEach(staffId => { if (staffTaskMap[staffId]) staffTaskMap[staffId].push(taskId); });
+      });
+      setStaff(prevStaff => prevStaff.map(s => ({ ...s, possibleTasks: staffTaskMap[s.id] || [] })));
       setIsTaskEditorOpen(false);
-  }, [staff, setStaff]);
-  const handleUpdateSingleTaskStaff = useCallback((taskId, newStaffIds) => {
-    setStaff(prev => prev.map(s => {
+  };
+
+  const handleUpdateSingleTaskStaff = (taskId, newStaffIds) => {
+    setStaff(prevStaff => prevStaff.map(s => {
       const isAssigned = newStaffIds.includes(s.id);
       const currentTasks = s.possibleTasks || [];
       const newTasks = isAssigned ? (currentTasks.includes(taskId) ? currentTasks : [...currentTasks, taskId]) : currentTasks.filter(tid => tid !== taskId);
       return { ...s, possibleTasks: newTasks };
     }));
-  }, [setStaff]);
-  const handleApplyStaffPattern = useCallback((staffId, newPattern, hasBreak) => {
-    setStaff(prev => prev.map(s => s.id === staffId ? { ...s, defaultShift: { pattern: newPattern, hasBreak } } : s));
+  };
+   
+  const handleApplyStaffPattern = (staffId, newPattern, hasBreak) => {
+    setStaff(prevStaff => prevStaff.map(s => s.id === staffId ? { ...s, defaultShift: { pattern: newPattern, hasBreak } } : s));
+    
+    // パターン適用は該当スタッフの1ヶ月分を一括更新する
     const newMonthScheduleForStaff = {};
     for (let day = 1; day <= daysInMonth; day++) {
         const date = new Date(year, month - 1, day);
-        const dayOfWeek = date.getDay(); const isHoliday = currentMonthHolidays.includes(day);
-        let shiftValue = (isHoliday || dayOfWeek === 0 || dayOfWeek === 6) ? 'シフト休' : '';
-        if (shiftValue === '') {
+        const dayOfWeek = date.getDay(); 
+        const isHoliday = currentMonthHolidays.includes(day);
+        let shiftValue = '';
+        if (isHoliday || dayOfWeek === 0 || dayOfWeek === 6) {
+            shiftValue = 'シフト休';
+        } else {
             const patternId = newPattern[dayOfWeek - 1];
-            shiftValue = patternId === 'シフト休' ? 'シフト休' : (shiftPatterns.find(p => p.id === patternId)?.workHours || '');
+            if (patternId === 'シフト休') shiftValue = 'シフト休';
+            else {
+                const pattern = shiftPatterns.find(p => p.id === patternId);
+                shiftValue = pattern ? pattern.workHours : '';
+            }
         }
         newMonthScheduleForStaff[day] = shiftValue;
     }
     updateShiftUserMonth(year, month, staffId, newMonthScheduleForStaff);
-  }, [setStaff, daysInMonth, year, month, currentMonthHolidays, shiftPatterns, updateShiftUserMonth]);
-  
-  const executeDelete = useCallback(() => {
+  };
+
+  const executeDelete = () => {
     if (!confirmDelete) return;
-    if (confirmDelete.type === 'staff') setStaff(prev => prev.filter(s => s.id !== confirmDelete.id));
-    else {
+    if (confirmDelete.type === 'staff') {
+        const deletedId = confirmDelete.id;
+        setStaff(prev => prev.filter(s => s.id !== deletedId));
+    } else {
         setTasks(prev => prev.filter(t => t.id !== confirmDelete.id));
         setStaff(prev => prev.map(s => ({ ...s, possibleTasks: s.possibleTasks.filter(tid => tid !== confirmDelete.id) })));
     }
     setConfirmDelete(null);
-  }, [confirmDelete, setStaff, setTasks]);
+  };
 
-  const handleAddStaff = useCallback(() => {
+  const handleAddStaff = () => {
       const newId = `s${Date.now()}`;
       setStaff(prev => [...prev, {
           id: newId, employeeId: 'New', name: '新規メンバー', role: 'OP', chatUserId: '', possibleTasks: [],
           defaultShift: { pattern: ['I','I','I','I','I'], hasBreak: true }, shiftSubmitted: {}, shiftRemanded: {}, shiftApproved: {}
       }]);
+      
       const newMemberSchedule = {};
       for (let day = 1; day <= daysInMonth; day++) {
           const date = new Date(year, month - 1, day);
+          const dayOfWeek = date.getDay();
           const isHoliday = currentMonthHolidays.includes(day);
-          if (date.getDay() === 0 || date.getDay() === 6 || isHoliday) newMemberSchedule[day] = 'シフト休';
+          if (dayOfWeek === 0 || dayOfWeek === 6 || isHoliday) {
+              newMemberSchedule[day] = 'シフト休';
+          }
       }
       updateShiftUserMonth(year, month, newId, newMemberSchedule);
-  }, [setStaff, daysInMonth, year, month, currentMonthHolidays, updateShiftUserMonth]);
+  };
 
-  const handleSetDayAsHolidayForAll = useCallback((day) => {
+  const handleSetDayAsHolidayForAll = (day) => {
       if(!isAdmin) return;
       const isAlreadyLockedHoliday = staff.length > 0 && staff.every(s => {
         const entry = (schedule[key] || {})[s.id]?.[day];
         return typeof entry === 'object' && entry?.locked === true;
       });
+
       if (isAlreadyLockedHoliday) {
         setHolidayConfirmation({ day, isUnlocking: true, onConfirm: () => {
                 const updates = [];
                 staff.forEach(s => {
                     const date = new Date(year, month - 1, day);
-                    let restoredValue = (currentMonthHolidays.includes(day) || date.getDay() === 0 || date.getDay() === 6) ? 'シフト休' : '';
-                    if (restoredValue === '' && date.getDay() > 0 && date.getDay() < 6) {
-                        const pId = s.defaultShift.pattern[date.getDay() - 1];
+                    const dayOfWeek = date.getDay();
+                    let restoredValue = (currentMonthHolidays.includes(day) || dayOfWeek === 0 || dayOfWeek === 6) ? 'シフト休' : '';
+                    if (restoredValue === '' && dayOfWeek > 0 && dayOfWeek < 6) {
+                        const pId = s.defaultShift.pattern[dayOfWeek - 1];
                         restoredValue = pId === 'シフト休' ? 'シフト休' : (shiftPatterns.find(p => p.id === pId)?.workHours || '');
                     }
                     updates.push({ staffId: s.id, day, value: restoredValue });
@@ -355,15 +584,22 @@ const MainContent = () => {
         });
     } else {
         setHolidayConfirmation({ day, isUnlocking: false, onConfirm: () => {
-                const updates = staff.map(s => ({ staffId: s.id, day, value: { type: 'シフト休', locked: true } }));
+                const updates = staff.map(s => ({
+                    staffId: s.id,
+                    day,
+                    value: { type: 'シフト休', locked: true }
+                }));
                 updateShiftItems(year, month, updates);
                 setHolidayConfirmation(null);
             },
         });
     }
-  }, [isAdmin, staff, schedule, key, year, month, currentMonthHolidays, shiftPatterns, updateShiftItems]);
+  };
 
   if (isLoading || !currentUser) return <LoadingScreen message={loadingMessage} />;
+  if (!authState?.isAuthenticated) {
+    return null;
+  }
   
   const currentMonthSchedule = schedule[key] || {};
   const approvalStaff = approvalModalStaffId ? staff.find(s => s.id === approvalModalStaffId) : null;
@@ -384,15 +620,33 @@ const MainContent = () => {
   );
 
   return (
-    <div className="min-h-screen bg-[#FFF9F6] text-slate-800 p-2 sm:p-4 font-sans">
-      <div className="max-w-screen-2xl mx-auto">
+    <div className="min-h-screen bg-[#FFF9F6] text-slate-800 p-2 sm:p-4 font-sans relative">
+      {/* 未確定の変更がある場合の通知バー */}
+      {pendingChanges.length > 0 && !showModificationConfirm && (
+        <div className="fixed top-0 left-0 right-0 bg-orange-100 border-b border-orange-300 text-orange-800 px-4 py-2 z-[60] shadow-md flex justify-between items-center animate-slideDown">
+          <div className="flex items-center gap-2">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-orange-500" viewBox="0 0 20 20" fill="currentColor">
+              <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+            </svg>
+            <span className="font-bold">承認済みシフトの変更が {pendingChanges.length} 件保留されています。</span>
+          </div>
+          <button 
+            onClick={handleFinalizeModification} 
+            className="px-4 py-1 bg-orange-500 text-white text-sm font-bold rounded hover:bg-orange-600 shadow transition-colors"
+          >
+            変更を確定して通知
+          </button>
+        </div>
+      )}
+
+      <div className="max-w-screen-2xl mx-auto pt-2">
         <header className="mb-4 bg-[#F4B896] text-white rounded-md shadow-lg p-3 flex justify-between items-center sticky top-0 z-40">
           <div className="flex items-center gap-4">
-            <select value={year} onChange={(e) => setYear(Number(e.target.value))} className="bg-transparent border-none rounded p-1 text-2xl font-bold text-black focus:ring-2 focus:ring-white">
+            <select value={year} onChange={(e) => handleYearMonthChange(Number(e.target.value), month)} className="bg-transparent border-none rounded p-1 text-2xl font-bold text-black focus:ring-2 focus:ring-white">
               {Array.from({length: 10}, (_, i) => 2020 + i).map(y => <option key={y} value={y} className="text-black">{y}</option>)}
             </select>
             <span className="text-xl">年</span>
-            <select value={month} onChange={(e) => setMonth(Number(e.target.value))} className="bg-transparent border-none rounded p-1 text-2xl font-bold text-black focus:ring-2 focus:ring-white">
+            <select value={month} onChange={(e) => handleYearMonthChange(year, Number(e.target.value))} className="bg-transparent border-none rounded p-1 text-2xl font-bold text-black focus:ring-2 focus:ring-white">
               {Array.from({length: 12}, (_, i) => i + 1).map(m => <option key={m} value={m} className="text-black">{m}</option>)}
             </select>
             <span className="text-xl">月</span>
@@ -486,14 +740,20 @@ const MainContent = () => {
         {holidayConfirmation && <ConfirmationModal title={holidayConfirmation.isUnlocking ? "休日設定解除" : "休日設定"} message="全メンバーに適用しますか？" onConfirm={holidayConfirmation.onConfirm} onCancel={() => setHolidayConfirmation(null)} />}
         {absenceNotificationConfirmation && <ConfirmationModal title="欠勤の周知" message={`${absenceNotificationConfirmation.staffMember.name}さんの欠勤をチャットで周知しますか？`} onConfirm={() => handleAbsenceNotificationResponse(true)} onCancel={() => handleAbsenceNotificationResponse(false)} />}
         {approvalCancellationConfirmation && <ConfirmationModal title="承認の取り消し" message={`${approvalCancellationConfirmation.name}さんの承認を取り消しますか？`} onConfirm={handleConfirmApprovalCancellation} onCancel={() => setApprovalCancellationConfirmation(null)} />}
-        {shiftChangeConfirmation && (
+        
+        {/* 承認後変更確認モーダル */}
+        {showModificationConfirm && (
             <ConfirmationModal 
                 title="承認済みシフトの変更" 
-                message={`${shiftChangeConfirmation.staffMember.name}さんの承認済みシフトを変更しました。\n変更内容を本人に通知しますか？\n\n変更日: ${month}/${shiftChangeConfirmation.day}\n変更: ${shiftChangeConfirmation.oldValue} → ${shiftChangeConfirmation.newValue}`}
-                onConfirm={() => handleShiftChangeNotificationResponse(true)} 
-                onCancel={() => handleShiftChangeNotificationResponse(false)} 
+                message="承認済みのシフトが変更されました。\n続けて他の箇所も修正しますか？それとも変更を確定して通知を送りますか？" 
+                confirmText="修正を確定"
+                cancelText="続けて修正"
+                confirmColor="bg-orange-500 hover:bg-orange-600"
+                onConfirm={handleFinalizeModification} 
+                onCancel={() => setShowModificationConfirm(false)} 
             />
         )}
+
         <footer className="text-center mt-6 text-sm text-slate-500 pb-8"><p>Powered by Gemini & React</p></footer>
       </div>
     </div>
