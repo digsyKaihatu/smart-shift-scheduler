@@ -31,16 +31,22 @@ export const useShiftData = (year, month) => {
         const defaultStaff = initData.initialStaff || initData.staff || (initData.default && initData.default.staff) || [];
         const defaultTasks = initData.initialTasks || initData.tasks || (initData.default && initData.default.tasks) || [];
         const defaultPatterns = initData.initialShiftPatterns || initData.shiftPatterns || (initData.default && initData.default.shiftPatterns) || [];
-        const defaultAdminConfig = initData.initialAdminConfig || initData.adminConfig || (initData.default && initData.default.adminConfig) || {};
+        const defaultAdminConfig = initData.initialAdminConfig || initData.adminConfig || (initData.default && initData.default.adminConfig) || { adminEmails: "admin@example.com" };
 
         let currentStaff = defaultStaff;
         if (masterSnap.exists()) {
           const data = masterSnap.data();
+          
+          // ★復元ロジック：データが空配列で上書きされてしまっている場合はデフォルトデータで復元する
           currentStaff = (data.staff && data.staff.length > 0) ? data.staff : defaultStaff;
           setStaff(currentStaff);
+          
           setTasks((data.tasks && data.tasks.length > 0) ? data.tasks : defaultTasks);
           setShiftPatterns((data.shiftPatterns && data.shiftPatterns.length > 0) ? data.shiftPatterns : defaultPatterns);
-          setAdminConfig(data.adminConfig || defaultAdminConfig);
+          
+          // ★管理者権限の復元：adminEmailsが消えている場合はデフォルトで復元する
+          const isAdminValid = data.adminConfig && data.adminConfig.adminEmails && data.adminConfig.adminEmails.trim() !== "";
+          setAdminConfig(isAdminValid ? data.adminConfig : defaultAdminConfig);
         } else {
           setStaff(defaultStaff);
           setTasks(defaultTasks);
@@ -48,7 +54,7 @@ export const useShiftData = (year, month) => {
           setAdminConfig(defaultAdminConfig);
         }
 
-        // 2. シフトスケジュールの取得（元通り、1ヶ月全員分のデータを一度に取得）
+        // 2. シフトスケジュールの取得
         const monthSchedule = {};
         const docRef = doc(db, 'schedules', monthKey);
         const docSnap = await getDoc(docRef);
@@ -56,17 +62,21 @@ export const useShiftData = (year, month) => {
           Object.assign(monthSchedule, docSnap.data());
         }
 
-        // ★緊急復旧措置：マスタが空になってしまった場合、シフトデータからメンバー行を自動復元
-        if (currentStaff.length === 0 && Object.keys(monthSchedule).length > 0) {
-            currentStaff = Object.keys(monthSchedule).map((id, index) => ({
+        // ★手動追加メンバーの復元：マスタから消えてしまったが、シフトデータには存在しているメンバーを拾い上げる
+        const scheduleStaffIds = Object.keys(monthSchedule);
+        const missingStaffIds = scheduleStaffIds.filter(id => !currentStaff.some(s => s.id === id));
+        
+        if (missingStaffIds.length > 0) {
+            const restoredStaff = missingStaffIds.map(id => ({
                 id,
-                name: `メンバー ${index + 1}`,
-                employeeId: `EMP-${index + 1}`,
+                name: `復元されたメンバー (${id.substring(0, 4)})`, // 名前は失われているため仮の名前
+                employeeId: `EMP-${id.substring(0, 4)}`,
                 role: 'OP',
                 possibleTasks: [],
                 defaultShift: { pattern: ['I','I','I','I','I'], hasBreak: true },
                 shiftSubmitted: {}, shiftRemanded: {}, shiftApproved: {}
             }));
+            currentStaff = [...currentStaff, ...restoredStaff];
             setStaff(currentStaff);
         }
 
