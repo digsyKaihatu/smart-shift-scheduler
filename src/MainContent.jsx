@@ -7,6 +7,7 @@ import { useUserStatus } from './hooks/useUserStatus';
 import { useShiftActions } from './hooks/useShiftActions';
 import { chatService } from './services/chatService';
 import { getJapaneseHolidays, formatValue } from './utils/dateUtils';
+import { downloadScheduleCSV } from './utils/csvExporter';
 
 // Components
 import LoadingScreen from './components/common/LoadingScreen';
@@ -115,6 +116,7 @@ const MainContent = () => {
       <button onClick={() => setIsTaskEditorOpen(true)} className="px-3 py-1.5 bg-[#F4B896] text-white text-xs font-semibold rounded-md hover:bg-[#E8A680] shadow-sm whitespace-nowrap">業務担当</button>
       <button onClick={() => setIsMemberManagementOpen(true)} className="px-3 py-1.5 bg-[#F4B896] text-white text-xs font-semibold rounded-md hover:bg-[#E8A680] shadow-sm whitespace-nowrap">メンバー管理</button>
       <button onClick={() => setIsAdminSettingsOpen(true)} className="px-3 py-1.5 bg-slate-500 text-white text-xs font-semibold rounded-md hover:bg-slate-600 shadow-sm whitespace-nowrap">通知設定</button>
+      <button onClick={() => downloadScheduleCSV(staff, schedule, shiftPatterns, year, month)} className="px-3 py-1.5 bg-slate-600 text-white text-xs font-semibold rounded-md hover:bg-slate-700 shadow-sm whitespace-nowrap">CSV</button>
     </>
   ) : null;
 
