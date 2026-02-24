@@ -32,9 +32,7 @@ export const useUserStatus = (staff, adminConfig) => {
       }
     };
 
-    // staff.lengthの条件を外し、データ取得前や未登録(0人)の状態でも
-    // 一旦Oktaユーザーとしてローディングを抜けられるように修正
-    if (authState?.isAuthenticated) {
+    if (authState?.isAuthenticated && staff.length > 0) {
       identifyUser();
     }
   }, [authState, oktaAuth, staff]);
