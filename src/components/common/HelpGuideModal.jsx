@@ -105,13 +105,6 @@ const HelpGuideModal = ({ onClose }) => {
                     </h4>
                     <p className="text-slate-600 ml-2">管理者が<span className="font-bold text-orange-600">承認済みのシフト</span>を変更すると、画面上部にオレンジ色の通知バーが表示されます。まとめて修正した後、「変更を確定して通知」ボタンを押すと、該当メンバーに変更内容がチャットで通知され、承認ステータスが解除されます。</p>
                 </div>
-
-                <div>
-                    <h4 className="font-bold text-slate-700 mb-2 text-lg flex items-center">
-                        その他: 欠勤連絡 <AdminBadge />
-                    </h4>
-                    <p className="text-slate-600 ml-2">管理者が当日のシフトを「欠勤」に変更すると確認画面が表示され、<span className="font-bold">全員</span>宛に欠勤周知の通知を送信できます。</p>
-                </div>
             </div>
             <div className="mt-4 border border-slate-200 rounded-md overflow-hidden shadow-sm max-w-3xl">
                 <img src="/スマシフガイド3.png" alt="通知機能の例" className="w-full h-auto object-contain bg-slate-100" />
