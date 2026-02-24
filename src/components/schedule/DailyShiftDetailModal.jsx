@@ -14,7 +14,7 @@ const DailyShiftDetailModal = ({ detail, viewMode, onClose, onDelete, canDelete 
                     <span className="text-2xl text-[#D9824D]">{detail.date.getDate()}</span>
                     <span className="text-sm text-slate-500">{getDayOfWeekStr(detail.date)}曜日</span>
                     <span className="px-3 py-1 bg-[#F4B896] text-white text-xs font-bold rounded-full ml-4">
-                        {viewMode === 'active_shifts' ? '出勤者一覧' : '休日者一覧'}
+                        メンバー
                     </span>
                 </h3>
                 <button onClick={onClose} className="text-slate-400 hover:text-slate-600 p-1 hover:bg-slate-200 rounded-full transition-colors"><XIcon size={24} /></button>
