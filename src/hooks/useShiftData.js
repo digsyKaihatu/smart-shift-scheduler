@@ -2,8 +2,8 @@ import { useState, useEffect, useCallback } from 'react';
 import { db } from '../config/firebase';
 import { doc, getDoc, setDoc, writeBatch } from 'firebase/firestore';
 
-// 既存の初期データインポート
-import { initialStaff, initialTasks, initialShiftPatterns, initialAdminConfig } from '../constants/initialData';
+// 既存の初期データインポート（エクスポート名の不一致によるビルドエラーを回避するため一括インポート）
+import * as initData from '../constants/initialData';
 
 export const useShiftData = (year, month) => {
   const [staff, setStaff] = useState([]);
@@ -27,7 +27,13 @@ export const useShiftData = (year, month) => {
         const masterRef = doc(db, 'master', 'settings');
         const masterSnap = await getDoc(masterRef);
         
-        let currentStaff = initialStaff || [];
+        // export名の違いを吸収して安全に取得
+        const defaultStaff = initData.initialStaff || initData.staff || [];
+        const defaultTasks = initData.initialTasks || initData.tasks || [];
+        const defaultPatterns = initData.initialShiftPatterns || initData.shiftPatterns || [];
+        const defaultAdminConfig = initData.initialAdminConfig || initData.adminConfig || {};
+
+        let currentStaff = defaultStaff;
         if (masterSnap.exists()) {
           const data = masterSnap.data();
           if (data.staff) {
@@ -38,10 +44,10 @@ export const useShiftData = (year, month) => {
           if (data.shiftPatterns) setShiftPatterns(data.shiftPatterns);
           if (data.adminConfig) setAdminConfig(data.adminConfig);
         } else {
-          setStaff(initialStaff || []);
-          setTasks(initialTasks || []);
-          setShiftPatterns(initialShiftPatterns || []);
-          setAdminConfig(initialAdminConfig || {});
+          setStaff(defaultStaff);
+          setTasks(defaultTasks);
+          setShiftPatterns(defaultPatterns);
+          setAdminConfig(defaultAdminConfig);
         }
 
         // 2. シフトスケジュールの取得
