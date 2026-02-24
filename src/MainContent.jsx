@@ -1,122 +1,51 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useOktaAuth } from '@okta/okta-react';
 
-// Hooks & Services & Utils
+// Hooks & Services
 import { useShiftData } from './hooks/useShiftData';
+import { useUserStatus } from './hooks/useUserStatus';
+import { useShiftActions } from './hooks/useShiftActions';
 import { chatService } from './services/chatService';
-import { downloadScheduleCSV } from './utils/csvExporter';
 import { getJapaneseHolidays, formatValue } from './utils/dateUtils';
-import { generateScheduleForMonth, summarizePattern } from './utils/scheduleUtils';
 
 // Components
 import LoadingScreen from './components/common/LoadingScreen';
-import HelpGuideModal from './components/common/HelpGuideModal';
-import { ConfirmationModal, ConfirmDeleteModal } from './components/common/Modal';
 import Legend from './components/schedule/Legend';
 import ShiftSchedule from './components/schedule/ShiftSchedule';
 import MonthlyCalendar from './components/schedule/MonthlyCalendar';
 import ShiftPatternDisplay from './components/schedule/ShiftPatternDisplay';
-import ShiftApprovalModal from './components/schedule/ShiftApprovalModal';
 import TaskShortageDisplay from './components/tasks/TaskShortageDisplay';
-import TaskStaffMappingEditor from './components/tasks/TaskStaffMappingEditor';
-import MemberManagementModal from './components/admin/MemberManagementModal';
-import AdminSettingsModal from './components/admin/AdminSettingsModal';
+import GlobalModals from './components/containers/GlobalModals';
 
 const MainContent = () => {
-  const { oktaAuth, authState } = useOktaAuth();
-
   const [year, setYear] = useState(new Date().getFullYear());
   const [month, setMonth] = useState(new Date().getMonth() + 1);
 
+  // データ取得フック
   const {
-    staff, setStaff, 
-    schedule, 
-    updateShiftItem,
-    updateShiftItems,
-    updateShiftUserMonth,
-    tasks, setTasks,
-    shiftPatterns, setShiftPatterns, 
-    adminConfig, setAdminConfig,
+    staff, setStaff, schedule, updateShiftItem, updateShiftItems, updateShiftUserMonth,
+    tasks, setTasks, shiftPatterns, setShiftPatterns, adminConfig, setAdminConfig,
     isLoading, loadingMessage, setLoadingMessage, setIsLoading, saveStatus, initialDataLoaded
   } = useShiftData(year, month);
 
-  const [currentUser, setCurrentUser] = useState(null);
-  const [taskCountsByDay, setTaskCountsByDay] = useState({});
+  // ユーザー状態・権限フック (新規)
+  const { currentUser, isAdmin, isAuthenticated } = useUserStatus(staff, adminConfig);
+
+  // シフトアクションフック (新規)
+  const actions = useShiftActions({
+    staff, setStaff, schedule, year, month, adminConfig, shiftPatterns,
+    setIsLoading, setLoadingMessage, updateShiftItems
+  });
+
+  // UI状態管理
   const [isTaskEditorOpen, setIsTaskEditorOpen] = useState(false);
   const [isHelpOpen, setIsHelpOpen] = useState(false);
   const [isMemberManagementOpen, setIsMemberManagementOpen] = useState(false);
   const [isAdminSettingsOpen, setIsAdminSettingsOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(null);
-  const [approvalModalStaffId, setApprovalModalStaffId] = useState(null);
-  const [submissionConfirmation, setSubmissionConfirmation] = useState(null);
   const [holidayConfirmation, setHolidayConfirmation] = useState(null);
-  const [absenceNotificationConfirmation, setAbsenceNotificationConfirmation] = useState(null);
-  const [remandConfirmation, setRemandConfirmation] = useState(null);
-  const [approvalCancellationConfirmation, setApprovalCancellationConfirmation] = useState(null);
 
-  // 承認後の変更フロー用State
-  const [pendingChanges, setPendingChanges] = useState([]);
-  const [showModificationConfirm, setShowModificationConfirm] = useState(false);
-
-  useEffect(() => {
-    const identifyUser = async () => {
-      if (authState?.isAuthenticated) {
-        const userInfo = await oktaAuth.getUser();
-        const matchedStaff = staff.find(s => s.email === userInfo.email);
-        if (matchedStaff) {
-          setCurrentUser({ ...matchedStaff, email: userInfo.email });
-        } else {
-          setCurrentUser({
-            id: 'okta-user',
-            name: userInfo.name || 'Okta User',
-            email: userInfo.email,
-            role: 'OP'
-          });
-        }
-      } else {
-        setCurrentUser(null);
-      }
-    };
-    if (authState?.isAuthenticated && staff.length > 0) identifyUser();
-  }, [authState, oktaAuth, staff]);
-
-  // データ移行処理 (手動実行用に変更)
-  const handleMigrateData = () => {
-    if (!window.confirm("データ移行（パターンA → I）を実行しますか？\n※この操作は取り消せません。")) return;
-
-    setStaff(prevStaff => {
-      let isChanged = false;
-      const newStaff = prevStaff.map(s => {
-        const isAllA = s.defaultShift?.pattern?.every(p => p === 'A');
-        if (isAllA) {
-          isChanged = true;
-          return {
-            ...s,
-            defaultShift: {
-              ...s.defaultShift,
-              pattern: ['I', 'I', 'I', 'I', 'I']
-            }
-          };
-        }
-        return s;
-      });
-      
-      if (isChanged) {
-        alert("データの移行が完了しました。");
-        return newStaff;
-      } else {
-        alert("移行対象のデータはありませんでした。");
-        return prevStaff;
-      }
-    });
-  };
-
-  const firebaseAdminEmails = useMemo(() => {
-    if (!adminConfig?.adminEmails) return [];
-    return adminConfig.adminEmails.split(',').map(email => email.trim());
-  }, [adminConfig]);
-
-  const isAdmin = currentUser?.id === 'admin' || (currentUser?.email && firebaseAdminEmails.includes(currentUser.email));
+  // 定数・メモ化
   const key = `${year}-${month}`;
   const daysInMonth = new Date(year, month, 0).getDate();
   const currentMonthHolidays = useMemo(() => getJapaneseHolidays(year, month), [year, month]);
@@ -125,634 +54,142 @@ const MainContent = () => {
     return { day: i + 1, dayOfWeek: ['日', '月', '火', '水', '木', '金', '土'][date.getDay()] };
   }), [year, month, daysInMonth]);
 
-  useEffect(() => {
-    if (initialDataLoaded && !schedule[key]) {
-        // useShiftData内でhandleしているので待機
-    }
-  }, [year, month, schedule, staff, shiftPatterns, initialDataLoaded]);
-
+  // タスクカウント集計ロジック
+  const [taskCountsByDay, setTaskCountsByDay] = useState({});
   useEffect(() => {
     if (!initialDataLoaded) return;
-    const currentMonthSchedule = schedule[key] || {};
     const counts = {};
     for (let day = 1; day <= daysInMonth; day++) {
       counts[day] = {};
       tasks.forEach(t => counts[day][t.id] = 0);
       staff.forEach(s => {
-        const entry = currentMonthSchedule[s.id]?.[day];
+        const entry = (schedule[key] || {})[s.id]?.[day];
         const isWorking = (typeof entry === 'number' && entry > 0) || (typeof entry === 'object' && entry?.hours > 0);
-        if (isWorking) {
-          s.possibleTasks.forEach(tId => { if (counts[day][tId] !== undefined) counts[day][tId]++; });
-        }
+        if (isWorking) s.possibleTasks.forEach(tId => { if (counts[day][tId] !== undefined) counts[day][tId]++; });
       });
     }
     setTaskCountsByDay(counts);
-  }, [schedule, year, month, staff, tasks, daysInMonth, initialDataLoaded]);
+  }, [schedule, key, staff, tasks, daysInMonth, initialDataLoaded]);
 
-  // 月変更時のチェック
-  const handleYearMonthChange = (newYear, newMonth) => {
-    if (pendingChanges.length > 0) {
-      alert("未確定の修正があります。\n月ごとに修正を確定してください。");
-      return;
-    }
-    setYear(newYear);
-    setMonth(newMonth);
-  };
-
-  // スケジュール更新の汎用ハンドラ（単一セル）
-  const handleUpdateScheduleGeneric = (targetYear, targetMonth, staffId, day, value) => {
-    updateShiftItem(targetYear, targetMonth, staffId, day, value);
-  };
-
+  // ハンドラー
   const handleUpdateSchedule = (staffId, day, value) => {
-    // 変更前の値を取得し、実際に変更があったかチェック
     const currentVal = schedule[key]?.[staffId]?.[day];
-    const isDiff = JSON.stringify(currentVal) !== JSON.stringify(value);
+    if (JSON.stringify(currentVal) === JSON.stringify(value)) return;
 
-    // 承認ステータスを取得
-    const targetStaff = staff.find(s => s.id === staffId);
-    const isApproved = targetStaff?.shiftApproved?.[key];
-
+    const isApproved = staff.find(s => s.id === staffId)?.shiftApproved?.[key];
     let newValue = value;
 
-    // 承認済み状態で変更があった場合、変更フラグ(modified)を付与したオブジェクトに変換する
-    if (isApproved && isDiff) {
-        if (typeof value === 'number') {
-            // 数値（稼働時間）の場合 -> { type: '稼働', hours: 8, modified: true }
-            newValue = { type: '稼働', hours: value, modified: true };
-        } else if (typeof value === 'string' && value !== '') {
-            // 文字列（ステータス）の場合 -> { type: value, modified: true }
-            newValue = { type: value, modified: true };
-        } else if (typeof value === 'object' && value !== null) {
-            // 既にオブジェクトの場合 -> { ..., modified: true }
-            newValue = { ...value, modified: true };
-        } else if (value === '') {
-            // クリア（空）の場合 -> { type: '', modified: true }
-            newValue = { type: '', modified: true };
-        }
-    }
-
-    // データの更新
-    handleUpdateScheduleGeneric(year, month, staffId, day, newValue);
-
-    // 変更があった場合のみ追加処理を実行
-    if (isDiff) {
-        // 承認済みシフトの変更処理
-        if (isApproved) {
-            // 表示用の値を生成し、(undefined)が含まれる場合は削除する
-            let safeDisplayValue = formatValue(newValue) || '未入力(クリア)';
-            if (typeof safeDisplayValue === 'string') {
-                safeDisplayValue = safeDisplayValue.replace(/\(undefined\)/g, '');
-            }
-
-            // 変更情報を一時リストに追加（通知はまだ送らない）
-            setPendingChanges(prev => {
-                // 同じ日付の修正が既にある場合は上書きする
-                const filtered = prev.filter(c => !(c.staffId === staffId && c.day === day));
-                return [...filtered, {
-                    staffId,
-                    name: targetStaff.name,
-                    day,
-                    displayValue: safeDisplayValue,
-                    rawYear: year,
-                    rawMonth: month
-                }];
-            });
-            
-            // 「続けて修正しますか？」モーダルを表示
-            setShowModificationConfirm(true);
-        } else {
-            // 通常の変更時の処理（管理者による欠勤変更時の確認など）
-            if (isAdmin && value === '欠') {
-                setAbsenceNotificationConfirmation({ staffMember: targetStaff, day, value });
-            }
-        }
-    }
-  };
-
-  // 承認後変更の確定処理
-  const handleFinalizeModification = async () => {
-      // 変更があったスタッフを特定
-      const targetStaffIds = [...new Set(pendingChanges.map(c => c.staffId))];
-      
-      setIsLoading(true);
-      setLoadingMessage('変更を確定し、通知を送信中...');
-      
-      try {
-          for (const sId of targetStaffIds) {
-              const staffChanges = pendingChanges.filter(c => c.staffId === sId);
-              const targetStaff = staff.find(s => s.id === sId);
-              
-              if (!targetStaff) continue;
-
-              // 月ごとにグループ化して処理（基本は1ヶ月分だが、安全策として）
-              const changesByMonth = staffChanges.reduce((acc, change) => {
-                  const key = `${change.rawYear}-${change.rawMonth}`;
-                  if (!acc[key]) acc[key] = [];
-                  acc[key].push(change);
-                  return acc;
-              }, {});
-
-              for (const [ymKey, changes] of Object.entries(changesByMonth)) {
-                  const [cYear, cMonth] = ymKey.split('-').map(Number);
-                  
-                  const sortedChanges = changes.sort((a, b) => a.day - b.day);
-                  
-                  // 詳細な変更内容のリスト作成
-                  const changeDetails = sortedChanges
-                      .map(c => {
-                          // 安全策: displayValueが文字列であることを期待しつつ、(undefined)を除去
-                          const valStr = String(c.displayValue || '');
-                          return `${c.rawMonth}/${c.day}: ${valStr.replace(/\(undefined\)/g, '')}`;
-                      })
-                      .join('\n');
-
-                  // ①通知のタイトル用日付文字列を作成 (例: "1, 3")
-                  const dateSummary = sortedChanges
-                      .map(c => c.day)
-                      .join(', ');
-
-                  // メンション設定
-                  let mentions = '';
-                  if (adminConfig?.submissionNotificationIds) {
-                      mentions = adminConfig.submissionNotificationIds.split(',').map(id => id.trim()).filter(id => id !== '').map(id => `<users/${id}>`).join(' ');
-                  }
-
-                  // 通知送信 (データ内の年月を使用)
-                  await chatService.sendChangeAfterApproval(
-                      targetStaff.name, 
-                      cYear, 
-                      cMonth, 
-                      dateSummary, 
-                      changeDetails, 
-                      mentions
-                  );
-
-                  // ②承認ステータス解除 (データ内の年月キーを使用)
-                  setStaff(prev => prev.map(s => {
-                      if (s.id === sId) {
-                          const newApproved = { ...s.shiftApproved };
-                          newApproved[ymKey] = false; 
-                          return { ...s, shiftApproved: newApproved };
-                      }
-                      return s;
-                  }));
-              }
-          }
-      } catch (error) {
-          console.error("Notification failed", error);
-          alert('通知の送信に失敗しました。');
-      }
-
-      setIsLoading(false);
-      setPendingChanges([]);
-      setShowModificationConfirm(false);
-  };
-
-  const handleAbsenceNotificationResponse = async (send) => {
-    if (!absenceNotificationConfirmation) return;
-    const { staffMember, day, value } = absenceNotificationConfirmation;
-    if (send) {
-      setIsLoading(true);
-      try { await chatService.sendAbsence(staffMember.name); } catch (e) { alert(e.message); }
-      setIsLoading(false);
-    }
-    setAbsenceNotificationConfirmation(null);
-  };
-
-  const handleToggleShiftSubmitted = (staffId) => {
-    const s = staff.find(x => x.id === staffId);
-    if (s?.shiftSubmitted?.[key]) {
-      setStaff(prev => prev.map(x => x.id === staffId ? { ...x, shiftSubmitted: { ...x.shiftSubmitted, [key]: false } } : x));
-    } else {
-      setSubmissionConfirmation({ staffId, name: s.name });
-    }
-  };
-
-  const handleConfirmSubmission = async () => {
-    if (!submissionConfirmation) return;
-    const { staffId, name } = submissionConfirmation;
-    let mentions = '';
-    if (adminConfig?.submissionNotificationIds) {
-        mentions = adminConfig.submissionNotificationIds.split(',').map(id => id.trim()).filter(id => id !== '').map(id => `<users/${id}>`).join(' ');
-    }
-    setIsLoading(true);
-    setLoadingMessage('提出通知を送信中...');
-    try { await chatService.sendSubmission(name, year, month, mentions); } catch (e) { alert('通知送信に失敗しました'); }
-    setIsLoading(false);
-    setStaff(prev => prev.map(x => x.id === staffId ? { ...x, shiftSubmitted: { ...x.shiftSubmitted, [key]: true } } : x));
-    setSubmissionConfirmation(null);
-  };
-
-  const handleToggleShiftRemanded = (staffId) => {
-    const s = staff.find(x => x.id === staffId);
-    if (s?.shiftRemanded?.[key]) {
-        setStaff(prev => prev.map(x => x.id === staffId ? { ...x, shiftRemanded: { ...x.shiftRemanded, [key]: false } } : x));
-    } else {
-        setRemandConfirmation({ staffId, name: s.name });
-    }
-  };
-
-  const handleConfirmRemand = async () => {
-    if (!remandConfirmation) return;
-    const { staffId, name } = remandConfirmation;
-    const s = staff.find(x => x.id === staffId);
-    setIsLoading(true);
-    setLoadingMessage('差戻通知を送信中...');
-    try { await chatService.sendRemand(name, s.chatUserId); } catch (e) { alert('通知送信に失敗しました'); }
-    setIsLoading(false);
-    setStaff(prev => prev.map(x => x.id === staffId ? { ...x, shiftRemanded: { ...x.shiftRemanded, [key]: true } } : x));
-    setRemandConfirmation(null);
-  };
-
-  const handleConfirmApproval = async (remarks) => {
-    if (!approvalModalStaffId) return;
-    const s = staff.find(x => x.id === approvalModalStaffId);
-    const irregularities = [];
-    for (let day = 1; day <= daysInMonth; day++) {
-        const date = new Date(year, month - 1, day);
-        const dayOfWeek = date.getDay();
-        const isHoliday = currentMonthHolidays.includes(day);
-        let expected = (dayOfWeek === 0 || dayOfWeek === 6 || isHoliday) ? 'シフト休' : '';
-        if (expected === '') {
-             const pIdx = dayOfWeek - 1;
-             const pId = s.defaultShift.pattern[pIdx];
-             if (pId === 'シフト休') expected = 'シフト休';
-             else {
-                 const p = shiftPatterns.find(x => x.id === pId);
-                 expected = p ? p.workHours : '';
-             }
-        }
-        const actual = schedule[key]?.[s.id]?.[day] ?? '';
+    if (isApproved) {
+        if (typeof value === 'number') newValue = { type: '稼働', hours: value, modified: true };
+        else if (typeof value === 'string') newValue = { type: value, modified: true };
+        else if (typeof value === 'object' && value !== null) newValue = { ...value, modified: true };
         
-        let actualCompare = actual;
-        if (typeof actual === 'object' && actual !== null) {
-            actualCompare = actual.type || '';
-        }
-
-        let isEffectivelySame = (actualCompare === expected);
-        if (!isEffectivelySame) {
-            if (expected === 'シフト休') {
-                const emptyOrRestValues = ['', 0, '0', '休', 'シフト休', null, undefined];
-                if (emptyOrRestValues.includes(actualCompare)) {
-                    isEffectivelySame = true;
-                }
-            } else if (expected !== '') {
-                if (!isNaN(parseFloat(actualCompare)) && !isNaN(parseFloat(expected)) && parseFloat(actualCompare) === parseFloat(expected)) {
-                    isEffectivelySame = true;
-                }
-            }
-        }
-
-        if (!isEffectivelySame) {
-            const wStr = ['日', '月', '火', '水', '木', '金', '土'][dayOfWeek];
-            irregularities.push(`${month}/${day}(${wStr}): ${formatValue(actual) || '未入力'}`);
-        }
-    }
-    setIsLoading(true);
-    setLoadingMessage('承認通知を送信中...');
-    try { await chatService.sendApproval(s, year, month, summarizePattern(s.defaultShift.pattern, shiftPatterns, s.defaultShift.hasBreakArray), irregularities.join('\n') || 'なし', remarks); } catch (e) { alert('通知送信に失敗しました'); }
-    setIsLoading(false);
-    
-    // 承認時にmodifiedフラグ（変更ハイライト用）をクリアする
-    const staffSchedule = schedule[key]?.[s.id] || {};
-    const updates = [];
-    Object.entries(staffSchedule).forEach(([day, val]) => {
-        if (typeof val === 'object' && val?.modified) {
-            let cleanedVal;
-            const { modified, ...rest } = val;
-            
-            if (rest.type === '稼働' && typeof rest.hours === 'number' && Object.keys(rest).length === 2) {
-                cleanedVal = rest.hours;
-            } else if (rest.type === '' && Object.keys(rest).length === 1) {
-                cleanedVal = '';
-            } else if (Object.keys(rest).length === 1 && typeof rest.type === 'string') {
-                cleanedVal = rest.type;
-            } else {
-                cleanedVal = rest;
-            }
-            updates.push({ staffId: s.id, day: Number(day), value: cleanedVal });
-        }
-    });
-    
-    if (updates.length > 0) {
-        updateShiftItems(year, month, updates);
+        actions.setPendingChanges(prev => [...prev.filter(c => !(c.staffId === staffId && c.day === day)), {
+            staffId, day, displayValue: formatValue(newValue), rawYear: year, rawMonth: month
+        }]);
+        actions.setShowModificationConfirm(true);
+    } else if (isAdmin && value === '欠') {
+        actions.setAbsenceNotificationConfirmation({ staffMember: staff.find(s => s.id === staffId), day, value });
     }
 
-    setStaff(prev => prev.map(x => {
-        if (x.id === approvalModalStaffId) {
-            const currentApproved = x.shiftApproved || {};
-            return { 
-                ...x, 
-                shiftApproved: { ...currentApproved, [key]: true } 
-            };
-        }
-        return x;
-    }));
-    setApprovalModalStaffId(null);
-  };
-
-  const handleToggleShiftApproved = (staffId) => {
-      const s = staff.find(x => x.id === staffId);
-      if (s?.shiftApproved && s.shiftApproved[key]) {
-          setApprovalCancellationConfirmation({ staffId, name: s.name });
-      } else {
-          setApprovalModalStaffId(staffId);
-      }
-  };
-
-  const handleConfirmApprovalCancellation = () => {
-    if (!approvalCancellationConfirmation) return;
-    const { staffId } = approvalCancellationConfirmation;
-    setStaff(prev => prev.map(x => {
-        if (x.id === staffId) {
-            const currentApproved = x.shiftApproved || {};
-            return { 
-                ...x, 
-                shiftApproved: { ...currentApproved, [key]: false } 
-            };
-        }
-        return x;
-    }));
-    setApprovalCancellationConfirmation(null);
-  };
-
-  const handleUpdateStaffInfo = (id, field, val) => setStaff(prev => prev.map(s => s.id === id ? { ...s, [field]: val } : s));
-  const handleDeleteStaff = (id) => setConfirmDelete({ type: 'staff', id, name: staff.find(s => s.id === id)?.name });
-  const handleDeleteTask = (id) => setConfirmDelete({ type: 'task', id, name: tasks.find(t => t.id === id)?.name });
-  
-  const handleExportCSV = () => downloadScheduleCSV(staff, schedule, shiftPatterns, year, month);
-   
-  const handleBulkUpdateStaffTasks = (taskStaffMap) => {
-      const staffTaskMap = {};
-      staff.forEach(s => staffTaskMap[s.id] = []);
-      Object.entries(taskStaffMap).forEach(([taskId, staffIds]) => {
-          staffIds.forEach(staffId => { if (staffTaskMap[staffId]) staffTaskMap[staffId].push(taskId); });
-      });
-      setStaff(prevStaff => prevStaff.map(s => ({ ...s, possibleTasks: staffTaskMap[s.id] || [] })));
-      setIsTaskEditorOpen(false);
-  };
-
-  const handleUpdateSingleTaskStaff = (taskId, newStaffIds) => {
-    setStaff(prevStaff => prevStaff.map(s => {
-      const isAssigned = newStaffIds.includes(s.id);
-      const currentTasks = s.possibleTasks || [];
-      const newTasks = isAssigned ? (currentTasks.includes(taskId) ? currentTasks : [...currentTasks, taskId]) : currentTasks.filter(tid => tid !== taskId);
-      return { ...s, possibleTasks: newTasks };
-    }));
-  };
-   
-  const handleApplyStaffPattern = (staffId, newPattern, hasBreak) => {
-    setStaff(prevStaff => prevStaff.map(s => s.id === staffId ? { ...s, defaultShift: { pattern: newPattern, hasBreak } } : s));
-    
-    // パターン適用は該当スタッフの1ヶ月分を一括更新する
-    const newMonthScheduleForStaff = {};
-    for (let day = 1; day <= daysInMonth; day++) {
-        const date = new Date(year, month - 1, day);
-        const dayOfWeek = date.getDay(); 
-        const isHoliday = currentMonthHolidays.includes(day);
-        let shiftValue = '';
-        if (isHoliday || dayOfWeek === 0 || dayOfWeek === 6) {
-            shiftValue = 'シフト休';
-        } else {
-            const patternId = newPattern[dayOfWeek - 1];
-            if (patternId === 'シフト休') shiftValue = 'シフト休';
-            else {
-                const pattern = shiftPatterns.find(p => p.id === patternId);
-                shiftValue = pattern ? pattern.workHours : '';
-            }
-        }
-        newMonthScheduleForStaff[day] = shiftValue;
-    }
-    updateShiftUserMonth(year, month, staffId, newMonthScheduleForStaff);
+    updateShiftItem(year, month, staffId, day, newValue);
   };
 
   const executeDelete = () => {
     if (!confirmDelete) return;
-    if (confirmDelete.type === 'staff') {
-        const deletedId = confirmDelete.id;
-        setStaff(prev => prev.filter(s => s.id !== deletedId));
-    } else {
-        setTasks(prev => prev.filter(t => t.id !== confirmDelete.id));
-        setStaff(prev => prev.map(s => ({ ...s, possibleTasks: s.possibleTasks.filter(tid => tid !== confirmDelete.id) })));
+    if (confirmDelete.type === 'staff') setStaff(prev => prev.filter(s => s.id !== confirmDelete.id));
+    else {
+      setTasks(prev => prev.filter(t => t.id !== confirmDelete.id));
+      setStaff(prev => prev.map(s => ({ ...s, possibleTasks: s.possibleTasks.filter(tid => tid !== confirmDelete.id) })));
     }
     setConfirmDelete(null);
   };
 
-  const handleAddStaff = () => {
-      const newId = `s${Date.now()}`;
-      setStaff(prev => [...prev, {
-          id: newId, employeeId: 'New', name: '新規メンバー', role: 'OP', chatUserId: '', possibleTasks: [],
-          defaultShift: { pattern: ['I','I','I','I','I'], hasBreak: true }, shiftSubmitted: {}, shiftRemanded: {}, shiftApproved: {}
-      }]);
-      
-      const newMemberSchedule = {};
-      for (let day = 1; day <= daysInMonth; day++) {
-          const date = new Date(year, month - 1, day);
-          const dayOfWeek = date.getDay();
-          const isHoliday = currentMonthHolidays.includes(day);
-          if (dayOfWeek === 0 || dayOfWeek === 6 || isHoliday) {
-              newMemberSchedule[day] = 'シフト休';
-          }
-      }
-      updateShiftUserMonth(year, month, newId, newMemberSchedule);
-  };
-
-  const handleSetDayAsHolidayForAll = (day) => {
-      if(!isAdmin) return;
-      const isAlreadyLockedHoliday = staff.length > 0 && staff.every(s => {
-        const entry = (schedule[key] || {})[s.id]?.[day];
-        return typeof entry === 'object' && entry?.locked === true;
-      });
-
-      if (isAlreadyLockedHoliday) {
-        setHolidayConfirmation({ day, isUnlocking: true, onConfirm: () => {
-                const updates = [];
-                staff.forEach(s => {
-                    const date = new Date(year, month - 1, day);
-                    const dayOfWeek = date.getDay();
-                    let restoredValue = (currentMonthHolidays.includes(day) || dayOfWeek === 0 || dayOfWeek === 6) ? 'シフト休' : '';
-                    if (restoredValue === '' && dayOfWeek > 0 && dayOfWeek < 6) {
-                        const pId = s.defaultShift.pattern[dayOfWeek - 1];
-                        restoredValue = pId === 'シフト休' ? 'シフト休' : (shiftPatterns.find(p => p.id === pId)?.workHours || '');
-                    }
-                    updates.push({ staffId: s.id, day, value: restoredValue });
-                });
-                updateShiftItems(year, month, updates);
-                setHolidayConfirmation(null);
-            },
-        });
-    } else {
-        setHolidayConfirmation({ day, isUnlocking: false, onConfirm: () => {
-                const updates = staff.map(s => ({
-                    staffId: s.id,
-                    day,
-                    value: { type: 'シフト休', locked: true }
-                }));
-                updateShiftItems(year, month, updates);
-                setHolidayConfirmation(null);
-            },
-        });
-    }
-  };
-
   if (isLoading || !currentUser) return <LoadingScreen message={loadingMessage} />;
-  if (!authState?.isAuthenticated) {
-    return null;
-  }
-  
-  const currentMonthSchedule = schedule[key] || {};
-  const approvalStaff = approvalModalStaffId ? staff.find(s => s.id === approvalModalStaffId) : null;
 
-  const adminControls = (
-      <>
-          {isAdmin && (
-              <>
-                  <button onClick={handleAddStaff} className="px-3 py-1.5 bg-[#F4B896] text-white text-xs font-semibold rounded-md hover:bg-[#E8A680] shadow-sm whitespace-nowrap">+ メンバー</button>
-                  <button onClick={() => setTasks(prev => [...prev, { id: `t${Date.now()}`, name: '新業務', requiredPersonnel: 3 }])} className="px-3 py-1.5 bg-[#F4B896] text-white text-xs font-semibold rounded-md hover:bg-[#E8A680] shadow-sm whitespace-nowrap">+ 業務</button>
-                  <button onClick={() => setIsTaskEditorOpen(true)} className="px-3 py-1.5 bg-[#F4B896] text-white text-xs font-semibold rounded-md hover:bg-[#E8A680] shadow-sm whitespace-nowrap">業務担当</button>
-                  <button onClick={() => setIsMemberManagementOpen(true)} className="px-3 py-1.5 bg-[#F4B896] text-white text-xs font-semibold rounded-md hover:bg-[#E8A680] shadow-sm whitespace-nowrap">メンバー管理</button>
-                  <button onClick={() => setIsAdminSettingsOpen(true)} className="px-3 py-1.5 bg-slate-500 text-white text-xs font-semibold rounded-md hover:bg-slate-600 shadow-sm whitespace-nowrap">通知設定</button>
-              </>
-          )}
-          <button onClick={handleExportCSV} className="px-3 py-1.5 bg-gray-600 text-white text-xs font-semibold rounded-md hover:bg-gray-700 shadow-sm whitespace-nowrap">CSV</button>
-      </>
-  );
+  const currentMonthSchedule = schedule[key] || {};
+  const adminControls = isAdmin ? (
+    <>
+      <button onClick={() => setStaff(prev => [...prev, { id: `s${Date.now()}`, employeeId: 'New', name: '新規メンバー', role: 'OP', chatUserId: '', possibleTasks: [], defaultShift: { pattern: ['I','I','I','I','I'], hasBreak: true }, shiftSubmitted: {}, shiftRemanded: {}, shiftApproved: {} }])} className="px-3 py-1.5 bg-[#F4B896] text-white text-xs font-semibold rounded-md hover:bg-[#E8A680] shadow-sm whitespace-nowrap">+ メンバー</button>
+      <button onClick={() => setTasks(prev => [...prev, { id: `t${Date.now()}`, name: '新業務', requiredPersonnel: 3 }])} className="px-3 py-1.5 bg-[#F4B896] text-white text-xs font-semibold rounded-md hover:bg-[#E8A680] shadow-sm whitespace-nowrap">+ 業務</button>
+      <button onClick={() => setIsTaskEditorOpen(true)} className="px-3 py-1.5 bg-[#F4B896] text-white text-xs font-semibold rounded-md hover:bg-[#E8A680] shadow-sm whitespace-nowrap">業務担当</button>
+      <button onClick={() => setIsMemberManagementOpen(true)} className="px-3 py-1.5 bg-[#F4B896] text-white text-xs font-semibold rounded-md hover:bg-[#E8A680] shadow-sm whitespace-nowrap">メンバー管理</button>
+      <button onClick={() => setIsAdminSettingsOpen(true)} className="px-3 py-1.5 bg-slate-500 text-white text-xs font-semibold rounded-md hover:bg-slate-600 shadow-sm whitespace-nowrap">通知設定</button>
+    </>
+  ) : null;
 
   return (
     <div className="min-h-screen bg-[#FFF9F6] text-slate-800 p-2 sm:p-4 font-sans relative">
-      {/* 未確定の変更がある場合の通知バー */}
-      {pendingChanges.length > 0 && !showModificationConfirm && (
+      {actions.pendingChanges.length > 0 && !actions.showModificationConfirm && (
         <div className="fixed top-0 left-0 right-0 bg-orange-100 border-b border-orange-300 text-orange-800 px-4 py-2 z-[60] shadow-md flex justify-between items-center animate-slideDown">
           <div className="flex items-center gap-2">
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-orange-500" viewBox="0 0 20 20" fill="currentColor">
-              <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
-            </svg>
-            <span className="font-bold">承認済みシフトの変更が {pendingChanges.length} 件保留されています。</span>
+            <span className="font-bold">承認済みシフトの変更が {actions.pendingChanges.length} 件保留されています。</span>
           </div>
-          <button 
-            onClick={handleFinalizeModification} 
-            className="px-4 py-1 bg-orange-500 text-white text-sm font-bold rounded hover:bg-orange-600 shadow transition-colors"
-          >
-            変更を確定して通知
-          </button>
+          <button onClick={actions.handleFinalizeModification} className="px-4 py-1 bg-orange-500 text-white text-sm font-bold rounded hover:bg-orange-600 shadow">変更を確定して通知</button>
         </div>
       )}
 
       <div className="max-w-screen-2xl mx-auto pt-2">
         <header className="mb-4 bg-[#F4B896] text-white rounded-md shadow-lg p-3 flex justify-between items-center sticky top-0 z-40">
           <div className="flex items-center gap-4">
-            <select value={year} onChange={(e) => handleYearMonthChange(Number(e.target.value), month)} className="bg-transparent border-none rounded p-1 text-2xl font-bold text-black focus:ring-2 focus:ring-white">
+            <select value={year} onChange={(e) => setYear(Number(e.target.value))} className="bg-transparent border-none rounded p-1 text-2xl font-bold text-black">
               {Array.from({length: 10}, (_, i) => 2020 + i).map(y => <option key={y} value={y} className="text-black">{y}</option>)}
             </select>
             <span className="text-xl">年</span>
-            <select value={month} onChange={(e) => handleYearMonthChange(year, Number(e.target.value))} className="bg-transparent border-none rounded p-1 text-2xl font-bold text-black focus:ring-2 focus:ring-white">
+            <select value={month} onChange={(e) => setMonth(Number(e.target.value))} className="bg-transparent border-none rounded p-1 text-2xl font-bold text-black">
               {Array.from({length: 12}, (_, i) => i + 1).map(m => <option key={m} value={m} className="text-black">{m}</option>)}
             </select>
             <span className="text-xl">月</span>
-            <h1 className="text-2xl font-bold tracking-wider hidden sm:block">digsyシフト表</h1>
+            <h1 className="text-2xl font-bold hidden sm:block">digsyシフト表</h1>
           </div>
           <div className="flex items-center gap-4">
-              <div className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-semibold w-36 justify-center ${saveStatus === 'saved' ? 'text-white/80' : 'text-yellow-300'}`}>
-                <span>{saveStatus === 'saved' ? '自動保存済み' : saveStatus === 'saving' ? '保存中...' : '編集中...'}</span>
-              </div>
-              
-              <button 
-                onClick={() => window.location.reload()} 
-                className="px-3 py-1.5 bg-white/20 rounded hover:bg-white/30 text-sm font-bold whitespace-nowrap flex items-center gap-1 transition-colors"
-                title="最新のデータを取得します"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                </svg>
-                更新
-              </button>
-
-              <button onClick={() => setIsHelpOpen(true)} className="px-3 py-1.5 bg-white/20 rounded hover:bg-white/30 text-sm font-bold whitespace-nowrap">ガイド</button>
-              <div className="hidden md:block">
-                 <Legend />
-              </div>
+              <span className="text-sm font-semibold w-32 text-center">{saveStatus === 'saved' ? '自動保存済み' : '保存中...'}</span>
+              <button onClick={() => window.location.reload()} className="px-3 py-1.5 bg-white/20 rounded hover:bg-white/30 text-sm font-bold">更新</button>
+              <button onClick={() => setIsHelpOpen(true)} className="px-3 py-1.5 bg-white/20 rounded hover:bg-white/30 text-sm font-bold">ガイド</button>
+              <Legend />
           </div>
         </header>
-        
-        <div className="md:hidden mb-4">
-            <Legend />
-        </div>
 
         <main className="space-y-6">
           <ShiftSchedule 
-            isAdmin={isAdmin} 
-            currentUser={currentUser} 
-            schedule={currentMonthSchedule} 
-            staff={staff} 
-            tasks={tasks} 
-            days={days} 
-            holidays={currentMonthHolidays} 
-            shiftPatterns={shiftPatterns} 
-            year={year} 
-            month={month}
+            isAdmin={isAdmin} currentUser={currentUser} schedule={currentMonthSchedule} staff={staff} tasks={tasks} days={days} holidays={currentMonthHolidays} shiftPatterns={shiftPatterns} year={year} month={month}
             onUpdateSchedule={handleUpdateSchedule} 
-            onDeleteStaff={handleDeleteStaff} 
-            onUpdateStaffInfo={handleUpdateStaffInfo}
-            onApplyStaffPattern={handleApplyStaffPattern} 
-            onToggleShiftSubmitted={handleToggleShiftSubmitted}
-            onToggleShiftApproved={handleToggleShiftApproved} 
-            onToggleShiftRemanded={handleToggleShiftRemanded}
-            onSetDayAsHolidayForAll={handleSetDayAsHolidayForAll}
+            onDeleteStaff={(id) => setConfirmDelete({ type: 'staff', id, name: staff.find(s => s.id === id)?.name })} 
+            onUpdateStaffInfo={(id, f, v) => setStaff(prev => prev.map(s => s.id === id ? { ...s, [f]: v } : s))}
+            onApplyStaffPattern={(sid, p, hb) => {
+              setStaff(prev => prev.map(s => s.id === sid ? { ...s, defaultShift: { pattern: p, hasBreak: hb } } : s));
+              const updates = days.map(d => {
+                const date = new Date(year, month - 1, d.day);
+                const dw = date.getDay();
+                let v = (currentMonthHolidays.includes(d.day) || dw === 0 || dw === 6) ? 'シフト休' : (shiftPatterns.find(pat => pat.id === p[dw-1])?.workHours || '');
+                return { staffId: sid, day: d.day, value: v };
+              });
+              updateShiftItems(year, month, updates);
+            }} 
+            onToggleShiftSubmitted={actions.handleToggleShiftSubmitted}
+            onToggleShiftApproved={actions.handleToggleShiftApproved} 
+            onToggleShiftRemanded={actions.handleToggleShiftRemanded}
+            onSetDayAsHolidayForAll={(day) => setHolidayConfirmation({ day, isUnlocking: false, onConfirm: () => {} })}
           />
           
-          <ShiftPatternDisplay 
-            patterns={shiftPatterns} 
-            onAddPattern={(p) => setShiftPatterns(prev => [...prev, p].sort((a,b)=>a.id.localeCompare(b.id)))} 
-            additionalControls={adminControls}
-          />
+          <ShiftPatternDisplay patterns={shiftPatterns} onAddPattern={(p) => setShiftPatterns(prev => [...prev, p].sort((a,b)=>a.id.localeCompare(b.id)))} additionalControls={adminControls} />
           
           <TaskShortageDisplay 
-            isAdmin={isAdmin} currentUser={currentUser} tasks={tasks} staff={staff} days={days} holidays={currentMonthHolidays} taskCountsByDay={taskCountsByDay}
-            onUpdateTask={(id, name) => setTasks(prev => prev.map(t => t.id === id ? { ...t, name } : t))} onDeleteTask={handleDeleteTask}
-            onUpdateTaskPersonnel={(id, count) => setTasks(prev => prev.map(t => t.id === id ? { ...t, requiredPersonnel: count } : t))}
-            onUpdateTaskStaff={handleUpdateSingleTaskStaff}
-            year={year} month={month}
-            schedule={currentMonthSchedule} 
+            isAdmin={isAdmin} currentUser={currentUser} tasks={tasks} staff={staff} days={days} holidays={currentMonthHolidays} taskCountsByDay={taskCountsByDay} year={year} month={month} schedule={currentMonthSchedule}
+            onUpdateTask={(id, n) => setTasks(prev => prev.map(t => t.id === id ? { ...t, name: n } : t))}
+            onDeleteTask={(id) => setConfirmDelete({ type: 'task', id, name: tasks.find(t => t.id === id)?.name })}
+            onUpdateTaskPersonnel={(id, c) => setTasks(prev => prev.map(t => t.id === id ? { ...t, requiredPersonnel: c } : t))}
+            onUpdateTaskStaff={(tid, sids) => setStaff(prev => prev.map(s => ({ ...s, possibleTasks: sids.includes(s.id) ? [...new Set([...s.possibleTasks, tid])] : s.possibleTasks.filter(id => id !== tid) })))}
           />
-          <MonthlyCalendar
-            schedule={schedule} staff={staff} tasks={tasks} shiftPatterns={shiftPatterns} initialYear={year} initialMonth={month}
-            onUpdateSchedule={(staffId, d, v, ty, tm) => handleUpdateScheduleGeneric(ty || year, tm || month, staffId, d, v)}
-            isAdmin={isAdmin} currentUser={currentUser}
-          />
+
+          <MonthlyCalendar schedule={schedule} staff={staff} tasks={tasks} shiftPatterns={shiftPatterns} initialYear={year} initialMonth={month} isAdmin={isAdmin} currentUser={currentUser} onUpdateSchedule={updateShiftItem} />
         </main>
 
-        {isAdmin && isMemberManagementOpen && <MemberManagementModal staff={staff} onClose={() => setIsMemberManagementOpen(false)} onSave={(updated) => { setStaff(updated); setIsMemberManagementOpen(false); }} />}
-        {isAdmin && isAdminSettingsOpen && (
-          <AdminSettingsModal 
-            adminConfig={adminConfig} 
-            onClose={() => setIsAdminSettingsOpen(false)} 
-            onSave={(cfg) => { setAdminConfig(cfg); setIsAdminSettingsOpen(false); }} 
-            onMigrate={handleMigrateData} 
-          />
-        )}
-        {isAdmin && isTaskEditorOpen && <TaskStaffMappingEditor staff={staff} tasks={tasks} onClose={() => setIsTaskEditorOpen(false)} onSave={handleBulkUpdateStaffTasks} />}
-        {isHelpOpen && <HelpGuideModal onClose={() => setIsHelpOpen(false)} />}
-        {confirmDelete && <ConfirmDeleteModal itemType={confirmDelete.type === 'staff' ? 'メンバー' : '業務'} itemName={confirmDelete.name} onConfirm={executeDelete} onCancel={() => setConfirmDelete(null)} />}
-        {approvalStaff && <ShiftApprovalModal staffMember={approvalStaff} schedule={currentMonthSchedule[approvalStaff.id]} shiftPatterns={shiftPatterns} holidays={currentMonthHolidays} year={year} month={month} onConfirm={handleConfirmApproval} onClose={() => setApprovalModalStaffId(null)} />}
-        {submissionConfirmation && <ConfirmationModal title="シフトの提出" message="提出しますか？" onConfirm={handleConfirmSubmission} onCancel={() => setSubmissionConfirmation(null)} />}
-        {remandConfirmation && <ConfirmationModal title="差戻の確認" message="本当に差し戻しますか？" onConfirm={handleConfirmRemand} onCancel={() => setRemandConfirmation(null)} />}
-        {holidayConfirmation && <ConfirmationModal title={holidayConfirmation.isUnlocking ? "休日設定解除" : "休日設定"} message="全メンバーに適用しますか？" onConfirm={holidayConfirmation.onConfirm} onCancel={() => setHolidayConfirmation(null)} />}
-        {absenceNotificationConfirmation && <ConfirmationModal title="欠勤の周知" message={`${absenceNotificationConfirmation.staffMember.name}さんの欠勤をチャットで周知しますか？`} onConfirm={() => handleAbsenceNotificationResponse(true)} onCancel={() => handleAbsenceNotificationResponse(false)} />}
-        {approvalCancellationConfirmation && <ConfirmationModal title="承認の取り消し" message={`${approvalCancellationConfirmation.name}さんの承認を取り消しますか？`} onConfirm={handleConfirmApprovalCancellation} onCancel={() => setApprovalCancellationConfirmation(null)} />}
-        
-        {/* 承認後変更確認モーダル */}
-        {showModificationConfirm && (
-            <ConfirmationModal 
-                title="承認済みシフトの変更" 
-                message="承認済みのシフトが変更されました。\n続けて他の箇所も修正しますか？それとも変更を確定して通知を送りますか？" 
-                confirmText="修正を確定"
-                cancelText="続けて修正"
-                confirmColor="bg-orange-500 hover:bg-orange-600"
-                onConfirm={handleFinalizeModification} 
-                onCancel={() => setShowModificationConfirm(false)} 
-            />
-        )}
+        <GlobalModals 
+          flags={{ isMemberManagementOpen, isAdminSettingsOpen, isTaskEditorOpen, isHelpOpen, confirmDelete, approvalStaff: staff.find(s => s.id === actions.approvalModalStaffId), submissionConfirmation: actions.submissionConfirmation, remandConfirmation: actions.remandConfirmation, holidayConfirmation, absenceNotificationConfirmation: actions.absenceNotificationConfirmation, approvalCancellationConfirmation: actions.approvalCancellationConfirmation, showModificationConfirm: actions.showModificationConfirm }}
+          data={{ staff, tasks, adminConfig, shiftPatterns, year, month, holidays: currentMonthHolidays, currentMonthSchedule }}
+          actions={{ setIsMemberManagementOpen, setIsAdminSettingsOpen, setIsTaskEditorOpen, setIsHelpOpen, handleSaveMemberManagement: (updated) => { setStaff(updated); setIsMemberManagementOpen(false); }, handleSaveAdminConfig: (cfg) => { setAdminConfig(cfg); setIsAdminSettingsOpen(false); }, handleMigrateData: () => {}, handleBulkUpdateStaffTasks: (map) => { setStaff(prev => prev.map(s => ({ ...s, possibleTasks: Object.entries(map).filter(([tid, sids]) => sids.includes(s.id)).map(([tid]) => tid) }))); setIsTaskEditorOpen(false); }, executeDelete, setConfirmDelete, handleConfirmApproval: actions.handleConfirmApproval, setApprovalModalStaffId: actions.setApprovalModalStaffId, handleConfirmSubmission: actions.handleConfirmSubmission, setSubmissionConfirmation: actions.setSubmissionConfirmation, handleConfirmRemand: actions.handleConfirmRemand, setRemandConfirmation: actions.setRemandConfirmation, handleConfirmHoliday: () => {}, setHolidayConfirmation, handleAbsenceNotificationResponse: (send) => { if(send) chatService.sendAbsence(actions.absenceNotificationConfirmation.staffMember.name); actions.setAbsenceNotificationConfirmation(null); }, handleConfirmApprovalCancellation: actions.handleConfirmApprovalCancellation, setApprovalCancellationConfirmation: actions.setApprovalCancellationConfirmation, handleFinalizeModification: actions.handleFinalizeModification, setShowModificationConfirm: actions.setShowModificationConfirm }}
+        />
 
         <footer className="text-center mt-6 text-sm text-slate-500 pb-8"><p>Powered by Gemini & React</p></footer>
       </div>
