@@ -36,11 +36,11 @@ export const useShiftData = (year, month) => {
         let currentStaff = defaultStaff;
         if (masterSnap.exists()) {
           const data = masterSnap.data();
-          // 一部のデータが欠損していた場合でも確実にデフォルト値をセットするように修正
-          currentStaff = data.staff || defaultStaff;
+          // 空配列[]がTruthy判定されてしまうのを防ぎ、確実にデータがあるか判定するよう修正
+          currentStaff = (data.staff && data.staff.length > 0) ? data.staff : defaultStaff;
           setStaff(currentStaff);
-          setTasks(data.tasks || defaultTasks);
-          setShiftPatterns(data.shiftPatterns || defaultPatterns);
+          setTasks((data.tasks && data.tasks.length > 0) ? data.tasks : defaultTasks);
+          setShiftPatterns((data.shiftPatterns && data.shiftPatterns.length > 0) ? data.shiftPatterns : defaultPatterns);
           setAdminConfig(data.adminConfig || defaultAdminConfig);
         } else {
           setStaff(defaultStaff);
@@ -107,7 +107,7 @@ export const useShiftData = (year, month) => {
   }, [staff, tasks, shiftPatterns, adminConfig, initialDataLoaded]);
 
   // -------------------------------------------------------------
-  // シフトデータの更新（スタッフ単位で保存するように改修）
+  // シフトデータの更新（スタッフ単位で個別に保存）
   // -------------------------------------------------------------
 
   // 単一セルの更新
@@ -169,7 +169,7 @@ export const useShiftData = (year, month) => {
          updatesByStaff[staffId][day] = value;
       });
 
-      // スタッフごとにバッチ登録
+      // 操作されたスタッフのデータだけを保存
       Object.entries(updatesByStaff).forEach(([staffId, days]) => {
           const docRef = doc(db, 'schedules', `${targetMonthKey}_${staffId}`);
           batch.set(docRef, days, { merge: true });
