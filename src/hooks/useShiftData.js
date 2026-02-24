@@ -36,13 +36,12 @@ export const useShiftData = (year, month) => {
         let currentStaff = defaultStaff;
         if (masterSnap.exists()) {
           const data = masterSnap.data();
-          if (data.staff) {
-             currentStaff = data.staff;
-             setStaff(currentStaff);
-          }
-          if (data.tasks) setTasks(data.tasks);
-          if (data.shiftPatterns) setShiftPatterns(data.shiftPatterns);
-          if (data.adminConfig) setAdminConfig(data.adminConfig);
+          // 一部のデータが欠損していた場合でも確実にデフォルト値をセットするように修正
+          currentStaff = data.staff || defaultStaff;
+          setStaff(currentStaff);
+          setTasks(data.tasks || defaultTasks);
+          setShiftPatterns(data.shiftPatterns || defaultPatterns);
+          setAdminConfig(data.adminConfig || defaultAdminConfig);
         } else {
           setStaff(defaultStaff);
           setTasks(defaultTasks);
