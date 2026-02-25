@@ -1,9 +1,9 @@
-import React, { useRef, useMemo, useEffect, useState } from 'react';
+import React, { useRef, useMemo, useEffect, useState, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { summarizePattern } from '../../utils/scheduleUtils';
-import { EditableCell, EditableStaffInfoCell } from '../common/EditableCells';
-import { DeleteIcon, SetHolidayIcon, UnlockIcon, XIcon } from '../common/Icons';
-import ScheduleShiftPatternEditor from './ScheduleShiftPatternEditor';
+import { summarizePattern } from '../../utils/scheduleUtils.js';
+import { EditableCell, EditableStaffInfoCell } from '../common/EditableCells.jsx';
+import { DeleteIcon, SetHolidayIcon, UnlockIcon, XIcon } from '../common/Icons.jsx';
+import ScheduleShiftPatternEditor from './ScheduleShiftPatternEditor.jsx';
 
 const TaskSkillsModal = ({ staff, tasks, onClose, position }) => {
   if (!staff) return null;
@@ -69,6 +69,37 @@ const ShiftSchedule = ({
   // 担当業務確認モーダル用のState
   const [taskSkillsModal, setTaskSkillsModal] = useState(null); // { staff, position }
 
+  // 1. コールバック参照用Refの作成（無限ループと再描画を防ぐための極めて重要なテクニック）
+  // 親から渡される関数がレンダリング毎に新しくなっても、useMemoを破壊しないようにRefに最新版を保持します
+  const callbacksRef = useRef({
+      onUpdateSchedule, onUpdateStaffInfo, onApplyStaffPattern,
+      onToggleShiftSubmitted, onToggleShiftApproved, onToggleShiftRemanded, onDeleteStaff,
+      handleTaskIconClick: (e, s) => {
+          e.stopPropagation();
+          const rect = e.currentTarget.getBoundingClientRect();
+          setTaskSkillsModal({
+              staff: s,
+              position: { x: rect.right + 5, y: rect.top }
+          });
+      }
+  });
+
+  // 常に最新の関数をRefに更新
+  useEffect(() => {
+      callbacksRef.current = {
+          onUpdateSchedule, onUpdateStaffInfo, onApplyStaffPattern,
+          onToggleShiftSubmitted, onToggleShiftApproved, onToggleShiftRemanded, onDeleteStaff,
+          handleTaskIconClick: (e, s) => {
+              e.stopPropagation();
+              const rect = e.currentTarget.getBoundingClientRect();
+              setTaskSkillsModal({
+                  staff: s,
+                  position: { x: rect.right + 5, y: rect.top }
+              });
+          }
+      };
+  });
+
   useEffect(() => {
       const handleWindowMouseUp = () => setIsSelecting(false);
       window.addEventListener('mouseup', handleWindowMouseUp);
@@ -81,16 +112,8 @@ const ShiftSchedule = ({
     return [...staff].sort((a, b) => String(a.employeeId || '').localeCompare(String(b.employeeId || ''), undefined, { numeric: true }));
   }, [staff]);
   
-  // 幅調整: nameカラムを少し広げてアイコンを入れるスペースを作る
   const widths = { 
-    role: 70,
-    empId: 100,
-    name: 170, // 以前の170のまま維持（文字数が増えるためこれくらい必要）
-    setting: 190,
-    submit: 70,
-    remand: 70,
-    approve: 70,
-    del: 50
+    role: 70, empId: 100, name: 170, setting: 190, submit: 70, remand: 70, approve: 70, del: 50
   };
   
   const DAY_CELL_WIDTH = '80px'; 
@@ -116,36 +139,49 @@ const ShiftSchedule = ({
     }
   }, [year, month, safeDays, widths]);
 
-  const handleCellMouseDown = (row, col, e) => {
+  // マウスイベントハンドラをuseCallbackで完全に固定化
+  const handleCellMouseDown = useCallback((row, col, e) => {
       if (e.button !== 0) return;
       setSelection({ start: { row, col }, end: { row, col } });
       setIsSelecting(true);
       setContextMenu(null);
-  };
+  }, []);
 
-  const handleCellMouseEnter = (row, col) => {
-      if (isSelecting) {
-          setSelection(prev => ({ ...prev, end: { row, col } }));
-      }
-  };
+  const handleCellMouseEnter = useCallback((row, col) => {
+      setIsSelecting(prevIsSelecting => {
+          if (prevIsSelecting) {
+              setSelection(prev => prev ? ({ ...prev, end: { row, col } }) : null);
+          }
+          return prevIsSelecting;
+      });
+  }, []);
 
-  const handleCellFocus = (row, col) => {
-      if (!isSelecting) {
-          setSelection({ start: { row, col }, end: { row, col } });
-      }
-  };
+  const handleCellFocus = useCallback((row, col) => {
+      setIsSelecting(prevIsSelecting => {
+          if (!prevIsSelecting) {
+              setSelection({ start: { row, col }, end: { row, col } });
+          }
+          return prevIsSelecting;
+      });
+  }, []);
 
-  const handleCellContextMenu = (row, col, e) => {
+  const handleCellContextMenu = useCallback((row, col, e) => {
       e.preventDefault();
-      if (!isCellSelected(row, col)) {
-          setSelection({ start: { row, col }, end: { row, col } });
-      }
+      setSelection(prev => {
+          if (!prev) return { start: { row, col }, end: { row, col } };
+          const minRow = Math.min(prev.start.row, prev.end.row);
+          const maxRow = Math.max(prev.start.row, prev.end.row);
+          const minCol = Math.min(prev.start.col, prev.end.col);
+          const maxCol = Math.max(prev.start.col, prev.end.col);
+          if (row >= minRow && row <= maxRow && col >= minCol && col <= maxCol) return prev;
+          return { start: { row, col }, end: { row, col } };
+      });
       setContextMenu({ x: e.clientX, y: e.clientY });
-  };
+  }, []);
 
-  const isCellSelected = (row, col) => {
-      if (!selection) return false;
-      const { start, end } = selection;
+  const isCellSelected = (sel, row, col) => {
+      if (!sel) return false;
+      const { start, end } = sel;
       const minRow = Math.min(start.row, end.row);
       const maxRow = Math.max(start.row, end.row);
       const minCol = Math.min(start.col, end.col);
@@ -163,20 +199,10 @@ const ShiftSchedule = ({
           if (!staffMember) continue;
           for (let c = minCol; c <= maxCol; c++) {
               const dayObj = safeDays[c]; if (!dayObj) continue;
-              if (isAdmin || currentUser?.id === staffMember.id) onUpdateSchedule(staffMember.id, dayObj.day, value);
+              if (isAdmin || currentUser?.id === staffMember.id) callbacksRef.current.onUpdateSchedule(staffMember.id, dayObj.day, value);
           }
       }
       setContextMenu(null);
-  };
-  
-  // 担当業務アイコンのクリックハンドラ
-  const handleTaskIconClick = (e, staffMember) => {
-      e.stopPropagation();
-      const rect = e.currentTarget.getBoundingClientRect();
-      setTaskSkillsModal({
-          staff: staffMember,
-          position: { x: rect.right + 5, y: rect.top } // アイコンの右側に表示
-      });
   };
 
   const stickyHeaderStyle = (key) => ({
@@ -198,7 +224,6 @@ const ShiftSchedule = ({
                 <div className={`${headerRowClass} sticky top-0 z-40`}>
                     <div className={`${headerCellBase} bg-slate-200`} style={stickyHeaderStyle('role')}>役職</div>
                     <div className={`${headerCellBase} bg-slate-200`} style={stickyHeaderStyle('empId')}>社員番号</div>
-                    {/* ここを変更：稼働名前・業務一覧 */}
                     <div className={`${headerCellBase} bg-slate-200`} style={stickyHeaderStyle('name')}>稼働名前・業務一覧</div>
                     <div className={`${headerCellBase} bg-slate-200`} style={stickyHeaderStyle('setting')}>基本シフト設定</div>
                     <div className={`${headerCellBase} bg-slate-200`} style={stickyHeaderStyle('submit')}>提出☑</div>
@@ -226,78 +251,94 @@ const ShiftSchedule = ({
                 {sortedStaff.map((s, rowIndex) => {
                     const isEditable = isAdmin || currentUser?.id === s.id;
                     const defaultShift = s.defaultShift || { pattern: [], hasBreakArray: [] };
-                    
-                    return (
-                        <div key={s.id} className="flex w-max group hover:bg-slate-50 transition-colors">
-                            <div className={cellBase} style={stickyCellStyle('role')}>
-                                <EditableStaffInfoCell value={s.role} onUpdate={v => onUpdateStaffInfo(s.id, 'role', v)} disabled={!isEditable} className="border-none w-full" />
-                            </div>
-                            <div className={cellBase} style={stickyCellStyle('empId')}>
-                                <EditableStaffInfoCell value={s.employeeId} onUpdate={v => onUpdateStaffInfo(s.id, 'employeeId', v)} disabled={!isEditable} className="border-none w-full" />
-                            </div>
-                            
-                            {/* 名前セル：アイコンを追加 */}
-                            <div className={cellBase} style={stickyCellStyle('name')}>
-                                <div className="flex items-center w-full h-full relative">
-                                    <EditableStaffInfoCell value={s.name} onUpdate={v => onUpdateStaffInfo(s.id, 'name', v)} disabled={!isEditable} className="border-none flex-grow min-w-0" />
-                                    <button 
-                                        onClick={(e) => handleTaskIconClick(e, s)}
-                                        className="p-1 mx-1 text-slate-300 hover:text-[#D9824D] hover:bg-orange-50 rounded transition-colors flex-shrink-0"
-                                        title="担当業務を確認"
-                                    >
-                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
-                                        </svg>
-                                    </button>
+                    const staffSchedule = schedule[s.id] || {}; // 個人のスケジュールを抽出
+
+                    // 2. 最適化のコア部分：行ごとの描画結果をメモ化
+                    // 依存配列に指定された値（スタッフ情報、その人のスケジュール、選択状態など）が
+                    // 変化しない限り、この行は再計算・再描画されません。
+                    return React.useMemo(() => {
+                        return (
+                            <div key={s.id} className="flex w-max group hover:bg-slate-50 transition-colors">
+                                <div className={cellBase} style={stickyCellStyle('role')}>
+                                    <EditableStaffInfoCell value={s.role} onUpdate={v => callbacksRef.current.onUpdateStaffInfo(s.id, 'role', v)} disabled={!isEditable} className="border-none w-full" />
                                 </div>
-                            </div>
-
-                            <div className={`${cellBase} px-1`} style={stickyCellStyle('setting')}>
-                                <ScheduleShiftPatternEditor pattern={defaultShift.pattern} hasBreakArray={defaultShift.hasBreakArray} patterns={shiftPatterns} onApply={(p, hb) => onApplyStaffPattern(s.id, p, hb)} summary={summarizePattern(defaultShift.pattern, shiftPatterns, defaultShift.hasBreakArray)} disabled={!isEditable} />
-                            </div>
-                            <div className={`${cellBase} justify-center`} style={stickyCellStyle('submit')}>
-                                <input type="checkbox" checked={s.shiftSubmitted?.[`${year}-${month}`] || false} onChange={() => onToggleShiftSubmitted(s.id)} className="h-4 w-4 rounded text-sky-600 cursor-pointer" disabled={!isEditable} />
-                            </div>
-                            <div className={`${cellBase} justify-center`} style={stickyCellStyle('remand')}>
-                                <input type="checkbox" checked={s.shiftRemanded?.[`${year}-${month}`] || false} onChange={() => onToggleShiftRemanded(s.id)} className="h-4 w-4 rounded text-red-600 cursor-pointer" disabled={!isAdmin} />
-                            </div>
-                            <div className={`${cellBase} justify-center`} style={stickyCellStyle('approve')}>
-                                <input type="checkbox" checked={s.shiftApproved?.[`${year}-${month}`] || false} onChange={() => onToggleShiftApproved(s.id)} className="h-4 w-4 rounded text-green-600 cursor-pointer" disabled={!isAdmin} />
-                            </div>
-                            <div className={`${cellBase} justify-center border-r-2`} style={stickyCellStyle('del')}>
-                                {isAdmin && <button onClick={() => onDeleteStaff(s.id)} className="p-1 hover:bg-red-50 rounded-full transition-colors"><DeleteIcon /></button>}
-                            </div>
-
-                            {safeDays.map(({ day, dayOfWeek }, colIndex) => {
-                                const isHoliday = holidays.includes(day);
-                                const isWeekend = dayOfWeek === '土' || dayOfWeek === '日';
-                                const selected = isCellSelected(rowIndex, colIndex);
-
-                                return (
-                                <div key={day} className={`w-[${DAY_CELL_WIDTH}] min-w-[${DAY_CELL_WIDTH}] max-w-[${DAY_CELL_WIDTH}]`}>
-                                    <EditableCell 
-                                        value={schedule[s.id]?.[day] ?? ''} 
-                                        onUpdate={v => onUpdateSchedule(s.id, day, v)} 
-                                        isAdmin={isAdmin} 
-                                        disabled={!isEditable} 
-                                        borderClass="border-slate-200" 
-                                        isToday={new Date().getDate() === day && (new Date().getMonth()+1) === month} 
-                                        isHoliday={isHoliday}
-                                        isWeekend={isWeekend}
-                                        dayOfWeek={dayOfWeek}
-                                        rowIndex={rowIndex}
-                                        colIndex={colIndex}
-                                        isSelected={selected}
-                                        onMouseDown={(e) => handleCellMouseDown(rowIndex, colIndex, e)}
-                                        onMouseEnter={() => handleCellMouseEnter(rowIndex, colIndex)}
-                                        onFocus={() => handleCellFocus(rowIndex, colIndex)}
-                                        onContextMenu={(e) => handleCellContextMenu(rowIndex, colIndex, e)}
-                                    />
+                                <div className={cellBase} style={stickyCellStyle('empId')}>
+                                    <EditableStaffInfoCell value={s.employeeId} onUpdate={v => callbacksRef.current.onUpdateStaffInfo(s.id, 'employeeId', v)} disabled={!isEditable} className="border-none w-full" />
                                 </div>
-                                );
-                            })}
-                        </div>
-                    );
+                                
+                                <div className={cellBase} style={stickyCellStyle('name')}>
+                                    <div className="flex items-center w-full h-full relative">
+                                        <EditableStaffInfoCell value={s.name} onUpdate={v => callbacksRef.current.onUpdateStaffInfo(s.id, 'name', v)} disabled={!isEditable} className="border-none flex-grow min-w-0" />
+                                        <button 
+                                            onClick={(e) => callbacksRef.current.handleTaskIconClick(e, s)}
+                                            className="p-1 mx-1 text-slate-300 hover:text-[#D9824D] hover:bg-orange-50 rounded transition-colors flex-shrink-0"
+                                            title="担当業務を確認"
+                                        >
+                                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+                                            </svg>
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div className={`${cellBase} px-1`} style={stickyCellStyle('setting')}>
+                                    <ScheduleShiftPatternEditor pattern={defaultShift.pattern} hasBreakArray={defaultShift.hasBreakArray} patterns={shiftPatterns} onApply={(p, hb) => callbacksRef.current.onApplyStaffPattern(s.id, p, hb)} summary={summarizePattern(defaultShift.pattern, shiftPatterns, defaultShift.hasBreakArray)} disabled={!isEditable} />
+                                </div>
+                                <div className={`${cellBase} justify-center`} style={stickyCellStyle('submit')}>
+                                    <input type="checkbox" checked={s.shiftSubmitted?.[`${year}-${month}`] || false} onChange={() => callbacksRef.current.onToggleShiftSubmitted(s.id)} className="h-4 w-4 rounded text-sky-600 cursor-pointer" disabled={!isEditable} />
+                                </div>
+                                <div className={`${cellBase} justify-center`} style={stickyCellStyle('remand')}>
+                                    <input type="checkbox" checked={s.shiftRemanded?.[`${year}-${month}`] || false} onChange={() => callbacksRef.current.onToggleShiftRemanded(s.id)} className="h-4 w-4 rounded text-red-600 cursor-pointer" disabled={!isAdmin} />
+                                </div>
+                                <div className={`${cellBase} justify-center`} style={stickyCellStyle('approve')}>
+                                    <input type="checkbox" checked={s.shiftApproved?.[`${year}-${month}`] || false} onChange={() => callbacksRef.current.onToggleShiftApproved(s.id)} className="h-4 w-4 rounded text-green-600 cursor-pointer" disabled={!isAdmin} />
+                                </div>
+                                <div className={`${cellBase} justify-center border-r-2`} style={stickyCellStyle('del')}>
+                                    {isAdmin && <button onClick={() => callbacksRef.current.onDeleteStaff(s.id)} className="p-1 hover:bg-red-50 rounded-full transition-colors"><DeleteIcon /></button>}
+                                </div>
+
+                                {safeDays.map(({ day, dayOfWeek }, colIndex) => {
+                                    const isHoliday = holidays.includes(day);
+                                    const isWeekend = dayOfWeek === '土' || dayOfWeek === '日';
+                                    const selected = isCellSelected(selection, rowIndex, colIndex);
+
+                                    return (
+                                    <div key={day} className={`w-[${DAY_CELL_WIDTH}] min-w-[${DAY_CELL_WIDTH}] max-w-[${DAY_CELL_WIDTH}]`}>
+                                        <EditableCell 
+                                            value={staffSchedule[day] ?? ''} 
+                                            onUpdate={v => callbacksRef.current.onUpdateSchedule(s.id, day, v)} 
+                                            isAdmin={isAdmin} 
+                                            disabled={!isEditable} 
+                                            borderClass="border-slate-200" 
+                                            isToday={new Date().getDate() === day && (new Date().getMonth()+1) === month} 
+                                            isHoliday={isHoliday}
+                                            isWeekend={isWeekend}
+                                            dayOfWeek={dayOfWeek}
+                                            rowIndex={rowIndex}
+                                            colIndex={colIndex}
+                                            isSelected={selected}
+                                            onMouseDown={handleCellMouseDown}
+                                            onMouseEnter={handleCellMouseEnter}
+                                            onFocus={handleCellFocus}
+                                            onContextMenu={handleCellContextMenu}
+                                        />
+                                    </div>
+                                    );
+                                })}
+                            </div>
+                        );
+                    }, [
+                        s,              // スタッフ情報の変更時
+                        staffSchedule,  // このスタッフのシフト変更時のみ再計算
+                        isEditable,     // 権限変更時
+                        isAdmin,        // 権限変更時
+                        year,           // 年が変わった時
+                        month,          // 月が変わった時
+                        holidays,       // 祝日が更新された時
+                        shiftPatterns,  // パターンが更新された時
+                        selection,      // マウスドラッグ等による選択範囲変更時
+                        safeDays        // 日付配列変更時
+                    ]);
                 })}
             </div>
         </div>
