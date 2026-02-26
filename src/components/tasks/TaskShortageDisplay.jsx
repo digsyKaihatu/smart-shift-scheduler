@@ -1,20 +1,19 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import DailyShiftDetailModal from '../schedule/DailyShiftDetailModal';
-import { formatValue } from '../../utils/dateUtils';
+import DailyShiftDetailModal from '../schedule/DailyShiftDetailModal.jsx';
 
 // -----------------------------------------------------------------------------
-// インライン定義: 内部コンポーネントも安全に修正
+// インライン定義: 内部コンポーネント
 // -----------------------------------------------------------------------------
 
 const DeleteIcon = () => (
-    <svg xmlns="http://www.w3.org/2000/svg" style={{ width: '20px', height: '20px', minWidth: '20px' }} className="text-slate-400 group-hover:text-red-600 transition-colors pointer-events-none" viewBox="0 0 20 20" fill="currentColor">
+    <svg xmlns="http://www.w3.org/2000/svg" style={{ width: '16px', height: '16px', minWidth: '16px' }} className="text-slate-400 group-hover:text-red-600 transition-colors pointer-events-none" viewBox="0 0 20 20" fill="currentColor">
         <path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm4 0a1 1 0 012 0v6a1 1 0 11-2 0V8z" clipRule="evenodd" />
     </svg>
 );
 
 const ChevronDownIcon = () => (
-    <svg className="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+    <svg className="w-4 h-4 text-slate-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path>
     </svg>
 );
@@ -69,7 +68,8 @@ const EditableTaskName = ({ value, onUpdate, disabled = false }) => {
   return (
     <div
       onClick={() => !disabled && setIsEditing(true)}
-      className={`text-sm font-bold text-slate-700 p-1 rounded ${disabled ? 'cursor-not-allowed' : 'cursor-pointer hover:bg-slate-200'}`}
+      className={`text-sm font-bold text-slate-700 p-1 rounded truncate w-full ${disabled ? 'cursor-not-allowed' : 'cursor-pointer hover:bg-slate-200'}`}
+      title={value || '名称未設定'}
     >
       {value || '名称未設定'}
     </div>
@@ -101,7 +101,7 @@ const TaskStaffSelector = ({ task, allStaff = [], assignedStaffIds = [], onUpdat
     .map(s => s.name)
     .join(', ');
 
-  const buttonText = assignedStaffNames || '担当者を追加...';
+  const buttonText = assignedStaffNames || '担当追加...';
   const textColor = assignedStaffNames ? 'text-slate-800' : 'text-slate-400';
   
   const editorModal = isOpen ? createPortal(
@@ -146,13 +146,13 @@ const TaskStaffSelector = ({ task, allStaff = [], assignedStaffIds = [], onUpdat
   ) : null;
   
   return (
-    <div className="w-full">
+    <div className="w-full h-full flex items-center">
        <button
         onClick={() => !disabled && setIsOpen(true)}
         disabled={disabled}
-        className={`w-full text-left p-1 rounded border flex justify-between items-center transition-colors ${disabled ? 'cursor-not-allowed bg-slate-100 border-slate-200' : 'bg-white border-slate-300 hover:border-[#F4B896] hover:bg-slate-50'}`}
+        className={`w-full text-left px-1.5 py-0.5 rounded border flex justify-between items-center transition-colors ${disabled ? 'cursor-not-allowed bg-slate-100 border-slate-200' : 'bg-white border-slate-300 hover:border-[#F4B896] hover:bg-slate-50'}`}
       >
-        <span className={`text-xs font-medium truncate ${textColor}`} title={assignedStaffNames || '担当者なし'}>
+        <span className={`text-[10px] font-medium truncate ${textColor}`} title={assignedStaffNames || '担当者なし'}>
           {buttonText}
         </span>
         {!disabled && <ChevronDownIcon />}
@@ -171,19 +171,18 @@ const TaskShortageDisplay = ({
     isAdmin = false,
     onUpdateTask, onDeleteTask, onUpdateTaskStaff, onUpdateTaskPersonnel,
     year, month,
-    schedule // MainContentから渡されるスケジュールデータ
+    schedule 
 }) => {
     const staffInfoWidth = "280px"; 
     const scrollContainerRef = useRef(null); 
     const [selectedDetail, setSelectedDetail] = useState(null);
 
-    // 追加: 自動スクロールロジック
+    // 自動スクロールロジック
     useEffect(() => {
         if (!scrollContainerRef.current) return;
         if (!days || days.length === 0) return;
 
         const today = new Date();
-        // 現在の年月と表示中の年月が一致する場合のみスクロールを実行
         if (today.getFullYear() === year && (today.getMonth() + 1) === month) {
             const todayDate = today.getDate();
             const targetElement = scrollContainerRef.current.querySelector(`[data-day="${todayDate}"]`);
@@ -213,28 +212,21 @@ const TaskShortageDisplay = ({
     }, [staff]);
     
     const handleCellClick = (day, task) => {
-        // スケジュールデータがなければ処理中断
         if (!schedule) return;
 
-        // そのタスクを担当している（possibleTasksに含まれる）スタッフIDリスト
         const possibleStaffIds = staff
             .filter(s => (s.possibleTasks || []).includes(task.id))
             .map(s => s.id);
 
         const workingMembers = [];
 
-        // 全スタッフをループして、出勤判定を行う
         staff.forEach(s => {
-            // 担当可能でなければスキップ
             if (!possibleStaffIds.includes(s.id)) return;
 
             const entry = schedule[s.id]?.[day];
-            
-            // 出勤判定（MainContent等のロジックと同様）
             const isWorking = (typeof entry === 'number' && entry > 0) || (typeof entry === 'object' && entry?.hours > 0);
 
             if (isWorking) {
-                // 表示用のデータを構築
                 let displayText = '';
                 if (typeof entry === 'object' && entry.type) {
                     displayText = entry.type === 'シフト休' ? 'シフト休' : `${entry.type}${entry.hours ? `(${entry.hours})` : ''}`;
@@ -253,10 +245,9 @@ const TaskShortageDisplay = ({
             }
         });
 
-        // モーダル表示用のデータをセット
         setSelectedDetail({
             date: new Date(year, month - 1, day),
-            title: `${task.name} - 出勤者リスト`, // モーダルタイトル用
+            title: `${task.name} - 出勤者リスト`, 
             events: workingMembers
         });
     };
@@ -299,47 +290,57 @@ const TaskShortageDisplay = ({
 
                             return (
                                 <React.Fragment key={task.id}>
-                                    <div className="sticky left-0 z-20 bg-slate-50 p-2 border-b border-r border-slate-300 text-xs font-semibold text-slate-600 flex flex-col items-start justify-center gap-1 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
-                                            <div className="flex items-center justify-between w-full">
-                                                <EditableTaskName
-                                                    value={task.name}
-                                                    onUpdate={(newName) => onUpdateTask?.(task.id, newName)}
-                                                    disabled={!isAdmin}
-                                                />
+                                    <div className="sticky left-0 z-20 bg-slate-50 p-2 border-b border-r border-slate-300 text-xs font-semibold text-slate-600 flex flex-col justify-center shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
+                                            
+                                            {/* 1段目: 業務名と削除ボタン */}
+                                            <div className="flex items-center justify-between w-full mb-1.5">
+                                                <div className="flex-1 min-w-0 pr-2">
+                                                    <EditableTaskName
+                                                        value={task.name}
+                                                        onUpdate={(newName) => onUpdateTask?.(task.id, newName)}
+                                                        disabled={!isAdmin}
+                                                    />
+                                                </div>
                                                 {isAdmin && (
                                                     <button
                                                         type="button"
                                                         onClick={() => onDeleteTask?.(task.id)}
-                                                        className="group ml-2 p-1 rounded-full hover:bg-red-100"
+                                                        className="group p-1 rounded-full hover:bg-red-100 flex-shrink-0"
                                                     >
                                                         <DeleteIcon />
                                                     </button>
                                                 )}
                                             </div>
                                             
-                                            <div className="flex items-center gap-1 text-[10px] w-full mb-1">
-                                                <span className="text-slate-500 whitespace-nowrap">定員:</span>
-                                                {isAdmin ? (
-                                                    <input 
-                                                        type="number" 
-                                                        min="1"
-                                                        value={required}
-                                                        onChange={(e) => onUpdateTaskPersonnel?.(task.id, parseInt(e.target.value, 10))}
-                                                        className="w-10 p-0.5 border border-slate-300 rounded text-center"
+                                            {/* 2段目: 定員と担当者プルダウンを1列に */}
+                                            <div className="flex items-center justify-between w-full gap-2">
+                                                <div className="flex items-center gap-1 text-[10px] whitespace-nowrap flex-shrink-0">
+                                                    <span className="text-slate-500">定員:</span>
+                                                    {isAdmin ? (
+                                                        <input 
+                                                            type="number" 
+                                                            min="1"
+                                                            value={required}
+                                                            onChange={(e) => onUpdateTaskPersonnel?.(task.id, parseInt(e.target.value, 10))}
+                                                            className="w-10 p-0.5 border border-slate-300 rounded text-center"
+                                                        />
+                                                    ) : (
+                                                        <span className="font-medium">{required}名</span>
+                                                    )}
+                                                    <span className="text-slate-500">名</span>
+                                                </div>
+
+                                                <div className="flex-1 min-w-0">
+                                                    <TaskStaffSelector
+                                                        task={task}
+                                                        allStaff={sortedStaff}
+                                                        assignedStaffIds={staffForTaskIds}
+                                                        onUpdate={onUpdateTaskStaff}
+                                                        disabled={!isAdmin}
                                                     />
-                                                ) : (
-                                                    <span className="font-medium">{required}名</span>
-                                                )}
-                                                <span className="text-slate-500">名</span>
+                                                </div>
                                             </div>
 
-                                            <TaskStaffSelector
-                                                task={task}
-                                                allStaff={sortedStaff}
-                                                assignedStaffIds={staffForTaskIds}
-                                                onUpdate={onUpdateTaskStaff}
-                                                disabled={!isAdmin}
-                                            />
                                     </div>
                                     
                                     {days.map(({ day, dayOfWeek }) => {
@@ -389,7 +390,7 @@ const TaskShortageDisplay = ({
                 detail={selectedDetail}
                 viewMode="active_shifts"
                 onClose={() => setSelectedDetail(null)}
-                onDelete={() => {}} // 削除機能は無効化（または必要に応じて実装）
+                onDelete={() => {}} 
                 canDelete={() => false}
             />
         </div>
