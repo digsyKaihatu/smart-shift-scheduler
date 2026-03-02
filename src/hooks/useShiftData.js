@@ -42,6 +42,8 @@ export const useShiftData = (currentYear, currentMonth) => {
   const pendingChanges = useRef({});
   // 通信中（保存中）の差分を保持するRef（通信タイムラグによる画面のチラつき防止用）
   const inflightChanges = useRef({});
+  // 【追加】Firestoreに保存しない、ローカルだけの変更を保持するRef
+  const localPendingChanges = useRef({});
 
   // ドキュメント参照
   const configDocRef = doc(db, "schedules", "config");
@@ -113,18 +115,13 @@ export const useShiftData = (currentYear, currentMonth) => {
         setSchedule(prev => {
           const prevMonthData = prev[key] || {};
           let hasChange = false;
-          // 新しいオブジェクトを作成するが、各スタッフの参照は維持する
           const nextMonthData = { ...prevMonthData };
 
-          // サーバーからのデータで、ローカルと差分があるスタッフのみ更新
           Object.keys(serverSchedule).forEach(staffId => {
             const serverStaffData = serverSchedule[staffId];
             const localStaffData = prevMonthData[staffId] || {};
 
-            // スタッフごとのデータが異なる場合のみ更新処理を行う
             if (!isStaffDataEqual(serverStaffData, localStaffData)) {
-              
-              // 自分が編集して送信待ち、または送信中のデータ（activeChanges）を取得
               const activeChanges = { 
                 ...(inflightChanges.current[key] || {}), 
                 ...(pendingChanges.current[key] || {}) 
@@ -138,12 +135,20 @@ export const useShiftData = (currentYear, currentMonth) => {
                 }
               }
 
-              // 自分の未送信・送信中変更がなければ、サーバーのデータをそのまま採用
+              // 追加：ローカルのみの変更があるかチェック
+              if (localPendingChanges.current[key]) {
+                 for (const localKey in localPendingChanges.current[key]) {
+                    if (localKey.startsWith(`${staffId}.`)) {
+                        hasPendingForThisStaff = true;
+                        break;
+                    }
+                 }
+              }
+
               if (!hasPendingForThisStaff) {
                  nextMonthData[staffId] = serverStaffData;
                  hasChange = true;
               } else {
-                 // 自分の変更がある場合は、サーバーの最新データに自分の変更をマージして保持（上書き防止）
                  const mergedStaffData = { ...serverStaffData };
                  for (const activeKey in activeChanges) {
                      if (activeKey.startsWith(`scheduleData.${staffId}.`)) {
@@ -151,7 +156,19 @@ export const useShiftData = (currentYear, currentMonth) => {
                          mergedStaffData[dayStr] = activeChanges[activeKey];
                      }
                  }
-                 // マージした結果、ローカルと差分がある場合のみ更新フラグを立てる
+
+                 // さらにローカルのみの変更を被せる
+                 if (localPendingChanges.current[key]) {
+                     for (const localKey in localPendingChanges.current[key]) {
+                         if (localKey.startsWith(`${staffId}.`)) {
+                             const dayStr = localKey.split('.').pop();
+                             if (prevMonthData[staffId] && prevMonthData[staffId][dayStr] !== undefined) {
+                                 mergedStaffData[dayStr] = prevMonthData[staffId][dayStr];
+                             }
+                         }
+                     }
+                 }
+
                  if (!isStaffDataEqual(mergedStaffData, localStaffData)) {
                      nextMonthData[staffId] = mergedStaffData;
                      hasChange = true;
@@ -168,11 +185,10 @@ export const useShiftData = (currentYear, currentMonth) => {
         
         setIsLoading(false);
       } else {
-        // ドキュメントが存在しない場合はローカルで初期データを生成
         setSchedule(prev => {
           if (prev[key]) {
              setIsLoading(false);
-             return prev; // 既にローカルにデータがあればそのまま
+             return prev; 
           }
           const initialSchedule = generateScheduleForMonth(currentYear, currentMonth, staff, shiftPatterns);
           setIsLoading(false);
@@ -197,7 +213,6 @@ export const useShiftData = (currentYear, currentMonth) => {
   // 3. データ保存ロジック (Config / Schedule 分離)
   // ---------------------------------------------------------------------------
 
-  // A. マスタデータの保存 (Staff, Tasks, Patterns, Config)
   useEffect(() => {
     if (!isInitialLoadComplete.current) return;
 
@@ -220,7 +235,6 @@ export const useShiftData = (currentYear, currentMonth) => {
     return () => clearTimeout(debouncedSaveConfig.current);
   }, [staff, tasks, shiftPatterns, adminConfig]);
 
-  // B. スケジュールデータの保存 (差分更新＆マージ)
   const triggerScheduleSave = useCallback(() => {
     setSaveStatus('unsaved');
     if (debouncedSaveSchedule.current) clearTimeout(debouncedSaveSchedule.current);
@@ -228,11 +242,9 @@ export const useShiftData = (currentYear, currentMonth) => {
     debouncedSaveSchedule.current = setTimeout(async () => {
       setSaveStatus('saving');
       
-      // 送信対象のデータを取得し、未送信キューからは削除
       const changesByMonth = { ...pendingChanges.current };
       pendingChanges.current = {}; 
 
-      // 送信中の状態として保持（タイムラグ中のonSnapshotでの上書き防止用）
       inflightChanges.current = { ...inflightChanges.current };
       for (const mKey in changesByMonth) {
           inflightChanges.current[mKey] = {
@@ -250,10 +262,8 @@ export const useShiftData = (currentYear, currentMonth) => {
         updates['updatedAt'] = new Date().toISOString();
 
         try {
-          // まず updateDoc で部分更新を試みる（既存ドキュメントの場合）
           await updateDoc(docRef, updates);
         } catch (error) {
-          // ドキュメントが存在しない場合 (not-found) は setDoc で作成する
           if (error.code === 'not-found') {
              const nestedData = {
                year: parseInt(y),
@@ -289,7 +299,6 @@ export const useShiftData = (currentYear, currentMonth) => {
       } catch (e) {
         setSaveStatus('error');
       } finally {
-        // 送信が完了したら inflight（送信中キュー）から該当分を削除する
         for (const mKey in changesByMonth) {
            if (inflightChanges.current[mKey]) {
                for (const updateKey in changesByMonth[mKey]) {
@@ -298,18 +307,16 @@ export const useShiftData = (currentYear, currentMonth) => {
            }
         }
       }
-    }, 1000); // 1秒デバウンス
+    }, 1000);
   }, []);
 
   // ---------------------------------------------------------------------------
   // 4. データ更新用関数 (UIから呼び出す)
   // ---------------------------------------------------------------------------
 
-  // 単一セルの更新
   const updateShiftItem = useCallback((year, month, staffId, day, value) => {
     const key = `${year}-${month}`;
 
-    // 1. React Stateの更新 (UI即時反映)
     setSchedule(prev => {
       const currentMonthData = prev[key] || {};
       const currentStaffData = currentMonthData[staffId] || {};
@@ -331,15 +338,27 @@ export const useShiftData = (currentYear, currentMonth) => {
       return { ...prev, [key]: newMonthData };
     });
 
-    // 2. 変更差分の登録 (Firestore用)
     if (!pendingChanges.current[key]) pendingChanges.current[key] = {};
     pendingChanges.current[key][`scheduleData.${staffId}.${day}`] = value;
 
-    // 3. 保存タイマー開始
     triggerScheduleSave();
   }, [triggerScheduleSave]);
 
-  // 複数セルの更新 (一括更新、パターン適用など)
+  // 【追加】Firestoreに保存せず、ローカル（画面上）のみでシフトを更新する関数
+  const updateLocalShiftItem = useCallback((year, month, staffId, day, value) => {
+    const key = `${year}-${month}`;
+    
+    setSchedule(prev => {
+      const currentMonthData = prev[key] || {};
+      const currentStaffData = currentMonthData[staffId] || {};
+      if (JSON.stringify(currentStaffData[day]) === JSON.stringify(value)) return prev;
+      return { ...prev, [key]: { ...currentMonthData, [staffId]: { ...currentStaffData, [day]: value } } };
+    });
+
+    if (!localPendingChanges.current[key]) localPendingChanges.current[key] = {};
+    localPendingChanges.current[key][`${staffId}.${day}`] = true;
+  }, []);
+
   const updateShiftItems = useCallback((year, month, updates) => {
     if (!updates || updates.length === 0) return;
     const key = `${year}-${month}`;
@@ -365,12 +384,15 @@ export const useShiftData = (currentYear, currentMonth) => {
     
     updates.forEach(({ staffId, day, value }) => {
       pendingChanges.current[key][`scheduleData.${staffId}.${day}`] = value;
+      // 保存対象になったらローカルフラグを解除
+      if (localPendingChanges.current[key]?.[`${staffId}.${day}`]) {
+          delete localPendingChanges.current[key][`${staffId}.${day}`];
+      }
     });
 
     triggerScheduleSave();
   }, [triggerScheduleSave]);
 
-  // ユーザーの1ヶ月分のデータを丸ごと更新
   const updateShiftUserMonth = useCallback((year, month, staffId, monthData) => {
     const key = `${year}-${month}`;
     
@@ -381,13 +403,11 @@ export const useShiftData = (currentYear, currentMonth) => {
     });
 
     if (!pendingChanges.current[key]) pendingChanges.current[key] = {};
-    // マップ全体を置換
     pendingChanges.current[key][`scheduleData.${staffId}`] = monthData;
     
     triggerScheduleSave();
   }, [triggerScheduleSave]);
 
-  // Undo / Redo
   const undo = useCallback(() => {
     setHistory(prev => {
       const { past, future } = prev;
@@ -414,6 +434,7 @@ export const useShiftData = (currentYear, currentMonth) => {
     staff, setStaff,
     schedule, 
     updateShiftItem,
+    updateLocalShiftItem,
     updateShiftItems,
     updateShiftUserMonth,
     undo, redo, canUndo: history.past.length > 0, canRedo: history.future.length > 0,

@@ -132,6 +132,8 @@ export const useShiftActions = ({
     setLoadingMessage('変更を確定中...');
     
     try {
+      const updatesToSave = [];
+
       for (const sId of targetStaffIds) {
         const staffChanges = pendingChanges.filter(c => c.staffId === sId);
         const targetStaff = staff.find(s => s.id === sId);
@@ -147,7 +149,25 @@ export const useShiftActions = ({
         await chatService.sendChangeAfterApproval(targetStaff.name, year, month, dateSummary, changeDetails, mentions);
         
         setStaff(prev => prev.map(s => s.id === sId ? { ...s, shiftApproved: { ...s.shiftApproved, [key]: false } } : s));
+        
+        // 保存用配列にデータを追加
+        staffChanges.forEach(c => {
+           const val = c.rawValue;
+           let cleanedVal = val;
+           if (typeof val === 'object' && val !== null) {
+               const { modified, ...rest } = val;
+               cleanedVal = Object.keys(rest).length === 1 && rest.type ? rest.type : rest;
+               if (rest.type === '稼働' && typeof rest.hours === 'number') cleanedVal = rest.hours;
+           }
+           updatesToSave.push({ staffId: sId, day: c.day, value: cleanedVal });
+        });
       }
+
+      // Firestoreに一括保存
+      if (updatesToSave.length > 0) {
+        updateShiftItems(year, month, updatesToSave);
+      }
+
     } catch (error) {
       alert('通知の送信に失敗しました。');
     }
