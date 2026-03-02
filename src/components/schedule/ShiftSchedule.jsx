@@ -67,10 +67,8 @@ const ShiftSchedule = ({
   const [contextMenu, setContextMenu] = useState(null);
   
   // 担当業務確認モーダル用のState
-  const [taskSkillsModal, setTaskSkillsModal] = useState(null); // { staff, position }
+  const [taskSkillsModal, setTaskSkillsModal] = useState(null);
 
-  // 1. コールバック参照用Refの作成（無限ループと再描画を防ぐための極めて重要なテクニック）
-  // 親から渡される関数がレンダリング毎に新しくなっても、useMemoを破壊しないようにRefに最新版を保持します
   const callbacksRef = useRef({
       onUpdateSchedule, onUpdateStaffInfo, onApplyStaffPattern,
       onToggleShiftSubmitted, onToggleShiftApproved, onToggleShiftRemanded, onDeleteStaff,
@@ -84,7 +82,6 @@ const ShiftSchedule = ({
       }
   });
 
-  // 常に最新の関数をRefに更新
   useEffect(() => {
       callbacksRef.current = {
           onUpdateSchedule, onUpdateStaffInfo, onApplyStaffPattern,
@@ -132,14 +129,17 @@ const ShiftSchedule = ({
         setTimeout(() => {
             const container = containerRef.current; if (!container) return;
             const target = container.querySelector(`[data-day="${today.getDate()}"]`);
-            if (target) container.scrollTo({ left: Math.max(0, target.offsetLeft - 500), behavior: 'smooth' });
+            if (target) {
+                // 固定列の合計幅を計算して、その分だけスクロール位置を調整する
+                const totalStickyWidth = Object.values(widths).reduce((sum, w) => sum + w, 0);
+                container.scrollTo({ left: Math.max(0, target.offsetLeft - totalStickyWidth), behavior: 'smooth' });
+            }
         }, 300);
     } else {
         hasScrolledRef.current = true;
     }
   }, [year, month, safeDays, widths]);
 
-  // マウスイベントハンドラをuseCallbackで完全に固定化
   const handleCellMouseDown = useCallback((row, col, e) => {
       if (e.button !== 0) return;
       setSelection({ start: { row, col }, end: { row, col } });
@@ -251,11 +251,8 @@ const ShiftSchedule = ({
                 {sortedStaff.map((s, rowIndex) => {
                     const isEditable = isAdmin || currentUser?.id === s.id;
                     const defaultShift = s.defaultShift || { pattern: [], hasBreakArray: [] };
-                    const staffSchedule = schedule[s.id] || {}; // 個人のスケジュールを抽出
+                    const staffSchedule = schedule[s.id] || {}; 
 
-                    // 2. 最適化のコア部分：行ごとの描画結果をメモ化
-                    // 依存配列に指定された値（スタッフ情報、その人のスケジュール、選択状態など）が
-                    // 変化しない限り、この行は再計算・再描画されません。
                     return React.useMemo(() => {
                         return (
                             <div key={s.id} className="flex w-max group hover:bg-slate-50 transition-colors">
@@ -328,16 +325,16 @@ const ShiftSchedule = ({
                             </div>
                         );
                     }, [
-                        s,              // スタッフ情報の変更時
-                        staffSchedule,  // このスタッフのシフト変更時のみ再計算
-                        isEditable,     // 権限変更時
-                        isAdmin,        // 権限変更時
-                        year,           // 年が変わった時
-                        month,          // 月が変わった時
-                        holidays,       // 祝日が更新された時
-                        shiftPatterns,  // パターンが更新された時
-                        selection,      // マウスドラッグ等による選択範囲変更時
-                        safeDays        // 日付配列変更時
+                        s,              
+                        staffSchedule,  
+                        isEditable,     
+                        isAdmin,        
+                        year,           
+                        month,          
+                        holidays,       
+                        shiftPatterns,  
+                        selection,      
+                        safeDays        
                     ]);
                 })}
             </div>
