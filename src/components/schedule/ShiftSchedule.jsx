@@ -253,89 +253,76 @@ const ShiftSchedule = ({
                     const defaultShift = s.defaultShift || { pattern: [], hasBreakArray: [] };
                     const staffSchedule = schedule[s.id] || {}; 
 
-                    return React.useMemo(() => {
-                        return (
-                            <div key={s.id} className="flex w-max group hover:bg-slate-50 transition-colors">
-                                <div className={cellBase} style={stickyCellStyle('role')}>
-                                    <EditableStaffInfoCell value={s.role} onUpdate={v => callbacksRef.current.onUpdateStaffInfo(s.id, 'role', v)} disabled={!isEditable} className="border-none w-full" />
-                                </div>
-                                <div className={cellBase} style={stickyCellStyle('empId')}>
-                                    <EditableStaffInfoCell value={s.employeeId} onUpdate={v => callbacksRef.current.onUpdateStaffInfo(s.id, 'employeeId', v)} disabled={!isEditable} className="border-none w-full" />
-                                </div>
-                                
-                                <div className={cellBase} style={stickyCellStyle('name')}>
-                                    <div className="flex items-center w-full h-full relative">
-                                        <EditableStaffInfoCell value={s.name} onUpdate={v => callbacksRef.current.onUpdateStaffInfo(s.id, 'name', v)} disabled={!isEditable} className="border-none flex-grow min-w-0" />
-                                        <button 
-                                            onClick={(e) => callbacksRef.current.handleTaskIconClick(e, s)}
-                                            className="p-1 mx-1 text-slate-300 hover:text-[#D9824D] hover:bg-orange-50 rounded transition-colors flex-shrink-0"
-                                            title="担当業務を確認"
-                                        >
-                                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
-                                            </svg>
-                                        </button>
-                                    </div>
-                                </div>
-
-                                <div className={`${cellBase} px-1`} style={stickyCellStyle('setting')}>
-                                    <ScheduleShiftPatternEditor pattern={defaultShift.pattern} hasBreakArray={defaultShift.hasBreakArray} patterns={shiftPatterns} onApply={(p, hb) => callbacksRef.current.onApplyStaffPattern(s.id, p, hb)} summary={summarizePattern(defaultShift.pattern, shiftPatterns, defaultShift.hasBreakArray)} disabled={!isEditable} />
-                                </div>
-                                <div className={`${cellBase} justify-center`} style={stickyCellStyle('submit')}>
-                                    <input type="checkbox" checked={s.shiftSubmitted?.[`${year}-${month}`] || false} onChange={() => callbacksRef.current.onToggleShiftSubmitted(s.id)} className="h-4 w-4 rounded text-sky-600 cursor-pointer" disabled={!isEditable} />
-                                </div>
-                                <div className={`${cellBase} justify-center`} style={stickyCellStyle('remand')}>
-                                    <input type="checkbox" checked={s.shiftRemanded?.[`${year}-${month}`] || false} onChange={() => callbacksRef.current.onToggleShiftRemanded(s.id)} className="h-4 w-4 rounded text-red-600 cursor-pointer" disabled={!isAdmin} />
-                                </div>
-                                <div className={`${cellBase} justify-center`} style={stickyCellStyle('approve')}>
-                                    <input type="checkbox" checked={s.shiftApproved?.[`${year}-${month}`] || false} onChange={() => callbacksRef.current.onToggleShiftApproved(s.id)} className="h-4 w-4 rounded text-green-600 cursor-pointer" disabled={!isAdmin} />
-                                </div>
-                                <div className={`${cellBase} justify-center border-r-2`} style={stickyCellStyle('del')}>
-                                    {isAdmin && <button onClick={() => callbacksRef.current.onDeleteStaff(s.id)} className="p-1 hover:bg-red-50 rounded-full transition-colors"><DeleteIcon /></button>}
-                                </div>
-
-                                {safeDays.map(({ day, dayOfWeek }, colIndex) => {
-                                    const isHoliday = holidays.includes(day);
-                                    const isWeekend = dayOfWeek === '土' || dayOfWeek === '日';
-                                    const selected = isCellSelected(selection, rowIndex, colIndex);
-
-                                    return (
-                                    <div key={day} className={`w-[${DAY_CELL_WIDTH}] min-w-[${DAY_CELL_WIDTH}] max-w-[${DAY_CELL_WIDTH}]`}>
-                                        <EditableCell 
-                                            value={staffSchedule[day] ?? ''} 
-                                            onUpdate={v => callbacksRef.current.onUpdateSchedule(s.id, day, v)} 
-                                            isAdmin={isAdmin} 
-                                            disabled={!isEditable} 
-                                            borderClass="border-slate-200" 
-                                            isToday={new Date().getDate() === day && (new Date().getMonth()+1) === month} 
-                                            isHoliday={isHoliday}
-                                            isWeekend={isWeekend}
-                                            dayOfWeek={dayOfWeek}
-                                            rowIndex={rowIndex}
-                                            colIndex={colIndex}
-                                            isSelected={selected}
-                                            onMouseDown={handleCellMouseDown}
-                                            onMouseEnter={handleCellMouseEnter}
-                                            onFocus={handleCellFocus}
-                                            onContextMenu={handleCellContextMenu}
-                                        />
-                                    </div>
-                                    );
-                                })}
+                    return (
+                        <div key={s.id} className="flex w-max group hover:bg-slate-50 transition-colors">
+                            <div className={cellBase} style={stickyCellStyle('role')}>
+                                <EditableStaffInfoCell value={s.role} onUpdate={v => callbacksRef.current.onUpdateStaffInfo(s.id, 'role', v)} disabled={!isEditable} className="border-none w-full" />
                             </div>
-                        );
-                    }, [
-                        s,              
-                        staffSchedule,  
-                        isEditable,     
-                        isAdmin,        
-                        year,           
-                        month,          
-                        holidays,       
-                        shiftPatterns,  
-                        selection,      
-                        safeDays        
-                    ]);
+                            <div className={cellBase} style={stickyCellStyle('empId')}>
+                                <EditableStaffInfoCell value={s.employeeId} onUpdate={v => callbacksRef.current.onUpdateStaffInfo(s.id, 'employeeId', v)} disabled={!isEditable} className="border-none w-full" />
+                            </div>
+                            
+                            <div className={cellBase} style={stickyCellStyle('name')}>
+                                <div className="flex items-center w-full h-full relative">
+                                    <EditableStaffInfoCell value={s.name} onUpdate={v => callbacksRef.current.onUpdateStaffInfo(s.id, 'name', v)} disabled={!isEditable} className="border-none flex-grow min-w-0" />
+                                    <button 
+                                        onClick={(e) => callbacksRef.current.handleTaskIconClick(e, s)}
+                                        className="p-1 mx-1 text-slate-300 hover:text-[#D9824D] hover:bg-orange-50 rounded transition-colors flex-shrink-0"
+                                        title="担当業務を確認"
+                                    >
+                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+                                        </svg>
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div className={`${cellBase} px-1`} style={stickyCellStyle('setting')}>
+                                <ScheduleShiftPatternEditor pattern={defaultShift.pattern} hasBreakArray={defaultShift.hasBreakArray} patterns={shiftPatterns} onApply={(p, hb) => callbacksRef.current.onApplyStaffPattern(s.id, p, hb)} summary={summarizePattern(defaultShift.pattern, shiftPatterns, defaultShift.hasBreakArray)} disabled={!isEditable} />
+                            </div>
+                            <div className={`${cellBase} justify-center`} style={stickyCellStyle('submit')}>
+                                <input type="checkbox" checked={s.shiftSubmitted?.[`${year}-${month}`] || false} onChange={() => callbacksRef.current.onToggleShiftSubmitted(s.id)} className="h-4 w-4 rounded text-sky-600 cursor-pointer" disabled={!isEditable} />
+                            </div>
+                            <div className={`${cellBase} justify-center`} style={stickyCellStyle('remand')}>
+                                <input type="checkbox" checked={s.shiftRemanded?.[`${year}-${month}`] || false} onChange={() => callbacksRef.current.onToggleShiftRemanded(s.id)} className="h-4 w-4 rounded text-red-600 cursor-pointer" disabled={!isAdmin} />
+                            </div>
+                            <div className={`${cellBase} justify-center`} style={stickyCellStyle('approve')}>
+                                <input type="checkbox" checked={s.shiftApproved?.[`${year}-${month}`] || false} onChange={() => callbacksRef.current.onToggleShiftApproved(s.id)} className="h-4 w-4 rounded text-green-600 cursor-pointer" disabled={!isAdmin} />
+                            </div>
+                            <div className={`${cellBase} justify-center border-r-2`} style={stickyCellStyle('del')}>
+                                {isAdmin && <button onClick={() => callbacksRef.current.onDeleteStaff(s.id)} className="p-1 hover:bg-red-50 rounded-full transition-colors"><DeleteIcon /></button>}
+                            </div>
+
+                            {safeDays.map(({ day, dayOfWeek }, colIndex) => {
+                                const isHoliday = holidays.includes(day);
+                                const isWeekend = dayOfWeek === '土' || dayOfWeek === '日';
+                                const selected = isCellSelected(selection, rowIndex, colIndex);
+
+                                return (
+                                <div key={day} className={`w-[${DAY_CELL_WIDTH}] min-w-[${DAY_CELL_WIDTH}] max-w-[${DAY_CELL_WIDTH}]`}>
+                                    <EditableCell 
+                                        value={staffSchedule[day] ?? ''} 
+                                        onUpdate={v => callbacksRef.current.onUpdateSchedule(s.id, day, v)} 
+                                        isAdmin={isAdmin} 
+                                        disabled={!isEditable} 
+                                        borderClass="border-slate-200" 
+                                        isToday={new Date().getDate() === day && (new Date().getMonth()+1) === month} 
+                                        isHoliday={isHoliday}
+                                        isWeekend={isWeekend}
+                                        dayOfWeek={dayOfWeek}
+                                        rowIndex={rowIndex}
+                                        colIndex={colIndex}
+                                        isSelected={selected}
+                                        onMouseDown={handleCellMouseDown}
+                                        onMouseEnter={handleCellMouseEnter}
+                                        onFocus={handleCellFocus}
+                                        onContextMenu={handleCellContextMenu}
+                                    />
+                                </div>
+                                );
+                            })}
+                        </div>
+                    );
                 })}
             </div>
         </div>
