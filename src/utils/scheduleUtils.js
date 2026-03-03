@@ -76,7 +76,7 @@ export const summarizePattern = (pattern, patterns, hasBreakArray) => {
         const p = patterns.find(x => x.id === pattern[0]);
         // 配列の先頭、または単一のboolean値を取得
         const hasBreak = Array.isArray(hasBreakArray) ? hasBreakArray[0] : (hasBreakArray !== false);
-        return p ? `月-金: ${p.name} (${hasBreak ? '休憩あり' : '休憩なし'})` : '不明なパターン';
+        return p ? `月-金: ${p.name}(${p.startTime}-${p.endTime}) (${hasBreak ? '休憩あり' : '休憩なし'})` : '不明なパターン';
     }
     
     const days = ['月', '火', '水', '木', '金'];
@@ -85,7 +85,7 @@ export const summarizePattern = (pattern, patterns, hasBreakArray) => {
         const p = patterns.find(x => x.id === pId);
         // 曜日ごとに配列から判定
         const hasBreak = Array.isArray(hasBreakArray) ? hasBreakArray[index] : (hasBreakArray !== false);
-        return `${days[index]}: ${p ? p.name : pId}(${hasBreak ? '有' : '無'})`;
+        return `${days[index]}: ${p ? `${p.name}(${p.startTime}-${p.endTime})` : pId}(${hasBreak ? '有' : '無'})`;
     }).join('\n');
 };
 
