@@ -167,7 +167,14 @@ const MainContent = () => {
               const updates = days.map(d => {
                 const date = new Date(year, month - 1, d.day);
                 const dw = date.getDay();
-                let v = (currentMonthHolidays.includes(d.day) || dw === 0 || dw === 6) ? 'シフト休' : (shiftPatterns.find(pat => pat.id === p[dw-1])?.workHours || '');
+                let v = '';
+                if (currentMonthHolidays.includes(d.day) || dw === 0 || dw === 6) {
+                    v = 'シフト休';
+                } else if (p[dw-1] === 'シフト休') {
+                    v = 'シフト休';
+                } else {
+                    v = shiftPatterns.find(pat => pat.id === p[dw-1])?.workHours || '';
+                }
                 return { staffId: sid, day: d.day, value: v };
               });
               updateShiftItems(year, month, updates);
