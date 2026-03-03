@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 
 /**
@@ -38,28 +38,6 @@ const ScheduleShiftPatternEditor = ({ pattern, hasBreakArray, patterns, onApply,
       const hasBreak = p.breakHours !== undefined ? p.breakHours > 0 : (p.breakTime !== undefined && p.breakTime !== '0:00' && p.breakTime !== '00:00');
       return hasBreak ? '休憩あり' : '休憩なし';
   };
-
-  // 外部(scheduleUtils)に依存せず、内部の最新状態で正確なサマリーを生成する
-  const displaySummary = useMemo(() => {
-    if (!pattern || pattern.length === 0) return '未設定';
-    const isAllSame = pattern.every(p => p === pattern[0]);
-    const isBreakAllSame = Array.isArray(hasBreakArray) ? hasBreakArray.every(b => b === hasBreakArray[0]) : true;
-    
-    if (isAllSame && isBreakAllSame) {
-        if (pattern[0] === 'シフト休') return 'すべてシフト休';
-        const p = patterns.find(x => x.id === pattern[0]);
-        const hasBreak = Array.isArray(hasBreakArray) ? hasBreakArray[0] : hasBreakArray;
-        return p ? `月-金: ${p.name} (${hasBreak ? '休憩あり' : '休憩なし'})` : '不明';
-    }
-    
-    const days = ['月', '火', '水', '木', '金'];
-    return pattern.map((pId, index) => {
-        if (pId === 'シフト休') return `${days[index]}: 休`;
-        const p = patterns.find(x => x.id === pId);
-        const hasBreak = Array.isArray(hasBreakArray) ? hasBreakArray[index] : true;
-        return `${days[index]}: ${p ? p.name : '不明'}(${hasBreak ? '有' : '無'})`;
-    }).join('\n');
-  }, [pattern, hasBreakArray, patterns]);
 
   // 一括設定時のハンドラ
   const handleBulkChange = (newPatternId) => {
@@ -171,7 +149,8 @@ const ScheduleShiftPatternEditor = ({ pattern, hasBreakArray, patterns, onApply,
   return (
     <div className="h-full w-full">
       <button onClick={() => !disabled && setIsOpen(true)} className={`w-full h-full flex items-center justify-start text-left p-1 rounded transition-colors ${disabled ? 'cursor-not-allowed' : 'hover:bg-slate-200'}`} disabled={disabled}>
-        <div className="text-[10px] leading-tight font-semibold whitespace-pre-wrap text-slate-700 overflow-hidden">{displaySummary}</div>
+        {/* displaySummary ではなく props.summary を直接表示することで scheduleUtils の変更が即座に反映されます */}
+        <div className="text-[10px] leading-tight font-semibold whitespace-pre-wrap text-slate-700 overflow-hidden">{summary}</div>
       </button>
       {editorPopup}
     </div>
