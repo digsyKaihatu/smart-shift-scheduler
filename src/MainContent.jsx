@@ -167,7 +167,14 @@ const MainContent = () => {
               const updates = days.map(d => {
                 const date = new Date(year, month - 1, d.day);
                 const dw = date.getDay();
-                let v = (currentMonthHolidays.includes(d.day) || dw === 0 || dw === 6) ? 'シフト休' : (shiftPatterns.find(pat => pat.id === p[dw-1])?.workHours || '');
+                let v = '';
+                if (currentMonthHolidays.includes(d.day) || dw === 0 || dw === 6) {
+                    v = 'シフト休';
+                } else if (p[dw-1] === 'シフト休') {
+                    v = 'シフト休';
+                } else {
+                    v = shiftPatterns.find(pat => pat.id === p[dw-1])?.workHours || '';
+                }
                 return { staffId: sid, day: d.day, value: v };
               });
               updateShiftItems(year, month, updates);
@@ -182,7 +189,7 @@ const MainContent = () => {
           
           <TaskShortageDisplay 
             isAdmin={isAdmin} currentUser={currentUser} tasks={tasks} staff={staff} days={days} holidays={currentMonthHolidays} taskCountsByDay={taskCountsByDay} year={year} month={month} schedule={currentMonthSchedule}
-            onUpdateTask={(id, n) => setTasks(prev => prev.map(t => t.id === id ? { ...t, name: n } : t))}
+            onUpdateTask={(id, updates) => setTasks(prev => prev.map(t => t.id === id ? { ...t, ...updates } : t))}
             onDeleteTask={(id) => setConfirmDelete({ type: 'task', id, name: tasks.find(t => t.id === id)?.name })}
             onUpdateTaskPersonnel={(id, c) => setTasks(prev => prev.map(t => t.id === id ? { ...t, requiredPersonnel: c } : t))}
             onUpdateTaskStaff={(tid, sids) => setStaff(prev => prev.map(s => ({ ...s, possibleTasks: sids.includes(s.id) ? [...new Set([...s.possibleTasks, tid])] : s.possibleTasks.filter(id => id !== tid) })))}
