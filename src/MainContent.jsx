@@ -2,21 +2,22 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { useOktaAuth } from '@okta/okta-react';
 
 // Hooks & Services
-import { useShiftData } from './hooks/useShiftData';
-import { useUserStatus } from './hooks/useUserStatus';
-import { useShiftActions } from './hooks/useShiftActions';
-import { chatService } from './services/chatService';
-import { getJapaneseHolidays, formatValue } from './utils/dateUtils';
-import { downloadScheduleCSV } from './utils/csvExporter';
+import { useShiftData } from './hooks/useShiftData.js';
+import { useUserStatus } from './hooks/useUserStatus.js';
+import { useShiftActions } from './hooks/useShiftActions.js';
+import { chatService } from './services/chatService.js';
+import { getJapaneseHolidays, formatValue } from './utils/dateUtils.js';
+import { downloadScheduleCSV } from './utils/csvExporter.js';
+import { checkPatternHasBreak } from './utils/scheduleUtils.js';
 
 // Components
-import LoadingScreen from './components/common/LoadingScreen';
-import Legend from './components/schedule/Legend';
-import ShiftSchedule from './components/schedule/ShiftSchedule';
-import MonthlyCalendar from './components/schedule/MonthlyCalendar';
-import ShiftPatternDisplay from './components/schedule/ShiftPatternDisplay';
-import TaskShortageDisplay from './components/tasks/TaskShortageDisplay';
-import GlobalModals from './components/containers/GlobalModals';
+import LoadingScreen from './components/common/LoadingScreen.jsx';
+import Legend from './components/schedule/Legend.jsx';
+import ShiftSchedule from './components/schedule/ShiftSchedule.jsx';
+import MonthlyCalendar from './components/schedule/MonthlyCalendar.jsx';
+import ShiftPatternDisplay from './components/schedule/ShiftPatternDisplay.jsx';
+import TaskShortageDisplay from './components/tasks/TaskShortageDisplay.jsx';
+import GlobalModals from './components/containers/GlobalModals.jsx';
 
 const MainContent = () => {
   const [year, setYear] = useState(new Date().getFullYear());
@@ -29,10 +30,10 @@ const MainContent = () => {
     isLoading, loadingMessage, setLoadingMessage, setIsLoading, saveStatus, initialDataLoaded
   } = useShiftData(year, month);
 
-  // ユーザー状態・権限フック (新規)
+  // ユーザー状態・権限フック
   const { currentUser, isAdmin, isAuthenticated } = useUserStatus(staff, adminConfig);
 
-  // シフトアクションフック (新規)
+  // シフトアクションフック
   const actions = useShiftActions({
     staff, setStaff, schedule, year, month, adminConfig, shiftPatterns,
     setIsLoading, setLoadingMessage, updateShiftItems
@@ -115,7 +116,7 @@ const MainContent = () => {
   const currentMonthSchedule = schedule[key] || {};
   const adminControls = isAdmin ? (
     <>
-      <button onClick={() => setStaff(prev => [...prev, { id: `s${Date.now()}`, employeeId: 'New', name: '新規メンバー', role: 'OP', chatUserId: '', possibleTasks: [], defaultShift: { pattern: ['I','I','I','I','I'], hasBreak: true }, shiftSubmitted: {}, shiftRemanded: {}, shiftApproved: {} }])} className="px-3 py-1.5 bg-[#F4B896] text-white text-xs font-semibold rounded-md hover:bg-[#E8A680] shadow-sm whitespace-nowrap">+ メンバー</button>
+      <button onClick={() => setStaff(prev => [...prev, { id: `s${Date.now()}`, employeeId: 'New', name: '新規メンバー', role: 'OP', chatUserId: '', possibleTasks: [], defaultShift: { pattern: ['I','I','I','I','I'], hasBreakArray: [true, true, true, true, true] }, shiftSubmitted: {}, shiftRemanded: {}, shiftApproved: {} }])} className="px-3 py-1.5 bg-[#F4B896] text-white text-xs font-semibold rounded-md hover:bg-[#E8A680] shadow-sm whitespace-nowrap">+ メンバー</button>
       <button onClick={() => setTasks(prev => [...prev, { id: `t${Date.now()}`, name: '新業務', requiredPersonnel: 3 }])} className="px-3 py-1.5 bg-[#F4B896] text-white text-xs font-semibold rounded-md hover:bg-[#E8A680] shadow-sm whitespace-nowrap">+ 業務</button>
       <button onClick={() => setIsTaskEditorOpen(true)} className="px-3 py-1.5 bg-[#F4B896] text-white text-xs font-semibold rounded-md hover:bg-[#E8A680] shadow-sm whitespace-nowrap">業務担当</button>
       <button onClick={() => setIsMemberManagementOpen(true)} className="px-3 py-1.5 bg-[#F4B896] text-white text-xs font-semibold rounded-md hover:bg-[#E8A680] shadow-sm whitespace-nowrap">メンバー管理</button>
@@ -163,7 +164,7 @@ const MainContent = () => {
             onDeleteStaff={(id) => setConfirmDelete({ type: 'staff', id, name: staff.find(s => s.id === id)?.name })} 
             onUpdateStaffInfo={(id, f, v) => setStaff(prev => prev.map(s => s.id === id ? { ...s, [f]: v } : s))}
             onApplyStaffPattern={(sid, p, hb) => {
-              setStaff(prev => prev.map(s => s.id === sid ? { ...s, defaultShift: { pattern: p, hasBreak: hb } } : s));
+              setStaff(prev => prev.map(s => s.id === sid ? { ...s, defaultShift: { pattern: p, hasBreakArray: hb } } : s));
               const updates = days.map(d => {
                 const date = new Date(year, month - 1, d.day);
                 const dw = date.getDay();
@@ -173,7 +174,24 @@ const MainContent = () => {
                 } else if (p[dw-1] === 'シフト休') {
                     v = 'シフト休';
                 } else {
-                    v = shiftPatterns.find(pat => pat.id === p[dw-1])?.workHours || '';
+                    const pat = shiftPatterns.find(pat => pat.id === p[dw-1]);
+                    if (pat) {
+                        let workHours = Number(pat.workHours) || 0;
+                        const hasBreak = Array.isArray(hb) ? hb[dw-1] : checkPatternHasBreak(pat.id, shiftPatterns);
+                        
+                        // 休憩なしの場合、もともと休憩があるパターンから休憩を抜いた場合のみ稼働時間に休憩時間を足す
+                        if (!hasBreak) {
+                            let breakH = Number(pat.breakHours) || 0;
+                            if (breakH === 0 && pat.breakTime && pat.breakTime !== '0:00' && pat.breakTime !== '00:00') {
+                                const [h, m] = pat.breakTime.split(':').map(Number);
+                                breakH = h + (m / 60);
+                            }
+                            if (breakH > 0) {
+                                workHours += breakH;
+                            }
+                        }
+                        v = workHours;
+                    }
                 }
                 return { staffId: sid, day: d.day, value: v };
               });
