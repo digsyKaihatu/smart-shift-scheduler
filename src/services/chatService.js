@@ -1,48 +1,4 @@
-// Google Chatへの通知を行う共通関数
-const sendToChat = async (webhookUrl, payload) => {
-  if (!webhookUrl) return;
-  
-  try {
-    const response = await fetch(webhookUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json; charset=UTF-8' },
-      body: JSON.stringify(payload)
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(`Chat通知エラー: ${errorData?.error?.message || response.statusText}`);
-    }
-  } catch (error) {
-    console.error('Notification Failed:', error);
-    throw error; // エラーを呼び出し元に伝播させる
-  }
-};
-
-export const chatService = {
-  // 提出通知
-  sendSubmission: async (name, year, month, mentions = '') => {
-    const url = import.meta.env.VITE_CHAT_WEBHOOK_SUBMISSION;
-    const message = `${mentions} ${name}さんが${year}年${month}月のシフトを提出しました！`;
-    await sendToChat(url, { text: message });
-  },
-
-  // 差戻通知
-  sendRemand: async (name, chatUserId) => {
-    const url = import.meta.env.VITE_CHAT_WEBHOOK_REMAND;
-    const prefix = chatUserId ? `<users/${chatUserId}>` : `【To: ${name}さん】`;
-    const message = `${prefix} シフトが差し戻しされました。管理者とご相談願います。`;
-    await sendToChat(url, { text: message });
-  },
-
-  // 欠勤通知
-  sendAbsence: async (name) => {
-    const url = import.meta.env.VITE_CHAT_WEBHOOK_ABSENCE;
-    // 文頭に <users/all> を追加することで、Google Chat上で「@全員」として通知されます
-    const message = `<users/all> お疲れ様です。本日、${name}さんが欠勤です。\n一緒の業務を担当されている方は調整等よろしくお願いします！`;
-    await sendToChat(url, { text: message });
-  },
-
+// ... existing code ...
   // 承認通知 (2通送る処理もここにまとめる)
   sendApproval: async (staffMember, year, month, patternSummary, irregularText, remarks) => {
     const url = import.meta.env.VITE_CHAT_WEBHOOK_APPROVAL;
@@ -64,7 +20,7 @@ export const chatService = {
           },
           "sections": [
             { "header": "基本シフトパターン", "widgets": [{ "textParagraph": { "text": patternSummary } }] },
-            { "header": "イレギュラー勤務", "widgets": [{ "textParagraph": { "text": irregularText } }] },
+            { "header": "特記事項", "widgets": [{ "textParagraph": { "text": irregularText } }] },
             { "header": "備考", "widgets": [{ "textParagraph": { "text": remarks || 'なし' } }] }
           ]
         }
@@ -74,9 +30,4 @@ export const chatService = {
   },
 
   // 承認後の変更通知 (新規追加)
-  sendChangeAfterApproval: async (name, year, month, day, valueStr, mentions = '') => {
-    const url = import.meta.env.VITE_CHAT_WEBHOOK_SUBMISSION; // 管理者向けなので提出用Webhookを使用
-    const message = `${mentions} 【変更通知】\n${name}さんの承認済みシフトが変更されました。\n日付: ${month}/${day}\n変更内容: ${valueStr}\n※承認ステータスを解除しました。`;
-    await sendToChat(url, { text: message });
-  }
-};
+// ... existing code ...
