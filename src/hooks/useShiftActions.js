@@ -80,28 +80,20 @@ export const useShiftActions = ({
     }
   }, [staff, key]);
 
-  const handleConfirmApproval = async (remarks) => {
+  // ★修正: Modalから計算済みの irregularText を引数として受け取るように変更
+  const handleConfirmApproval = async (remarks, irregularText) => {
     if (!approvalModalStaffId) return;
     const s = staff.find(x => x.id === approvalModalStaffId);
-    const daysInMonth = new Date(year, month, 0).getDate();
-    const irregularities = [];
-    
-    // イレギュラー抽出ロジック
-    for (let d = 1; d <= daysInMonth; d++) {
-        const val = schedule[key]?.[s.id]?.[d];
-        if (typeof val === 'object' && val?.modified) {
-            irregularities.push(`${month}/${d}: ${formatValue(val)}`);
-        }
-    }
 
     setIsLoading(true);
     setLoadingMessage('承認通知を送信中...');
     try {
-      await chatService.sendApproval(s, year, month, summarizePattern(s.defaultShift.pattern, shiftPatterns, s.defaultShift.hasBreakArray), irregularities.join('\n') || 'なし', remarks);
+      // 受け取った irregularText をそのままチャット送信サービスへ渡す
+      await chatService.sendApproval(s, year, month, summarizePattern(s.defaultShift.pattern, shiftPatterns, s.defaultShift.hasBreakArray), irregularText, remarks);
     } catch (e) { console.error(e); }
     setIsLoading(false);
 
-    // modifiedフラグクリア
+    // modifiedフラグクリア (承認後変更のクリア処理)
     const staffSchedule = schedule[key]?.[s.id] || {};
     const updates = [];
     Object.entries(staffSchedule).forEach(([d, val]) => {
