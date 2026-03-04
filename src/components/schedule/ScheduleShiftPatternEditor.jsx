@@ -1,36 +1,25 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { checkPatternHasBreak } from '../../utils/scheduleUtils.js';
+import { checkPatternHasBreak } from '../../utils/scheduleUtils';
 
 /**
  * シフト表内での基本パターン編集コンポーネント
- * 休憩の有無(hasBreakArray)を手動で切り替えられるように改良
+ * 休憩の有無はシフトパターン(マスタ)から自動的に判定して適用します
  */
-const ScheduleShiftPatternEditor = ({ pattern, hasBreakArray, patterns, onApply, summary, disabled = false }) => {
+const ScheduleShiftPatternEditor = ({ pattern, patterns, onApply, summary, disabled = false }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [editedPattern, setEditedPattern] = useState(pattern || Array(5).fill('シフト休'));
-  const [editedHasBreak, setEditedHasBreak] = useState(Array(5).fill(true));
   
   // 9:00スタートのパターンを除外するフィルタリング
   const filteredPatterns = patterns.filter(p => p.startTime !== '9:00' && p.startTime !== '09:00');
   
   const [bulkPatternId, setBulkPatternId] = useState(filteredPatterns[0]?.id || 'シフト休');
-  const [bulkBreak, setBulkBreak] = useState(true);
 
   useEffect(() => { 
     if (isOpen) {
-        const currentPattern = pattern || Array(5).fill('シフト休');
-        setEditedPattern(currentPattern); 
-        
-        // hasBreakArrayが未設定の場合はパターンのデフォルト休憩有無を取得する
-        if (Array.isArray(hasBreakArray) && hasBreakArray.length === 5) {
-            setEditedHasBreak([...hasBreakArray]);
-        } else {
-            const initialBreaks = currentPattern.map(pid => checkPatternHasBreak(pid, patterns));
-            setEditedHasBreak(initialBreaks);
-        }
+        setEditedPattern(pattern || Array(5).fill('シフト休')); 
     }
-  }, [isOpen, pattern, hasBreakArray, patterns]);
+  }, [isOpen, pattern]);
 
   // パターンの「休憩あり/なし」テキストを取得するヘルパー
   const getBreakText = (p) => {
@@ -41,7 +30,6 @@ const ScheduleShiftPatternEditor = ({ pattern, hasBreakArray, patterns, onApply,
   // 一括設定時のハンドラ
   const handleBulkChange = (newPatternId) => {
       setBulkPatternId(newPatternId);
-      setBulkBreak(checkPatternHasBreak(newPatternId, patterns));
   };
 
   // 個別設定時のハンドラ
@@ -49,42 +37,30 @@ const ScheduleShiftPatternEditor = ({ pattern, hasBreakArray, patterns, onApply,
       const np = [...editedPattern];
       np[index] = newPatternId;
       setEditedPattern(np);
-
-      const nb = [...editedHasBreak];
-      nb[index] = checkPatternHasBreak(newPatternId, patterns);
-      setEditedHasBreak(nb);
   };
 
   // 一括適用のハンドラ
   const applyBulkToAll = () => {
       setEditedPattern(Array(5).fill(bulkPatternId));
-      setEditedHasBreak(Array(5).fill(bulkBreak));
+  };
+
+  // 保存処理
+  const handleApply = () => {
+      // 選択されたパターンIDから、自動的に休憩の有無の配列を生成
+      const finalBreaks = editedPattern.map(pid => checkPatternHasBreak(pid, patterns));
+      onApply(editedPattern, finalBreaks);
+      setIsOpen(false);
   };
 
   const editorPopup = isOpen ? createPortal(
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[100] p-4" onMouseDown={() => setIsOpen(false)}>
         <div className="w-full max-w-md bg-white rounded-md shadow-lg border border-slate-200 p-4" onMouseDown={(e) => e.stopPropagation()}>
             <h4 className="font-bold text-md mb-4 text-slate-800 border-b pb-2">基本シフトパターン編集</h4>
+            
+            {/* 一括設定エリア */}
             <div className="mb-4 p-3 bg-orange-50 rounded-md border border-orange-100 space-y-3">
                 <div className="flex items-center justify-between">
                     <label className="font-bold text-xs text-orange-800">月〜金 一括設定</label>
-                    <div className="flex items-center gap-2">
-                        <button 
-                            type="button"
-                            onClick={() => setBulkBreak(!bulkBreak)}
-                            disabled={bulkPatternId === 'シフト休'}
-                            className={`text-[10px] font-bold px-2 py-0.5 rounded border transition-colors ${
-                                bulkPatternId === 'シフト休'
-                                    ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed'
-                                    : (bulkBreak 
-                                        ? 'bg-orange-100 text-orange-700 border-orange-300 hover:bg-orange-200 cursor-pointer' 
-                                        : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-50 cursor-pointer')
-                            }`}
-                            title="クリックで休憩あり/なしを切り替え"
-                        >
-                            {bulkPatternId === 'シフト休' ? '-' : (bulkBreak ? '休憩あり' : '休憩なし')}
-                        </button>
-                    </div>
                 </div>
                 <div className="flex items-center gap-2">
                     <select value={bulkPatternId} onChange={(e) => handleBulkChange(e.target.value)} className="flex-grow text-xs p-1.5 border border-slate-300 rounded bg-white">
@@ -95,14 +71,18 @@ const ScheduleShiftPatternEditor = ({ pattern, hasBreakArray, patterns, onApply,
                             </option>
                         ))}
                     </select>
-                    <button type="button" onClick={applyBulkToAll} className="text-xs px-3 py-1.5 bg-[#F4B896] text-white rounded font-bold hover:bg-[#E8A680]">適用</button>
+                    <button type="button" onClick={applyBulkToAll} className="text-xs px-3 py-1.5 bg-[#F4B896] text-white rounded font-bold hover:bg-[#E8A680] whitespace-nowrap">
+                        一括反映
+                    </button>
                 </div>
             </div>
+
+            {/* 曜日ごとの個別設定エリア */}
             <div className="space-y-2">
                 {['月', '火', '水', '木', '金'].map((dayName, index) => (
                     <div key={index} className="grid grid-cols-12 gap-2 items-center">
-                        <label className="col-span-1 font-bold text-xs text-slate-600">{dayName}</label>
-                        <div className="col-span-8">
+                        <label className="col-span-1 font-bold text-xs text-slate-600 text-center">{dayName}</label>
+                        <div className="col-span-11">
                             <select value={editedPattern[index]} onChange={(e) => handlePatternChange(index, e.target.value)} className="w-full text-xs p-1.5 border border-slate-300 rounded-md bg-white">
                                 <option value="シフト休">シフト休</option>
                                 {filteredPatterns.map(p => (
@@ -112,34 +92,13 @@ const ScheduleShiftPatternEditor = ({ pattern, hasBreakArray, patterns, onApply,
                                 ))}
                             </select>
                         </div>
-                        <div className="col-span-3 flex items-center gap-1 justify-end">
-                            <button 
-                                type="button"
-                                onClick={() => {
-                                    if (editedPattern[index] === 'シフト休') return;
-                                    const nb = [...editedHasBreak];
-                                    nb[index] = !nb[index];
-                                    setEditedHasBreak(nb);
-                                }}
-                                disabled={editedPattern[index] === 'シフト休'}
-                                className={`text-[10px] whitespace-nowrap px-1.5 py-0.5 rounded border transition-colors ${
-                                    editedPattern[index] === 'シフト休' 
-                                        ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed' 
-                                        : (editedHasBreak[index] 
-                                            ? 'bg-orange-100 text-orange-700 border-orange-300 hover:bg-orange-200 cursor-pointer' 
-                                            : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-50 cursor-pointer')
-                                }`}
-                                title="クリックで休憩あり/なしを切り替え"
-                            >
-                                {editedPattern[index] === 'シフト休' ? '-' : (editedHasBreak[index] ? '休憩あり' : '休憩なし')}
-                            </button>
-                        </div>
                     </div>
                 ))}
             </div>
+
             <div className="flex justify-end gap-2 mt-5 pt-4 border-t border-slate-100">
                 <button type="button" onClick={() => setIsOpen(false)} className="text-xs px-4 py-2 bg-slate-100 rounded font-bold">キャンセル</button>
-                <button type="button" onClick={() => { onApply(editedPattern, editedHasBreak); setIsOpen(false); }} className="text-xs px-4 py-2 bg-[#F4B896] text-white rounded font-bold shadow-sm hover:bg-[#E8A680]">適用</button>
+                <button type="button" onClick={handleApply} className="text-xs px-4 py-2 bg-[#F4B896] text-white rounded font-bold shadow-sm hover:bg-[#E8A680]">適用</button>
             </div>
         </div>
     </div>, document.body
@@ -148,7 +107,6 @@ const ScheduleShiftPatternEditor = ({ pattern, hasBreakArray, patterns, onApply,
   return (
     <div className="h-full w-full">
       <button onClick={() => !disabled && setIsOpen(true)} className={`w-full h-full flex items-center justify-start text-left p-1 rounded transition-colors ${disabled ? 'cursor-not-allowed' : 'hover:bg-slate-200'}`} disabled={disabled}>
-        {/* displaySummary ではなく props.summary を直接表示することで scheduleUtils の変更が即座に反映されます */}
         <div className="text-[10px] leading-tight font-semibold whitespace-pre-wrap text-slate-700 overflow-hidden">{summary}</div>
       </button>
       {editorPopup}
