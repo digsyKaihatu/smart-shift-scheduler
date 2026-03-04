@@ -1,4 +1,3 @@
-
 import React, { useRef, useMemo } from 'react';
 import { summarizePattern } from '../../utils/scheduleUtils';
 import { formatValue } from '../../utils/dateUtils';
@@ -122,7 +121,8 @@ const ShiftApprovalModal = ({ staffMember, schedule, shiftPatterns, holidays, ye
                         <button onClick={onClose} className="px-4 py-2 text-sm bg-slate-200 text-slate-800 rounded-md hover:bg-slate-300">
                             キャンセル
                         </button>
-                        <button onClick={() => onConfirm(remarksRef.current?.value || '')} className="px-4 py-2 text-sm bg-[#F4B896] text-white rounded-md hover:bg-[#E8A680]">
+                        {/* ★修正: onConfirmに備考(remarks)に加えて、画面で表示している特記事項テキストを渡す */}
+                        <button onClick={() => onConfirm(remarksRef.current?.value || '', irregularPatterns.join('\n') || 'なし')} className="px-4 py-2 text-sm bg-[#F4B896] text-white rounded-md hover:bg-[#E8A680]">
                             はい、承認します
                         </button>
                     </div>
