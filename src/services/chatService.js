@@ -64,7 +64,7 @@ export const chatService = {
           },
           "sections": [
             { "header": "基本シフトパターン", "widgets": [{ "textParagraph": { "text": patternSummary } }] },
-            { "header": "イレギュラー勤務", "widgets": [{ "textParagraph": { "text": irregularText } }] },
+            { "header": "特記事項", "widgets": [{ "textParagraph": { "text": irregularText } }] },
             { "header": "備考", "widgets": [{ "textParagraph": { "text": remarks || 'なし' } }] }
           ]
         }
