@@ -1,4 +1,15 @@
-// src/utils/scheduleUtils.js
+/**
+ * パターンIDからデフォルトの休憩有無を判定するヘルパー
+ * @param {string} pId パターンID
+ * @param {object[]} patterns マスターデータのパターンリスト
+ * @returns {boolean} 休憩ありなら true
+ */
+export const checkPatternHasBreak = (pId, patterns) => {
+    if (pId === 'シフト休') return false;
+    const p = patterns.find(x => x.id === pId);
+    if (!p) return true; // デフォルト
+    return p.breakHours !== undefined ? p.breakHours > 0 : (p.breakTime !== undefined && p.breakTime !== '0:00' && p.breakTime !== '00:00');
+};
 
 /**
  * 指定された年月の初期スケジュールを生成する
@@ -16,7 +27,7 @@ export const generateScheduleForMonth = (year, month, staff, shiftPatterns, holi
     staff.forEach(s => {
         schedule[s.id] = {};
         const pattern = s.defaultShift?.pattern || Array(5).fill('シフト休');
-        const hasBreakArray = s.defaultShift?.hasBreakArray || Array(5).fill(true);
+        const hasBreakArray = s.defaultShift?.hasBreakArray;
 
         for (let day = 1; day <= daysInMonth; day++) {
             const date = new Date(year, month - 1, day);
@@ -33,7 +44,16 @@ export const generateScheduleForMonth = (year, month, staff, shiftPatterns, holi
                     const pat = shiftPatterns.find(p => p.id === pId);
                     if (pat) {
                         let workHours = Number(pat.workHours) || 0;
-                        const hasBreak = Array.isArray(hasBreakArray) ? hasBreakArray[dw - 1] : true;
+                        
+                        // 休憩設定の評価
+                        let hasBreak = true;
+                        if (Array.isArray(hasBreakArray) && hasBreakArray.length > dw - 1) {
+                            hasBreak = hasBreakArray[dw - 1];
+                        } else if (s.defaultShift?.hasBreak !== undefined) {
+                            hasBreak = s.defaultShift.hasBreak;
+                        } else {
+                            hasBreak = checkPatternHasBreak(pId, shiftPatterns);
+                        }
                         
                         // 休憩なしの場合は、稼働時間に休憩時間分を加算する
                         if (!hasBreak) {
@@ -42,9 +62,10 @@ export const generateScheduleForMonth = (year, month, staff, shiftPatterns, holi
                                 const [h, m] = pat.breakTime.split(':').map(Number);
                                 breakH = h + (m / 60);
                             }
-                            // フォールバック(設定が欠損している場合は1時間として計算)
-                            if (breakH === 0) breakH = 1;
-                            workHours += breakH;
+                            // もともと休憩があるパターンから休憩を抜いた場合のみ、稼働時間に休憩時間を足す
+                            if (breakH > 0) {
+                                workHours += breakH;
+                            }
                         }
                         schedule[s.id][day] = workHours;
                     } else {
@@ -67,15 +88,25 @@ export const generateScheduleForMonth = (year, month, staff, shiftPatterns, holi
  */
 export const summarizePattern = (pattern, patterns, hasBreakArray) => {
     if (!pattern || pattern.length === 0) return '未設定';
+    
+    // hasBreakArrayの補完と評価
+    const hasBreaks = pattern.map((pId, idx) => {
+        if (Array.isArray(hasBreakArray) && hasBreakArray.length === pattern.length) {
+            return hasBreakArray[idx];
+        } else if (hasBreakArray !== undefined && typeof hasBreakArray === 'boolean') {
+            return hasBreakArray;
+        } else {
+            return checkPatternHasBreak(pId, patterns);
+        }
+    });
+
     const isAllSame = pattern.every(p => p === pattern[0]);
-    // 配列対応：すべて同じ休憩設定か判定
-    const isBreakAllSame = Array.isArray(hasBreakArray) ? hasBreakArray.every(b => b === hasBreakArray[0]) : true;
+    const isBreakAllSame = hasBreaks.every(b => b === hasBreaks[0]);
     
     if (isAllSame && isBreakAllSame) {
         if (pattern[0] === 'シフト休') return '月-金: 休';
         const p = patterns.find(x => x.id === pattern[0]);
-        // 配列の先頭、または単一のboolean値を取得
-        const hasBreak = Array.isArray(hasBreakArray) ? hasBreakArray[0] : (hasBreakArray !== false);
+        const hasBreak = hasBreaks[0];
         return p ? `月-金: ${p.name}(${p.startTime}-${p.endTime}) (${hasBreak ? '休憩あり' : '休憩なし'})` : '不明なパターン';
     }
     
@@ -83,8 +114,7 @@ export const summarizePattern = (pattern, patterns, hasBreakArray) => {
     return pattern.map((pId, index) => {
         if (pId === 'シフト休') return `${days[index]}: 休`;
         const p = patterns.find(x => x.id === pId);
-        // 曜日ごとに配列から判定
-        const hasBreak = Array.isArray(hasBreakArray) ? hasBreakArray[index] : (hasBreakArray !== false);
+        const hasBreak = hasBreaks[index];
         return `${days[index]}: ${p ? `${p.name}(${p.startTime}-${p.endTime})` : pId}(${hasBreak ? '有' : '無'})`;
     }).join('\n');
 };
