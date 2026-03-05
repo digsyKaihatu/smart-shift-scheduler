@@ -18,7 +18,6 @@ const formatValue = (value) => {
   }
 
   if (value && typeof value === 'object' && 'type' in value) {
-    // 承認後変更（modifiedフラグ付き）の数値データ（稼働時間）の表示対応
     if (value.type === '稼働' && 'hours' in value) {
       const num = value.hours;
       return num % 1 === 0 ? Math.floor(num) : num.toFixed(1);
@@ -48,9 +47,6 @@ const formatValue = (value) => {
 
 /**
  * シフト入力セル
- * キーボード操作（矢印キー、Enter、Delete、Tab、F2）に対応
- * 範囲選択とコンテキストメニューに対応
- * * 安定化のために React.memo でラップしています
  */
 export const EditableCell = React.memo(({ 
   value, onUpdate, borderClass, disabled = false, isAdmin = false, 
@@ -68,7 +64,6 @@ export const EditableCell = React.memo(({
   const isLocked = typeof value === 'object' && value !== null && 'locked' in value && value.locked;
   const isEffectivelyDisabled = disabled || (isLocked && !isAdmin);
 
-  // フォーカス制御
   useEffect(() => {
     if (mode === 'input' && inputRef.current) {
       inputRef.current.focus();
@@ -79,7 +74,6 @@ export const EditableCell = React.memo(({
     }
   }, [mode]);
 
-  // フォーカス移動ロジック
   const moveFocus = (direction, e) => {
     let nextRow = rowIndex;
     let nextCol = colIndex;
@@ -89,12 +83,11 @@ export const EditableCell = React.memo(({
     if (direction === 'ArrowLeft') nextCol--;
     if (direction === 'ArrowRight') nextCol++;
     
-    // Tabキー対応
     if (direction === 'Tab') {
         if (e && e.shiftKey) {
-            nextCol--; // Shift+Tabで左へ
+            nextCol--;
         } else {
-            nextCol++; // Tabで右へ
+            nextCol++;
         }
     }
 
@@ -106,9 +99,7 @@ export const EditableCell = React.memo(({
   };
 
   const handleKeyDown = (e) => {
-    // 編集モード中
     if (mode !== 'view') {
-        // EnterまたはTabで確定して移動
         if (e.key === 'Enter' || e.key === 'Tab') {
             e.preventDefault();
             if (mode === 'input') {
@@ -122,7 +113,6 @@ export const EditableCell = React.memo(({
                      return; 
                  }
             }
-            // 編集完了後に移動
             const moveDir = e.key === 'Tab' ? 'Tab' : 'ArrowDown';
             setTimeout(() => moveFocus(moveDir, e), 0);
         }
@@ -133,7 +123,6 @@ export const EditableCell = React.memo(({
         return;
     }
 
-    // ビューモード中
     const isNavigationKey = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Tab'].includes(e.key);
     
     if (isNavigationKey) {
@@ -145,7 +134,7 @@ export const EditableCell = React.memo(({
 
     switch (e.key) {
         case 'Enter':
-        case 'F2': // F2キーで編集開始
+        case 'F2':
             e.preventDefault();
             setMode('select');
             break;
@@ -199,7 +188,6 @@ export const EditableCell = React.memo(({
         return `bg-sky-200 ring-2 ring-inset ring-sky-500 z-20 ${isEffectivelyDisabled ? '' : 'hover:bg-sky-300'}`;
     }
 
-    // 承認後の変更ハイライト（オレンジ色の枠線）
     if (typeof value === 'object' && value?.modified) {
         return `bg-orange-50 ring-2 ring-inset ring-orange-400 ${isEffectivelyDisabled ? '' : 'hover:bg-orange-100'}`;
     }
@@ -231,8 +219,6 @@ export const EditableCell = React.memo(({
     }
   };
   
-  // 修正: w-[80px] min-w-[80px] max-w-[80px] を明示的に指定して幅を固定します。
-  // flex-shrink-0 で縮小を防ぎ、overflow-hidden で文字数による拡張を防ぎます。
   const baseClasses = `border-b border-r ${borderClass} text-center text-sm h-10 flex items-center justify-center w-[80px] min-w-[80px] max-w-[80px] flex-shrink-0 outline-none focus:ring-2 focus:ring-inset focus:ring-sky-500 z-10 overflow-hidden ${className}`;
 
   if (mode === 'view') {
@@ -315,9 +301,12 @@ export const EditableStaffInfoCell = React.memo(({ value, onUpdate, className, d
   const [isEditing, setIsEditing] = useState(false);
   const [currentValue, setCurrentValue] = useState(value);
 
+  // 編集中は外部からの変更（リアルタイム同期による上書き）を無視して入力内容を保護する
   useEffect(() => {
-    setCurrentValue(value);
-  }, [value]);
+    if (!isEditing) {
+      setCurrentValue(value);
+    }
+  }, [value, isEditing]);
 
   const handleBlur = () => {
     if (currentValue.trim() !== value) {
@@ -326,7 +315,6 @@ export const EditableStaffInfoCell = React.memo(({ value, onUpdate, className, d
     setIsEditing(false);
   };
 
-  // 高さ指定を h-10 に戻す
   const wrapperClass = `h-10 text-sm border-b border-r border-slate-300 flex items-center px-2 overflow-hidden ${className}`;
 
   if (isEditing) {

@@ -25,7 +25,7 @@ export const useShiftData = (currentYear, currentMonth) => {
 
   // Main State
   const [staff, setStaff] = useState([]);
-  const [schedule, setSchedule] = useState({}); // { "2024-1": {...}, "2024-2": {...} }
+  const [schedule, setSchedule] = useState({});
   const [tasks, setTasks] = useState([]);
   const [shiftPatterns, setShiftPatterns] = useState([]);
   const [adminConfig, setAdminConfig] = useState(initialAdminConfig);
@@ -38,36 +38,28 @@ export const useShiftData = (currentYear, currentMonth) => {
   const debouncedSaveSchedule = useRef(null);
   const isInitialLoadComplete = useRef(false);
 
-  // 変更差分を保持するRef (Key: "YYYY-MM", Value: { "scheduleData.staffId.day": value, ... })
   const pendingChanges = useRef({});
-  // 通信中（保存中）の差分を保持するRef（通信タイムラグによる画面のチラつき防止用）
   const inflightChanges = useRef({});
-  // 【追加】Firestoreに保存しない、ローカルだけの変更を保持するRef
   const localPendingChanges = useRef({});
 
-  // ドキュメント参照
   const configDocRef = doc(db, "schedules", "config");
   const legacyDocRef = doc(db, "schedules", "main");
 
-  // 月ごとのドキュメント参照を取得するヘルパー
   const getMonthDocRef = (year, month) => doc(db, "schedules", `${year}-${month}`);
 
   // ---------------------------------------------------------------------------
-  // 1. 初期データロード (マスタデータ)
+  // 1. 初期データロード (マスタデータ) - リアルタイム同期付き
   // ---------------------------------------------------------------------------
   useEffect(() => {
+    let unsubscribeConfig = () => {};
+
     const loadMasterData = async () => {
       try {
         setLoadingMessage("設定データを読み込んでいます...");
+        
+        // マイグレーション用チェック（初回のみ）
         const configSnap = await getDoc(configDocRef);
-
-        if (configSnap.exists()) {
-          const data = configSnap.data();
-          setStaff(data.staff || initialStaffData);
-          setTasks(data.tasks || initialTasks);
-          setShiftPatterns(data.shiftPatterns || initialShiftPatterns);
-          setAdminConfig(data.adminConfig || initialAdminConfig);
-        } else {
+        if (!configSnap.exists()) {
           const legacySnap = await getDoc(legacyDocRef);
           if (legacySnap.exists()) {
             setLoadingMessage("データの移行処理を行っています...");
@@ -79,14 +71,38 @@ export const useShiftData = (currentYear, currentMonth) => {
             if (legacyData.schedule) {
               setSchedule(legacyData.schedule);
             }
-          } else {
-            setStaff(initialStaffData);
-            setTasks(initialTasks);
-            setShiftPatterns(initialShiftPatterns);
-            setAdminConfig(initialAdminConfig);
+            // 移行データを保存
+            await setDoc(configDocRef, {
+              staff: legacyData.staff || initialStaffData,
+              tasks: legacyData.tasks || initialTasks,
+              shiftPatterns: legacyData.shiftPatterns || initialShiftPatterns,
+              adminConfig: legacyData.adminConfig || initialAdminConfig,
+              updatedAt: new Date().toISOString()
+            });
           }
         }
-        setInitialDataLoaded(true);
+
+        // リアルタイム同期（onSnapshot）の開始
+        unsubscribeConfig = onSnapshot(configDocRef, (snap) => {
+          if (snap.exists()) {
+            const data = snap.data();
+            
+            // 変更: JSON.stringifyで比較し、差分がない場合はStateを更新しない（無限ループ防止）
+            setStaff(prev => JSON.stringify(prev) === JSON.stringify(data.staff || initialStaffData) ? prev : (data.staff || initialStaffData));
+            setTasks(prev => JSON.stringify(prev) === JSON.stringify(data.tasks || initialTasks) ? prev : (data.tasks || initialTasks));
+            setShiftPatterns(prev => JSON.stringify(prev) === JSON.stringify(data.shiftPatterns || initialShiftPatterns) ? prev : (data.shiftPatterns || initialShiftPatterns));
+            setAdminConfig(prev => JSON.stringify(prev) === JSON.stringify(data.adminConfig || initialAdminConfig) ? prev : (data.adminConfig || initialAdminConfig));
+
+            setInitialDataLoaded(true);
+          } else {
+             setStaff(prev => JSON.stringify(prev) === JSON.stringify(initialStaffData) ? prev : initialStaffData);
+             setTasks(prev => JSON.stringify(prev) === JSON.stringify(initialTasks) ? prev : initialTasks);
+             setShiftPatterns(prev => JSON.stringify(prev) === JSON.stringify(initialShiftPatterns) ? prev : initialShiftPatterns);
+             setAdminConfig(prev => JSON.stringify(prev) === JSON.stringify(initialAdminConfig) ? prev : initialAdminConfig);
+             setInitialDataLoaded(true);
+          }
+        });
+
       } catch (error) {
         console.error("Master Data Load Error:", error);
         setLoadingMessage(`エラー: ${error.message}`);
@@ -94,6 +110,7 @@ export const useShiftData = (currentYear, currentMonth) => {
     };
 
     loadMasterData();
+    return () => unsubscribeConfig();
   }, []);
 
   // ---------------------------------------------------------------------------
@@ -135,7 +152,6 @@ export const useShiftData = (currentYear, currentMonth) => {
                 }
               }
 
-              // 追加：ローカルのみの変更があるかチェック
               if (localPendingChanges.current[key]) {
                  for (const localKey in localPendingChanges.current[key]) {
                     if (localKey.startsWith(`${staffId}.`)) {
@@ -157,7 +173,6 @@ export const useShiftData = (currentYear, currentMonth) => {
                      }
                  }
 
-                 // さらにローカルのみの変更を被せる
                  if (localPendingChanges.current[key]) {
                      for (const localKey in localPendingChanges.current[key]) {
                          if (localKey.startsWith(`${staffId}.`)) {
@@ -344,7 +359,6 @@ export const useShiftData = (currentYear, currentMonth) => {
     triggerScheduleSave();
   }, [triggerScheduleSave]);
 
-  // 【追加】Firestoreに保存せず、ローカル（画面上）のみでシフトを更新する関数
   const updateLocalShiftItem = useCallback((year, month, staffId, day, value) => {
     const key = `${year}-${month}`;
     
@@ -384,7 +398,6 @@ export const useShiftData = (currentYear, currentMonth) => {
     
     updates.forEach(({ staffId, day, value }) => {
       pendingChanges.current[key][`scheduleData.${staffId}.${day}`] = value;
-      // 保存対象になったらローカルフラグを解除
       if (localPendingChanges.current[key]?.[`${staffId}.${day}`]) {
           delete localPendingChanges.current[key][`${staffId}.${day}`];
       }
