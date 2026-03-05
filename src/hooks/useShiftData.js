@@ -21,6 +21,55 @@ const deepEqual = (a, b) => {
   return true;
 };
 
+/**
+ * 配列の差分マージ関数（複数人同時操作による先祖返り防止用）
+ * ローカルの変更とサーバーの変更を比較し、競合を解決します。
+ */
+const mergeArray = (localArr, serverArr, lastServerArr) => {
+  if (!lastServerArr) return serverArr;
+  const merged = [];
+  
+  serverArr.forEach(serverItem => {
+    const localItem = localArr.find(item => item.id === serverItem.id);
+    const lastItem = lastServerArr.find(item => item.id === serverItem.id);
+
+    if (!localItem) {
+      // ローカルで削除された場合はマージしない（削除を優先）
+      // ただし、他人が新規追加した項目の場合（lastItemにない）は追加する
+      if (!lastItem) {
+          merged.push(serverItem);
+      }
+    } else if (!lastItem) {
+      // 両方で追加された等の競合時はローカルを優先
+      merged.push(localItem);
+    } else {
+      const isLocalChanged = !deepEqual(localItem, lastItem);
+      const isServerChanged = !deepEqual(serverItem, lastItem);
+      
+      if (isLocalChanged && !isServerChanged) {
+        merged.push(localItem); // 自分だけが変更した
+      } else if (!isLocalChanged && isServerChanged) {
+        merged.push(serverItem); // 他人だけが変更した
+      } else if (isLocalChanged && isServerChanged) {
+        merged.push(localItem); // 競合時（同時編集）は自分の操作を優先
+      } else {
+        merged.push(serverItem); // 変更なし
+      }
+    }
+  });
+
+  // 自分が新規追加したもの（サーバーにはまだ存在しない）を追加
+  localArr.forEach(localItem => {
+    if (!serverArr.find(item => item.id === localItem.id)) {
+      if (!lastServerArr.find(item => item.id === localItem.id)) {
+        merged.push(localItem);
+      }
+    }
+  });
+
+  return merged;
+};
+
 export const useShiftData = (currentYear, currentMonth) => {
   const [isLoading, setIsLoading] = useState(true);
   const [loadingMessage, setLoadingMessage] = useState("データベースに接続しています...");
@@ -41,12 +90,18 @@ export const useShiftData = (currentYear, currentMonth) => {
   const debouncedSaveSchedule = useRef(null);
   const isInitialLoadComplete = useRef(false);
 
-  // ★ 無限ループ防止のための重要フラグ
   const pendingConfigSave = useRef(false);
-
   const pendingChanges = useRef({});
   const inflightChanges = useRef({});
   const localPendingChanges = useRef({});
+
+  // 最後にサーバーから受け取った状態を保持（マージの比較用）
+  const lastServerConfigRef = useRef({
+    staff: initialStaffData,
+    tasks: initialTasks,
+    shiftPatterns: initialShiftPatterns,
+    adminConfig: initialAdminConfig
+  });
 
   const configDocRef = doc(db, "schedules", "config");
   const legacyDocRef = doc(db, "schedules", "main");
@@ -54,7 +109,6 @@ export const useShiftData = (currentYear, currentMonth) => {
 
   // =========================================================
   // ローカル更新用のラッパー関数
-  // UIからデータが変更された時のみ pendingConfigSave フラグを立てて保存を許可する
   // =========================================================
   const setStaff = useCallback((value) => {
     pendingConfigSave.current = true;
@@ -83,7 +137,6 @@ export const useShiftData = (currentYear, currentMonth) => {
       try {
         setLoadingMessage("設定データを読み込んでいます...");
         
-        // マイグレーション用チェック
         const configSnap = await getDoc(configDocRef);
         if (!configSnap.exists()) {
           const legacySnap = await getDoc(legacyDocRef);
@@ -94,9 +147,8 @@ export const useShiftData = (currentYear, currentMonth) => {
             _setTasks(legacyData.tasks || initialTasks);
             _setShiftPatterns(legacyData.shiftPatterns || initialShiftPatterns);
             _setAdminConfig(legacyData.adminConfig || initialAdminConfig);
-            if (legacyData.schedule) {
-              setSchedule(legacyData.schedule);
-            }
+            if (legacyData.schedule) setSchedule(legacyData.schedule);
+            
             await setDoc(configDocRef, {
               staff: legacyData.staff || initialStaffData,
               tasks: legacyData.tasks || initialTasks,
@@ -111,13 +163,37 @@ export const useShiftData = (currentYear, currentMonth) => {
         unsubscribeConfig = onSnapshot(configDocRef, (snap) => {
           if (snap.exists()) {
             const data = snap.data();
-            
-            // ★サーバーからの更新は _setStaff 等を使用（保存フラグは立てない）
-            _setStaff(prev => deepEqual(prev, data.staff || initialStaffData) ? prev : (data.staff || initialStaffData));
-            _setTasks(prev => deepEqual(prev, data.tasks || initialTasks) ? prev : (data.tasks || initialTasks));
-            _setShiftPatterns(prev => deepEqual(prev, data.shiftPatterns || initialShiftPatterns) ? prev : (data.shiftPatterns || initialShiftPatterns));
-            _setAdminConfig(prev => deepEqual(prev, data.adminConfig || initialAdminConfig) ? prev : (data.adminConfig || initialAdminConfig));
+            const serverStaff = data.staff || initialStaffData;
+            const serverTasks = data.tasks || initialTasks;
+            const serverPatterns = data.shiftPatterns || initialShiftPatterns;
+            const serverAdmin = data.adminConfig || initialAdminConfig;
 
+            // ローカルの未保存状態とサーバー状態を賢くマージする
+            _setStaff(prev => {
+                const merged = mergeArray(prev, serverStaff, lastServerConfigRef.current.staff);
+                return deepEqual(prev, merged) ? prev : merged;
+            });
+            _setTasks(prev => {
+                const merged = mergeArray(prev, serverTasks, lastServerConfigRef.current.tasks);
+                return deepEqual(prev, merged) ? prev : merged;
+            });
+            _setShiftPatterns(prev => {
+                const merged = mergeArray(prev, serverPatterns, lastServerConfigRef.current.shiftPatterns);
+                return deepEqual(prev, merged) ? prev : merged;
+            });
+            _setAdminConfig(prev => {
+               const isLocalChanged = !deepEqual(prev, lastServerConfigRef.current.adminConfig);
+               if (isLocalChanged) return prev; 
+               return deepEqual(prev, serverAdmin) ? prev : serverAdmin;
+            });
+
+            // 基準となるサーバー状態を更新
+            lastServerConfigRef.current = {
+               staff: serverStaff,
+               tasks: serverTasks,
+               shiftPatterns: serverPatterns,
+               adminConfig: serverAdmin
+            };
             setInitialDataLoaded(true);
           } else {
              _setStaff(prev => deepEqual(prev, initialStaffData) ? prev : initialStaffData);
@@ -163,7 +239,6 @@ export const useShiftData = (currentYear, currentMonth) => {
             const serverStaffData = serverSchedule[staffId];
             const localStaffData = prevMonthData[staffId] || {};
 
-            // deepEqual に変更して誤判定を防止
             if (!deepEqual(serverStaffData, localStaffData)) {
               const activeChanges = { 
                 ...(inflightChanges.current[key] || {}), 
@@ -256,28 +331,47 @@ export const useShiftData = (currentYear, currentMonth) => {
 
   useEffect(() => {
     if (!isInitialLoadComplete.current) return;
-
-    // ★ 他人の更新を受信しただけの場合は保存処理をスキップ（無限ループ防止の要）
     if (!pendingConfigSave.current) return;
 
     if (debouncedSaveConfig.current) clearTimeout(debouncedSaveConfig.current);
 
+    // ★ 保存のデバウンスを 2000ms から 500ms に短縮し、競合する隙を減らす
     debouncedSaveConfig.current = setTimeout(async () => {
-      // 実行直前にフラグを下ろす
       pendingConfigSave.current = false;
       
       try {
-        await setDoc(configDocRef, { 
+        // 保存直前に最新のサーバーデータを取得してマージする（上書き防止）
+        const snap = await getDoc(configDocRef);
+        const serverData = snap.exists() ? snap.data() : null;
+
+        let dataToSave = { 
           staff, 
           tasks, 
           shiftPatterns, 
           adminConfig,
           updatedAt: new Date().toISOString()
-        }, { merge: true });
+        };
+
+        if (serverData) {
+            dataToSave.staff = mergeArray(staff, serverData.staff || initialStaffData, lastServerConfigRef.current.staff);
+            dataToSave.tasks = mergeArray(tasks, serverData.tasks || initialTasks, lastServerConfigRef.current.tasks);
+            dataToSave.shiftPatterns = mergeArray(shiftPatterns, serverData.shiftPatterns || initialShiftPatterns, lastServerConfigRef.current.shiftPatterns);
+        }
+
+        await setDoc(configDocRef, dataToSave, { merge: true });
+        
+        // 保存成功後に基準状態を更新
+        lastServerConfigRef.current = {
+            staff: dataToSave.staff,
+            tasks: dataToSave.tasks,
+            shiftPatterns: dataToSave.shiftPatterns,
+            adminConfig: dataToSave.adminConfig
+        };
+
       } catch (error) {
         console.error("Config save failed:", error);
       }
-    }, 2000);
+    }, 500);
 
     return () => clearTimeout(debouncedSaveConfig.current);
   }, [staff, tasks, shiftPatterns, adminConfig]);
