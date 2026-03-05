@@ -4,15 +4,19 @@ import { db } from '../config/firebase';
 import { initialShiftPatterns, initialStaffData, initialAdminConfig, initialTasks } from '../constants/initialData';
 import { generateScheduleForMonth } from '../utils/scheduleUtils';
 
-// オブジェクトの浅い比較（順番に依存しない安全な比較）を行うユーティリティ
-const isStaffDataEqual = (data1, data2) => {
-  if (data1 === data2) return true;
-  if (!data1 || !data2) return false;
-  const keys1 = Object.keys(data1);
-  const keys2 = Object.keys(data2);
-  if (keys1.length !== keys2.length) return false;
-  for (const k of keys1) {
-    if (JSON.stringify(data1[k]) !== JSON.stringify(data2[k])) return false;
+/**
+ * 汎用的なディープイコール関数
+ * （オブジェクトのプロパティ順序などに依存せず、中身が完全に一致しているかを安全に判定します）
+ */
+const deepEqual = (a, b) => {
+  if (a === b) return true;
+  if (typeof a !== 'object' || a === null || typeof b !== 'object' || b === null) return false;
+  if (Array.isArray(a) !== Array.isArray(b)) return false;
+  const keysA = Object.keys(a);
+  const keysB = Object.keys(b);
+  if (keysA.length !== keysB.length) return false;
+  for (let key of keysA) {
+    if (!keysB.includes(key) || !deepEqual(a[key], b[key])) return false;
   }
   return true;
 };
@@ -23,20 +27,22 @@ export const useShiftData = (currentYear, currentMonth) => {
   const [saveStatus, setSaveStatus] = useState('saved');
   const [initialDataLoaded, setInitialDataLoaded] = useState(false);
 
-  // Main State
-  const [staff, setStaff] = useState([]);
+  // 内部ステート（UIからの直接変更と、サーバーからの受信を区別するため）
+  const [staff, _setStaff] = useState([]);
   const [schedule, setSchedule] = useState({});
-  const [tasks, setTasks] = useState([]);
-  const [shiftPatterns, setShiftPatterns] = useState([]);
-  const [adminConfig, setAdminConfig] = useState(initialAdminConfig);
+  const [tasks, _setTasks] = useState([]);
+  const [shiftPatterns, _setShiftPatterns] = useState([]);
+  const [adminConfig, _setAdminConfig] = useState(initialAdminConfig);
 
-  // Undo/Redo History State
   const [history, setHistory] = useState({ past: [], future: [] });
 
-  // Refs for debouncing and tracking
+  // Refs
   const debouncedSaveConfig = useRef(null);
   const debouncedSaveSchedule = useRef(null);
   const isInitialLoadComplete = useRef(false);
+
+  // ★ 無限ループ防止のための重要フラグ
+  const pendingConfigSave = useRef(false);
 
   const pendingChanges = useRef({});
   const inflightChanges = useRef({});
@@ -44,8 +50,28 @@ export const useShiftData = (currentYear, currentMonth) => {
 
   const configDocRef = doc(db, "schedules", "config");
   const legacyDocRef = doc(db, "schedules", "main");
-
   const getMonthDocRef = (year, month) => doc(db, "schedules", `${year}-${month}`);
+
+  // =========================================================
+  // ローカル更新用のラッパー関数
+  // UIからデータが変更された時のみ pendingConfigSave フラグを立てて保存を許可する
+  // =========================================================
+  const setStaff = useCallback((value) => {
+    pendingConfigSave.current = true;
+    _setStaff(value);
+  }, []);
+  const setTasks = useCallback((value) => {
+    pendingConfigSave.current = true;
+    _setTasks(value);
+  }, []);
+  const setShiftPatterns = useCallback((value) => {
+    pendingConfigSave.current = true;
+    _setShiftPatterns(value);
+  }, []);
+  const setAdminConfig = useCallback((value) => {
+    pendingConfigSave.current = true;
+    _setAdminConfig(value);
+  }, []);
 
   // ---------------------------------------------------------------------------
   // 1. 初期データロード (マスタデータ) - リアルタイム同期付き
@@ -57,21 +83,20 @@ export const useShiftData = (currentYear, currentMonth) => {
       try {
         setLoadingMessage("設定データを読み込んでいます...");
         
-        // マイグレーション用チェック（初回のみ）
+        // マイグレーション用チェック
         const configSnap = await getDoc(configDocRef);
         if (!configSnap.exists()) {
           const legacySnap = await getDoc(legacyDocRef);
           if (legacySnap.exists()) {
             setLoadingMessage("データの移行処理を行っています...");
             const legacyData = legacySnap.data();
-            setStaff(legacyData.staff || initialStaffData);
-            setTasks(legacyData.tasks || initialTasks);
-            setShiftPatterns(legacyData.shiftPatterns || initialShiftPatterns);
-            setAdminConfig(legacyData.adminConfig || initialAdminConfig);
+            _setStaff(legacyData.staff || initialStaffData);
+            _setTasks(legacyData.tasks || initialTasks);
+            _setShiftPatterns(legacyData.shiftPatterns || initialShiftPatterns);
+            _setAdminConfig(legacyData.adminConfig || initialAdminConfig);
             if (legacyData.schedule) {
               setSchedule(legacyData.schedule);
             }
-            // 移行データを保存
             await setDoc(configDocRef, {
               staff: legacyData.staff || initialStaffData,
               tasks: legacyData.tasks || initialTasks,
@@ -87,18 +112,18 @@ export const useShiftData = (currentYear, currentMonth) => {
           if (snap.exists()) {
             const data = snap.data();
             
-            // 変更: JSON.stringifyで比較し、差分がない場合はStateを更新しない（無限ループ防止）
-            setStaff(prev => JSON.stringify(prev) === JSON.stringify(data.staff || initialStaffData) ? prev : (data.staff || initialStaffData));
-            setTasks(prev => JSON.stringify(prev) === JSON.stringify(data.tasks || initialTasks) ? prev : (data.tasks || initialTasks));
-            setShiftPatterns(prev => JSON.stringify(prev) === JSON.stringify(data.shiftPatterns || initialShiftPatterns) ? prev : (data.shiftPatterns || initialShiftPatterns));
-            setAdminConfig(prev => JSON.stringify(prev) === JSON.stringify(data.adminConfig || initialAdminConfig) ? prev : (data.adminConfig || initialAdminConfig));
+            // ★サーバーからの更新は _setStaff 等を使用（保存フラグは立てない）
+            _setStaff(prev => deepEqual(prev, data.staff || initialStaffData) ? prev : (data.staff || initialStaffData));
+            _setTasks(prev => deepEqual(prev, data.tasks || initialTasks) ? prev : (data.tasks || initialTasks));
+            _setShiftPatterns(prev => deepEqual(prev, data.shiftPatterns || initialShiftPatterns) ? prev : (data.shiftPatterns || initialShiftPatterns));
+            _setAdminConfig(prev => deepEqual(prev, data.adminConfig || initialAdminConfig) ? prev : (data.adminConfig || initialAdminConfig));
 
             setInitialDataLoaded(true);
           } else {
-             setStaff(prev => JSON.stringify(prev) === JSON.stringify(initialStaffData) ? prev : initialStaffData);
-             setTasks(prev => JSON.stringify(prev) === JSON.stringify(initialTasks) ? prev : initialTasks);
-             setShiftPatterns(prev => JSON.stringify(prev) === JSON.stringify(initialShiftPatterns) ? prev : initialShiftPatterns);
-             setAdminConfig(prev => JSON.stringify(prev) === JSON.stringify(initialAdminConfig) ? prev : initialAdminConfig);
+             _setStaff(prev => deepEqual(prev, initialStaffData) ? prev : initialStaffData);
+             _setTasks(prev => deepEqual(prev, initialTasks) ? prev : initialTasks);
+             _setShiftPatterns(prev => deepEqual(prev, initialShiftPatterns) ? prev : initialShiftPatterns);
+             _setAdminConfig(prev => deepEqual(prev, initialAdminConfig) ? prev : initialAdminConfig);
              setInitialDataLoaded(true);
           }
         });
@@ -138,7 +163,8 @@ export const useShiftData = (currentYear, currentMonth) => {
             const serverStaffData = serverSchedule[staffId];
             const localStaffData = prevMonthData[staffId] || {};
 
-            if (!isStaffDataEqual(serverStaffData, localStaffData)) {
+            // deepEqual に変更して誤判定を防止
+            if (!deepEqual(serverStaffData, localStaffData)) {
               const activeChanges = { 
                 ...(inflightChanges.current[key] || {}), 
                 ...(pendingChanges.current[key] || {}) 
@@ -184,7 +210,7 @@ export const useShiftData = (currentYear, currentMonth) => {
                      }
                  }
 
-                 if (!isStaffDataEqual(mergedStaffData, localStaffData)) {
+                 if (!deepEqual(mergedStaffData, localStaffData)) {
                      nextMonthData[staffId] = mergedStaffData;
                      hasChange = true;
                  }
@@ -231,9 +257,15 @@ export const useShiftData = (currentYear, currentMonth) => {
   useEffect(() => {
     if (!isInitialLoadComplete.current) return;
 
+    // ★ 他人の更新を受信しただけの場合は保存処理をスキップ（無限ループ防止の要）
+    if (!pendingConfigSave.current) return;
+
     if (debouncedSaveConfig.current) clearTimeout(debouncedSaveConfig.current);
 
     debouncedSaveConfig.current = setTimeout(async () => {
+      // 実行直前にフラグを下ろす
+      pendingConfigSave.current = false;
+      
       try {
         await setDoc(configDocRef, { 
           staff, 
