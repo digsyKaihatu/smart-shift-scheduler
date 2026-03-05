@@ -29,13 +29,11 @@ export const useShiftActions = ({
   const handleToggleShiftSubmitted = useCallback((staffId) => {
     const s = staff.find(x => x.id === staffId);
     if (s?.shiftSubmitted?.[key]) {
-      // 既に提出済みの場合は即座に解除（通知なし）
       setStaff(prev => prev.map(x => x.id === staffId ? { 
         ...x, 
         shiftSubmitted: { ...x.shiftSubmitted, [key]: false } 
       } : x));
     } else {
-      // 未提出の場合は確認モーダルを表示
       setSubmissionConfirmation({ staffId, name: s.name });
     }
   }, [staff, key, setStaff]);
@@ -52,26 +50,19 @@ export const useShiftActions = ({
         .join(' ');
     }
     
-    // UIを即座に更新してチェックを付ける
+    // UIを即座に更新してチェックを付ける（即時反映）
     setStaff(prev => prev.map(x => x.id === staffId ? { 
       ...x, 
       shiftSubmitted: { ...x.shiftSubmitted, [key]: true } 
     } : x));
     setSubmissionConfirmation(null);
 
-    // バックグラウンドでチャット送信を実行
     try { 
       await chatService.sendSubmission(name, year, month, mentions); 
     } catch (e) { 
       console.error("提出通知の送信に失敗しました:", e);
-      
-      // デバッグ情報の追加：URLの設定状況をアラートに含める
-      const hasUrl = !!(import.meta.env.VITE_GOOGLE_CHAT_WEBHOOK_URL || import.meta.env.VITE_CHAT_WEBHOOK_URL);
-      const debugInfo = hasUrl ? "" : "\n(理由: 環境変数が読み取れません。ビルド設定を確認してください)";
-      
-      alert(`通信エラー: 通知の送信に失敗したため、チェックを元に戻しました。${debugInfo}\n${e.message}`);
-      
-      // 送信失敗時はロールバック（チェックを外す）
+      alert(`通知エラー: ${e.message}\n(チェックを元に戻しました)`);
+      // 送信失敗時はロールバック
       setStaff(prev => prev.map(x => x.id === staffId ? { 
         ...x, 
         shiftSubmitted: { ...x.shiftSubmitted, [key]: false } 
@@ -99,7 +90,6 @@ export const useShiftActions = ({
     const { staffId, name } = remandConfirmation;
     const s = staff.find(x => x.id === staffId);
     
-    // UIを即座に更新
     setStaff(prev => prev.map(x => x.id === staffId ? { 
       ...x, 
       shiftRemanded: { ...x.shiftRemanded, [key]: true } 
@@ -110,7 +100,7 @@ export const useShiftActions = ({
       await chatService.sendRemand(name, s.chatUserId); 
     } catch (e) { 
       console.error("差戻通知の送信に失敗しました:", e);
-      alert(`通信エラー: 通知の送信に失敗したため、チェックを元に戻しました。\n${e.message}`);
+      alert(`通知エラー: ${e.message}\n(チェックを元に戻しました)`);
       setStaff(prev => prev.map(x => x.id === staffId ? { 
         ...x, 
         shiftRemanded: { ...x.shiftRemanded, [key]: false } 
@@ -135,7 +125,6 @@ export const useShiftActions = ({
     const targetId = approvalModalStaffId;
     const s = staff.find(x => x.id === targetId);
 
-    // UIを即座に更新
     setStaff(prev => prev.map(x => x.id === targetId ? { 
       ...x, 
       shiftApproved: { ...x.shiftApproved, [key]: true } 
@@ -152,7 +141,6 @@ export const useShiftActions = ({
         remarks
       );
       
-      // 送信成功後に「変更中(オレンジ)」フラグをクリアする
       const staffSchedule = schedule[key]?.[s.id] || {};
       const updates = [];
       Object.entries(staffSchedule).forEach(([d, val]) => {
@@ -167,7 +155,7 @@ export const useShiftActions = ({
 
     } catch (e) { 
       console.error("承認通知の送信に失敗しました:", e);
-      alert(`通信エラー: 通知の送信に失敗したため、チェックを元に戻しました。\n${e.message}`);
+      alert(`通知エラー: ${e.message}\n(チェックを元に戻しました)`);
       setStaff(prev => prev.map(x => x.id === targetId ? { 
         ...x, 
         shiftApproved: { ...x.shiftApproved, [key]: false } 
@@ -186,7 +174,7 @@ export const useShiftActions = ({
   };
 
   // ==========================================
-  // 4. 承認後の変更確定処理（一括通知用）
+  // 4. 承認後の変更確定処理
   // ==========================================
   const handleFinalizeModification = async () => {
     const targetStaffIds = [...new Set(pendingChanges.map(c => c.staffId))];
@@ -217,7 +205,6 @@ export const useShiftActions = ({
             .join(' ');
         }
 
-        // 送信
         await chatService.sendChangeAfterApproval(
           targetStaff.name, 
           year, 
@@ -241,7 +228,6 @@ export const useShiftActions = ({
         });
       }
 
-      // 全て成功したら状態を更新（承認フラグを一度折って再承認待ちの状態にする、または運用に合わせる）
       setStaff(prev => prev.map(s => successfulStaffIds.includes(s.id) ? { 
         ...s, 
         shiftApproved: { ...s.shiftApproved, [key]: false } 
@@ -256,7 +242,7 @@ export const useShiftActions = ({
 
     } catch (error) {
       console.error("一括変更確定エラー:", error);
-      alert(`通信エラー: 一部の通知送信に失敗したため処理を中断しました。\n${error.message}`);
+      alert(`通知エラー: 一部の通知送信に失敗したため処理を中断しました。\n${error.message}`);
     } finally {
       setIsLoading(false);
     }
