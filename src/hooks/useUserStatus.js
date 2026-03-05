@@ -4,7 +4,7 @@ import { useOktaAuth } from '@okta/okta-react';
 /**
  * ユーザーの認証状態、プロフィール、管理者権限を管理するフック
  */
-export const useUserStatus = (staff, adminConfig) => {
+export const useUserStatus = (staff, adminConfig, initialDataLoaded) => {
   const { oktaAuth, authState } = useOktaAuth();
   const [currentUser, setCurrentUser] = useState(null);
 
@@ -26,16 +26,24 @@ export const useUserStatus = (staff, adminConfig) => {
           }
         } catch (error) {
           console.error("User identification failed:", error);
+          // エラーが発生した場合も、ロード画面で止まらないように最低限のユーザーをセット
+          setCurrentUser({
+              id: 'error-user',
+              name: 'Unknown User',
+              email: '',
+              role: 'OP'
+          });
         }
       } else {
         setCurrentUser(null);
       }
     };
 
-    if (authState?.isAuthenticated && staff.length > 0) {
+    // staffの有無ではなく、マスタデータの初期ロード完了を条件にして実行する
+    if (authState?.isAuthenticated && initialDataLoaded) {
       identifyUser();
     }
-  }, [authState, oktaAuth, staff]);
+  }, [authState, oktaAuth, staff, initialDataLoaded]);
 
   const isAdmin = useMemo(() => {
     if (!currentUser) return false;

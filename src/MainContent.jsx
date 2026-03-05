@@ -30,8 +30,8 @@ const MainContent = () => {
     isLoading, loadingMessage, setLoadingMessage, setIsLoading, saveStatus, initialDataLoaded
   } = useShiftData(year, month);
 
-  // ユーザー状態・権限フック
-  const { currentUser, isAdmin, isAuthenticated } = useUserStatus(staff, adminConfig);
+  // ユーザー状態・権限フック (initialDataLoaded を渡すように修正)
+  const { currentUser, isAdmin, isAuthenticated } = useUserStatus(staff, adminConfig, initialDataLoaded);
 
   // シフトアクションフック
   const actions = useShiftActions({
