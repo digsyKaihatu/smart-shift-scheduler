@@ -1,82 +1,34 @@
-// Google Chatへの通知を行う共通関数
-const sendToChat = async (webhookUrl, payload) => {
-  if (!webhookUrl) return;
-  
-  try {
-    const response = await fetch(webhookUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json; charset=UTF-8' },
-      body: JSON.stringify(payload)
-    });
+/**
+ * チャットツール(Google Chat, Slack等)への通知サービス
+ */
 
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(`Chat通知エラー: ${errorData?.error?.message || response.statusText}`);
-    }
-  } catch (error) {
-    console.error('Notification Failed:', error);
-    throw error; // エラーを呼び出し元に伝播させる
-  }
-};
+const WEBHOOK_URL = import.meta.env.VITE_CHAT_WEBHOOK_URL || '';
 
 export const chatService = {
-  // 提出通知
-  sendSubmission: async (name, year, month, mentions = '') => {
-    const url = import.meta.env.VITE_CHAT_WEBHOOK_SUBMISSION;
-    const message = `${mentions} ${name}さんが${year}年${month}月のシフトを提出しました！`;
-    await sendToChat(url, { text: message });
-  },
+  /**
+   * 欠勤通知を送信する
+   * @param {string} staffName スタッフ名
+   */
+  sendAbsence: async (staffName) => {
+    if (!WEBHOOK_URL) {
+      console.log(`[ChatService Mock] 欠勤通知: ${staffName}さんが欠勤です。`);
+      return;
+    }
 
-  // 差戻通知
-  sendRemand: async (name, chatUserId) => {
-    const url = import.meta.env.VITE_CHAT_WEBHOOK_REMAND;
-    const prefix = chatUserId ? `<users/${chatUserId}>` : `【To: ${name}さん】`;
-    const message = `${prefix} シフトが差し戻しされました。管理者とご相談願います。`;
-    await sendToChat(url, { text: message });
-  },
+    try {
+      const message = {
+        text: `【欠勤連絡】\n${staffName}さんが本日欠勤となります。\nシフトの調整をお願いします。`
+      };
 
-  // 欠勤通知
-  sendAbsence: async (name) => {
-    const url = import.meta.env.VITE_CHAT_WEBHOOK_ABSENCE;
-    // 文頭に <users/all> を追加することで、Google Chat上で「@全員」として通知されます
-    const message = `<users/all> お疲れ様です。本日、${name}さんが欠勤です。\n一緒の業務を担当されている方は調整等よろしくお願いします！`;
-    await sendToChat(url, { text: message });
-  },
-
-  // 承認通知 (2通送る処理もここにまとめる)
-  sendApproval: async (staffMember, year, month, patternSummary, irregularText, remarks) => {
-    const url = import.meta.env.VITE_CHAT_WEBHOOK_APPROVAL;
-    const mentionText = staffMember.chatUserId ? `<users/${staffMember.chatUserId}>` : `${staffMember.name}さん`;
-
-    // 1通目: メンション
-    await sendToChat(url, { text: `${mentionText} シフトが承認されました。` });
-
-    // 2通目: 詳細カード
-    const cardPayload = {
-      "cardsV2": [{
-        "cardId": `shift-approval-${staffMember.id}-${Date.now()}`,
-        "card": {
-          "header": {
-            "title": `【シフト承認】 ${year}年${month}月`,
-            "subtitle": staffMember.name,
-            "imageUrl": "https://raw.githubusercontent.com/google/material-design-icons/master/png/action/assignment_turned_in/materialicons/48dp/1x/baseline_assignment_turned_in_black_48dp.png",
-            "imageType": "CIRCLE"
-          },
-          "sections": [
-            { "header": "基本シフトパターン", "widgets": [{ "textParagraph": { "text": patternSummary } }] },
-            { "header": "特記事項", "widgets": [{ "textParagraph": { "text": irregularText } }] },
-            { "header": "備考", "widgets": [{ "textParagraph": { "text": remarks || 'なし' } }] }
-          ]
-        }
-      }]
-    };
-    await sendToChat(url, cardPayload);
-  },
-
-  // 承認後の変更通知 (新規追加)
-  sendChangeAfterApproval: async (name, year, month, day, valueStr, mentions = '') => {
-    const url = import.meta.env.VITE_CHAT_WEBHOOK_SUBMISSION; // 管理者向けなので提出用Webhookを使用
-    const message = `${mentions} 【変更通知】\n${name}さんの承認済みシフトが変更されました。\n日付: ${month}/${day}\n変更内容: ${valueStr}\n※承認ステータスを解除しました。`;
-    await sendToChat(url, { text: message });
+      await fetch(WEBHOOK_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(message),
+      });
+    } catch (error) {
+      console.error('チャット通知の送信に失敗しました:', error);
+    }
   }
 };

@@ -2,18 +2,30 @@ import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { checkPatternHasBreak } from '../../utils/scheduleUtils';
 
+// ユーティリティからのインポート解決エラーを回避するため、ヘルパー関数をコンポーネント内に定義
+const checkPatternHasBreak = (pId, patterns) => {
+    if (pId === 'シフト休') return false;
+    const p = patterns.find(x => x.id === pId);
+    if (!p) return true; // デフォルト
+    return p.breakHours !== undefined ? p.breakHours > 0 : (p.breakTime !== undefined && p.breakTime !== '0:00' && p.breakTime !== '00:00');
+};
+
 /**
  * シフト表内での基本パターン編集コンポーネント
- * 休憩の有無はシフトパターン(マスタ)から自動的に判定して適用します
+ * 休憩の有無はシフトパターン(マスタ)から自動的に判定して適用・表示します
  */
 const ScheduleShiftPatternEditor = ({ pattern, patterns, onApply, summary, disabled = false }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [editedPattern, setEditedPattern] = useState(pattern || Array(5).fill('シフト休'));
   
-  // 9:00スタートのパターンを除外するフィルタリング
-  const filteredPatterns = patterns.filter(p => p.startTime !== '9:00' && p.startTime !== '09:00');
+  // 旧パターンのA〜Hのみを除外するように変更（9:00開始の新パターンは表示可能に）
+  const legacyPatternIds = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
+  const filteredPatterns = patterns.filter(p => !legacyPatternIds.includes(p.id));
   
   const [bulkPatternId, setBulkPatternId] = useState(filteredPatterns[0]?.id || 'シフト休');
+  
+  // 選択中のパターンIDから休憩有無を自動計算
+  const bulkBreak = checkPatternHasBreak(bulkPatternId, patterns);
 
   useEffect(() => { 
     if (isOpen) {
@@ -61,6 +73,11 @@ const ScheduleShiftPatternEditor = ({ pattern, patterns, onApply, summary, disab
             <div className="mb-4 p-3 bg-orange-50 rounded-md border border-orange-100 space-y-3">
                 <div className="flex items-center justify-between">
                     <label className="font-bold text-xs text-orange-800">月〜金 一括設定</label>
+                    <div className="flex items-center gap-2">
+                        <span className={`text-[10px] font-bold ${bulkPatternId === 'シフト休' ? 'text-slate-400' : (bulkBreak ? 'text-orange-700' : 'text-slate-400')}`}>
+                            {bulkPatternId === 'シフト休' ? '-' : (bulkBreak ? '休憩あり' : '休憩なし')}
+                        </span>
+                    </div>
                 </div>
                 <div className="flex items-center gap-2">
                     <select value={bulkPatternId} onChange={(e) => handleBulkChange(e.target.value)} className="flex-grow text-xs p-1.5 border border-slate-300 rounded bg-white">
@@ -79,21 +96,29 @@ const ScheduleShiftPatternEditor = ({ pattern, patterns, onApply, summary, disab
 
             {/* 曜日ごとの個別設定エリア */}
             <div className="space-y-2">
-                {['月', '火', '水', '木', '金'].map((dayName, index) => (
-                    <div key={index} className="grid grid-cols-12 gap-2 items-center">
-                        <label className="col-span-1 font-bold text-xs text-slate-600 text-center">{dayName}</label>
-                        <div className="col-span-11">
-                            <select value={editedPattern[index]} onChange={(e) => handlePatternChange(index, e.target.value)} className="w-full text-xs p-1.5 border border-slate-300 rounded-md bg-white">
-                                <option value="シフト休">シフト休</option>
-                                {filteredPatterns.map(p => (
-                                    <option key={p.id} value={p.id}>
-                                        {`${p.name} (${p.startTime}-${p.endTime}) ${getBreakText(p)}`}
-                                    </option>
-                                ))}
-                            </select>
+                {['月', '火', '水', '木', '金'].map((dayName, index) => {
+                    const currentBreak = checkPatternHasBreak(editedPattern[index], patterns);
+                    return (
+                        <div key={index} className="grid grid-cols-12 gap-2 items-center">
+                            <label className="col-span-1 font-bold text-xs text-slate-600 text-center">{dayName}</label>
+                            <div className="col-span-8">
+                                <select value={editedPattern[index]} onChange={(e) => handlePatternChange(index, e.target.value)} className="w-full text-xs p-1.5 border border-slate-300 rounded-md bg-white">
+                                    <option value="シフト休">シフト休</option>
+                                    {filteredPatterns.map(p => (
+                                        <option key={p.id} value={p.id}>
+                                            {`${p.name} (${p.startTime}-${p.endTime}) ${getBreakText(p)}`}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div className="col-span-3 flex items-center gap-1 justify-end">
+                                <span className={`text-[10px] whitespace-nowrap ${editedPattern[index] === 'シフト休' ? 'text-slate-300' : (currentBreak ? 'text-slate-600' : 'text-slate-300')}`}>
+                                    {editedPattern[index] === 'シフト休' ? '-' : (currentBreak ? '休憩あり' : '休憩なし')}
+                                </span>
+                            </div>
                         </div>
-                    </div>
-                ))}
+                    );
+                })}
             </div>
 
             <div className="flex justify-end gap-2 mt-5 pt-4 border-t border-slate-100">

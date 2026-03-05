@@ -1,5 +1,3 @@
-// src/utils/scheduleUtils.js
-
 /**
  * パターンIDからデフォルトの休憩有無を判定するヘルパー
  * @param {string} pId パターンID
@@ -113,12 +111,29 @@ export const summarizePattern = (pattern, patterns, hasBreakArray) => {
     }
     
     const days = ['月', '火', '水', '木', '金'];
-    return pattern.map((pId, index) => {
-        if (pId === 'シフト休') return `${days[index]}: 休`;
-        const p = patterns.find(x => x.id === pId);
-        const hasBreak = hasBreaks[index];
-        return `${days[index]}: ${p ? `${p.name}(${p.startTime}-${p.endTime})` : pId}(${hasBreak ? '有' : '無'})`;
-    }).join('\n');
+    const groups = [];
+
+    pattern.forEach((pId, index) => {
+        let text = '';
+        if (pId === 'シフト休') {
+            text = '休';
+        } else {
+            const p = patterns.find(x => x.id === pId);
+            const hasBreak = hasBreaks[index];
+            text = `${p ? `${p.name}(${p.startTime}-${p.endTime})` : pId}(${hasBreak ? '有' : '無'})`;
+        }
+
+        // 同じテキスト内容のグループを探す
+        const existingGroup = groups.find(g => g.text === text);
+        if (existingGroup) {
+            existingGroup.days.push(days[index]);
+        } else {
+            groups.push({ text, days: [days[index]] });
+        }
+    });
+
+    // 曜日を「・」で結合して表示する (例: "月・火・木: R(10:00-17:00)(有)")
+    return groups.map(g => `${g.days.join('・')}: ${g.text}`).join('\n');
 };
 
 /**
