@@ -2,21 +2,22 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { useOktaAuth } from '@okta/okta-react';
 
 // Hooks & Services
-import { useShiftData } from './hooks/useShiftData';
-import { useUserStatus } from './hooks/useUserStatus';
-import { useShiftActions } from './hooks/useShiftActions';
-import { chatService } from './services/chatService';
-import { getJapaneseHolidays, formatValue } from './utils/dateUtils';
-import { downloadScheduleCSV } from './utils/csvExporter';
+import { useShiftData } from './hooks/useShiftData.js';
+import { useUserStatus } from './hooks/useUserStatus.js';
+import { useShiftActions } from './hooks/useShiftActions.js';
+import { chatService } from './services/chatService.js';
+import { getJapaneseHolidays, formatValue } from './utils/dateUtils.js';
+import { downloadScheduleCSV } from './utils/csvExporter.js';
+import { checkPatternHasBreak } from './utils/scheduleUtils.js';
 
 // Components
-import LoadingScreen from './components/common/LoadingScreen';
-import Legend from './components/schedule/Legend';
-import ShiftSchedule from './components/schedule/ShiftSchedule';
-import MonthlyCalendar from './components/schedule/MonthlyCalendar';
-import ShiftPatternDisplay from './components/schedule/ShiftPatternDisplay';
-import TaskShortageDisplay from './components/tasks/TaskShortageDisplay';
-import GlobalModals from './components/containers/GlobalModals';
+import LoadingScreen from './components/common/LoadingScreen.jsx';
+import Legend from './components/schedule/Legend.jsx';
+import ShiftSchedule from './components/schedule/ShiftSchedule.jsx';
+import MonthlyCalendar from './components/schedule/MonthlyCalendar.jsx';
+import ShiftPatternDisplay from './components/schedule/ShiftPatternDisplay.jsx';
+import TaskShortageDisplay from './components/tasks/TaskShortageDisplay.jsx';
+import GlobalModals from './components/containers/GlobalModals.jsx';
 
 const MainContent = () => {
   const [year, setYear] = useState(new Date().getFullYear());
@@ -29,10 +30,10 @@ const MainContent = () => {
     isLoading, loadingMessage, setLoadingMessage, setIsLoading, saveStatus, initialDataLoaded
   } = useShiftData(year, month);
 
-  // ユーザー状態・権限フック (新規)
+  // ユーザー状態・権限フック
   const { currentUser, isAdmin, isAuthenticated } = useUserStatus(staff, adminConfig);
 
-  // シフトアクションフック (新規)
+  // シフトアクションフック
   const actions = useShiftActions({
     staff, setStaff, schedule, year, month, adminConfig, shiftPatterns,
     setIsLoading, setLoadingMessage, updateShiftItems
@@ -176,18 +177,18 @@ const MainContent = () => {
                     const pat = shiftPatterns.find(pat => pat.id === p[dw-1]);
                     if (pat) {
                         let workHours = Number(pat.workHours) || 0;
-                        const hasBreak = Array.isArray(hb) ? hb[dw-1] : true;
+                        const hasBreak = Array.isArray(hb) ? hb[dw-1] : checkPatternHasBreak(pat.id, shiftPatterns);
                         
-                        // 休憩なしの場合は、稼働時間に休憩時間分を加算する
+                        // 休憩なしの場合、もともと休憩があるパターンから休憩を抜いた場合のみ稼働時間に休憩時間を足す
                         if (!hasBreak) {
                             let breakH = Number(pat.breakHours) || 0;
                             if (breakH === 0 && pat.breakTime && pat.breakTime !== '0:00' && pat.breakTime !== '00:00') {
                                 const [h, m] = pat.breakTime.split(':').map(Number);
                                 breakH = h + (m / 60);
                             }
-                            // フォールバック(設定が欠損している場合は1時間として計算)
-                            if (breakH === 0) breakH = 1;
-                            workHours += breakH;
+                            if (breakH > 0) {
+                                workHours += breakH;
+                            }
                         }
                         v = workHours;
                     }

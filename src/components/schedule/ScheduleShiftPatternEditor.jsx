@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
+import { checkPatternHasBreak } from '../../utils/scheduleUtils';
 
 // ユーティリティからのインポート解決エラーを回避するため、ヘルパー関数をコンポーネント内に定義
 const checkPatternHasBreak = (pId, patterns) => {
@@ -13,7 +14,7 @@ const checkPatternHasBreak = (pId, patterns) => {
  * シフト表内での基本パターン編集コンポーネント
  * 休憩の有無はシフトパターン(マスタ)から自動的に判定して適用・表示します
  */
-const ScheduleShiftPatternEditor = ({ pattern, hasBreakArray, patterns, onApply, summary, disabled = false }) => {
+const ScheduleShiftPatternEditor = ({ pattern, patterns, onApply, summary, disabled = false }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [editedPattern, setEditedPattern] = useState(pattern || Array(5).fill('シフト休'));
   
