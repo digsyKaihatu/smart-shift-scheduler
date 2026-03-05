@@ -1,264 +1,165 @@
-import { useState, useCallback } from 'react';
-import { chatService } from '../services/chatService';
-import { summarizePattern } from '../utils/scheduleUtils';
-import { formatValue } from '../utils/dateUtils';
+import { formatValue } from '../utils/dateUtils'; 
 
 /**
- * シフトに関する各種アクション（提出、承認、通知など）を管理するフック
+ * 環境変数の取得
+ * 各通知種別ごとに Cloudflare Pages 等で設定された個別の Webhook URL を使用します。
  */
-export const useShiftActions = ({
-  staff, setStaff, schedule, year, month, adminConfig, shiftPatterns,
-  setIsLoading, setLoadingMessage, updateShiftItems
-}) => {
-  const key = `${year}-${month}`;
+const WEBHOOKS = {
+  SUBMISSION: (import.meta.env.VITE_CHAT_WEBHOOK_SUBMISSION || '').trim(),
+  APPROVAL: (import.meta.env.VITE_CHAT_WEBHOOK_APPROVAL || '').trim(),
+  REMAND: (import.meta.env.VITE_CHAT_WEBHOOK_REMAND || '').trim(),
+  ABSENCE: (import.meta.env.VITE_CHAT_WEBHOOK_ABSENCE || '').trim(),
+};
 
-  // 承認後の変更管理
-  const [pendingChanges, setPendingChanges] = useState([]);
-  const [showModificationConfirm, setShowModificationConfirm] = useState(false);
+/**
+ * 共通の送信処理
+ * エラーが発生した場合は throw し、UI側のロールバック処理を発火させます。
+ */
+async function postToChat(url, payload, type = 'notification') {
+  if (!url) {
+    const errorMsg = `[ChatService] Webhook URLが設定されていません: ${type}`;
+    console.error(errorMsg);
+    throw new Error(errorMsg);
+  }
 
-  // 通知・確認用の一時状態
-  const [submissionConfirmation, setSubmissionConfirmation] = useState(null);
-  const [remandConfirmation, setRemandConfirmation] = useState(null);
-  const [approvalModalStaffId, setApprovalModalStaffId] = useState(null);
-  const [absenceNotificationConfirmation, setAbsenceNotificationConfirmation] = useState(null);
-  const [approvalCancellationConfirmation, setApprovalCancellationConfirmation] = useState(null);
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
 
-  // ==========================================
-  // 1. 提出処理
-  // ==========================================
-  const handleToggleShiftSubmitted = useCallback((staffId) => {
-    const s = staff.find(x => x.id === staffId);
-    if (s?.shiftSubmitted?.[key]) {
-      setStaff(prev => prev.map(x => x.id === staffId ? { 
-        ...x, 
-        shiftSubmitted: { ...x.shiftSubmitted, [key]: false } 
-      } : x));
-    } else {
-      setSubmissionConfirmation({ staffId, name: s.name });
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`[ChatService] Google Chat APIエラー (${type}): status ${response.status}`, errorText);
+      throw new Error(`Google Chat送信失敗: ${response.status}`);
     }
-  }, [staff, key, setStaff]);
 
-  const handleConfirmSubmission = async () => {
-    if (!submissionConfirmation) return;
-    const { staffId, name } = submissionConfirmation;
-    let mentions = '';
-    if (adminConfig?.submissionNotificationIds) {
-      mentions = adminConfig.submissionNotificationIds.split(',')
-        .map(id => id.trim())
-        .filter(id => id !== '')
-        .map(id => `<users/${id}>`)
-        .join(' ');
-    }
-    
-    // UIを即座に更新してチェックを付ける（即時反映）
-    setStaff(prev => prev.map(x => x.id === staffId ? { 
-      ...x, 
-      shiftSubmitted: { ...x.shiftSubmitted, [key]: true } 
-    } : x));
-    setSubmissionConfirmation(null);
+    console.log(`[ChatService] 送信成功 (${type})`);
+    return true;
+  } catch (e) {
+    console.error(`[ChatService] 通信エラー (${type}):`, e);
+    throw e;
+  }
+}
 
-    try { 
-      await chatService.sendSubmission(name, year, month, mentions); 
-    } catch (e) { 
-      console.error("提出通知の送信に失敗しました:", e);
-      alert(`通知エラー: ${e.message}\n(チェックを元に戻しました)`);
-      // 送信失敗時はロールバック
-      setStaff(prev => prev.map(x => x.id === staffId ? { 
-        ...x, 
-        shiftSubmitted: { ...x.shiftSubmitted, [key]: false } 
-      } : x));
-    }
-  };
+export const chatService = {
+  /**
+   * シフト提出通知
+   */
+  async sendSubmission(name, year, month, mentions) {
+    const payload = {
+      text: `${mentions ? mentions + '\n' : ''}【シフト提出】\n${name}さんが ${year}年${month}月 のシフトを提出しました。確認をお願いします。`
+    };
+    return await postToChat(WEBHOOKS.SUBMISSION, payload, 'Submission');
+  },
 
-  // ==========================================
-  // 2. 差戻処理
-  // ==========================================
-  const handleToggleShiftRemanded = useCallback((staffId) => {
-    const s = staff.find(x => x.id === staffId);
-    if (s?.shiftRemanded?.[key]) {
-      setStaff(prev => prev.map(x => x.id === staffId ? { 
-        ...x, 
-        shiftRemanded: { ...x.shiftRemanded, [key]: false } 
-      } : x));
-    } else {
-      setRemandConfirmation({ staffId, name: s.name });
-    }
-  }, [staff, key, setStaff]);
+  /**
+   * シフト承認通知 (カード形式)
+   */
+  async sendApproval(staff, year, month, patternSummary, irregularities, remarks) {
+    const mention = staff.chatUserId ? `<users/${staff.chatUserId}>` : '';
+    const title = `${year}年${month}月 シフト承認のお知らせ`;
+    const subtitle = `${staff.name} さん`;
 
-  const handleConfirmRemand = async () => {
-    if (!remandConfirmation) return;
-    const { staffId, name } = remandConfirmation;
-    const s = staff.find(x => x.id === staffId);
-    
-    setStaff(prev => prev.map(x => x.id === staffId ? { 
-      ...x, 
-      shiftRemanded: { ...x.shiftRemanded, [key]: true } 
-    } : x));
-    setRemandConfirmation(null);
-
-    try { 
-      await chatService.sendRemand(name, s.chatUserId); 
-    } catch (e) { 
-      console.error("差戻通知の送信に失敗しました:", e);
-      alert(`通知エラー: ${e.message}\n(チェックを元に戻しました)`);
-      setStaff(prev => prev.map(x => x.id === staffId ? { 
-        ...x, 
-        shiftRemanded: { ...x.shiftRemanded, [key]: false } 
-      } : x));
-    }
-  };
-
-  // ==========================================
-  // 3. 承認処理
-  // ==========================================
-  const handleToggleShiftApproved = useCallback((staffId) => {
-    const s = staff.find(x => x.id === staffId);
-    if (s?.shiftApproved?.[key]) {
-      setApprovalCancellationConfirmation({ staffId, name: s.name });
-    } else {
-      setApprovalModalStaffId(staffId);
-    }
-  }, [staff, key]);
-
-  const handleConfirmApproval = async (remarks, irregularText) => {
-    if (!approvalModalStaffId) return;
-    const targetId = approvalModalStaffId;
-    const s = staff.find(x => x.id === targetId);
-
-    setStaff(prev => prev.map(x => x.id === targetId ? { 
-      ...x, 
-      shiftApproved: { ...x.shiftApproved, [key]: true } 
-    } : x));
-    setApprovalModalStaffId(null);
-
-    try {
-      await chatService.sendApproval(
-        s, 
-        year, 
-        month, 
-        summarizePattern(s.defaultShift.pattern, shiftPatterns, s.defaultShift.hasBreakArray), 
-        irregularText, 
-        remarks
-      );
-      
-      const staffSchedule = schedule[key]?.[s.id] || {};
-      const updates = [];
-      Object.entries(staffSchedule).forEach(([d, val]) => {
-        if (typeof val === 'object' && val?.modified) {
-          const { modified, ...rest } = val;
-          let cleanedVal = Object.keys(rest).length === 1 && rest.type ? rest.type : rest;
-          if (rest.type === '稼働' && typeof rest.hours === 'number') cleanedVal = rest.hours;
-          updates.push({ staffId: s.id, day: Number(d), value: cleanedVal });
+    const payload = {
+      cardsV2: [{
+        cardId: "approval-card",
+        card: {
+          header: {
+            title: title,
+            subtitle: subtitle,
+            imageUrl: "https://www.gstatic.com/images/icons/material/system/2x/check_circle_black_48dp.png",
+            imageType: "CIRCLE"
+          },
+          sections: [
+            {
+              header: "基本シフトパターン",
+              widgets: [{ textParagraph: { text: patternSummary } }]
+            },
+            {
+              header: "特記事項 (パターンと異なる日)",
+              widgets: [{ textParagraph: { text: irregularities || "なし" } }]
+            },
+            {
+              header: "管理者コメント",
+              widgets: [{ textParagraph: { text: remarks || "なし" } }]
+            },
+            {
+              widgets: [{
+                textParagraph: {
+                  text: `${mention} \n上記内容でシフトが確定しました。ご確認ください。`
+                }
+              }]
+            }
+          ]
         }
-      });
-      if (updates.length > 0) updateShiftItems(year, month, updates);
+      }]
+    };
 
-    } catch (e) { 
-      console.error("承認通知の送信に失敗しました:", e);
-      alert(`通知エラー: ${e.message}\n(チェックを元に戻しました)`);
-      setStaff(prev => prev.map(x => x.id === targetId ? { 
-        ...x, 
-        shiftApproved: { ...x.shiftApproved, [key]: false } 
-      } : x));
-    }
-  };
+    return await postToChat(WEBHOOKS.APPROVAL, payload, 'Approval');
+  },
 
-  const handleConfirmApprovalCancellation = () => {
-    if (!approvalCancellationConfirmation) return;
-    const { staffId } = approvalCancellationConfirmation;
-    setStaff(prev => prev.map(x => x.id === staffId ? { 
-      ...x, 
-      shiftApproved: { ...x.shiftApproved, [key]: false } 
-    } : x));
-    setApprovalCancellationConfirmation(null);
-  };
+  /**
+   * シフト差戻通知
+   */
+  async sendRemand(name, chatUserId) {
+    const mention = chatUserId ? `<users/${chatUserId}> ` : '';
+    const payload = {
+      text: `${mention}【シフト差戻】\n${name}さんのシフトが差し戻されました。内容を確認し、再提出をお願いします。`
+    };
+    return await postToChat(WEBHOOKS.REMAND, payload, 'Remand');
+  },
 
-  // ==========================================
-  // 4. 承認後の変更確定処理
-  // ==========================================
-  const handleFinalizeModification = async () => {
-    const targetStaffIds = [...new Set(pendingChanges.map(c => c.staffId))];
-    setIsLoading(true);
-    setLoadingMessage('変更を確定し、一括通知を送信中...');
-    
-    try {
-      const updatesToSave = [];
-      const successfulStaffIds = [];
+  /**
+   * 承認後の変更確定通知 (一括送信時)
+   */
+  async sendChangeAfterApproval(name, year, month, dateSummary, changeDetails, mentions) {
+    const title = `${year}年${month}月 シフト変更のお知らせ`;
+    const subtitle = `${name} さん`;
 
-      for (const sId of targetStaffIds) {
-        const staffChanges = pendingChanges.filter(c => c.staffId === sId);
-        const targetStaff = staff.find(s => s.id === sId);
-        if (!targetStaff) continue;
-
-        const changeDetails = staffChanges.map(c => 
-          `${c.rawMonth}/${c.day}: ${String(c.displayValue).replace(/\(undefined\)/g, '')}`
-        ).join('\n');
-        
-        const dateSummary = staffChanges.map(c => c.day).join(', ');
-        
-        let mentions = '';
-        if (adminConfig?.submissionNotificationIds) {
-          mentions = adminConfig.submissionNotificationIds.split(',')
-            .map(id => id.trim())
-            .filter(id => id !== '')
-            .map(id => `<users/${id}>`)
-            .join(' ');
+    const payload = {
+      cardsV2: [{
+        cardId: `bulk-change-${Date.now()}`,
+        card: {
+          header: {
+            title: title,
+            subtitle: subtitle,
+            imageUrl: "https://www.gstatic.com/images/icons/material/system/2x/edit_black_48dp.png",
+            imageType: "CIRCLE"
+          },
+          sections: [
+            {
+              header: "変更対象日",
+              widgets: [{ textParagraph: { text: dateSummary } }]
+            },
+            {
+              header: "変更内容詳細",
+              widgets: [{ textParagraph: { text: changeDetails } }]
+            },
+            {
+              widgets: [{
+                textParagraph: {
+                  text: `${mentions ? mentions + '\n' : ''}承認済みのシフトに変更・確定がありました。内容をご確認ください。`
+                }
+              }]
+            }
+          ]
         }
+      }]
+    };
 
-        await chatService.sendChangeAfterApproval(
-          targetStaff.name, 
-          year, 
-          month, 
-          dateSummary, 
-          changeDetails, 
-          mentions
-        );
-        
-        successfulStaffIds.push(sId);
+    // 承認済みデータの修正なので、APPROVAL用のWebhookを使用します
+    return await postToChat(WEBHOOKS.APPROVAL, payload, 'ChangeAfterApproval');
+  },
 
-        staffChanges.forEach(c => {
-           const val = c.rawValue;
-           let cleanedVal = val;
-           if (typeof val === 'object' && val !== null) {
-               const { modified, ...rest } = val;
-               cleanedVal = Object.keys(rest).length === 1 && rest.type ? rest.type : rest;
-               if (rest.type === '稼働' && typeof rest.hours === 'number') cleanedVal = rest.hours;
-           }
-           updatesToSave.push({ staffId: sId, day: c.day, value: cleanedVal });
-        });
-      }
-
-      setStaff(prev => prev.map(s => successfulStaffIds.includes(s.id) ? { 
-        ...s, 
-        shiftApproved: { ...s.shiftApproved, [key]: false } 
-      } : s));
-      
-      if (updatesToSave.length > 0) {
-        updateShiftItems(year, month, updatesToSave);
-      }
-
-      setPendingChanges([]);
-      setShowModificationConfirm(false);
-
-    } catch (error) {
-      console.error("一括変更確定エラー:", error);
-      alert(`通知エラー: 一部の通知送信に失敗したため処理を中断しました。\n${error.message}`);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  return {
-    pendingChanges, setPendingChanges,
-    showModificationConfirm, setShowModificationConfirm,
-    submissionConfirmation, setSubmissionConfirmation,
-    remandConfirmation, setRemandConfirmation,
-    approvalModalStaffId, setApprovalModalStaffId,
-    absenceNotificationConfirmation, setAbsenceNotificationConfirmation,
-    approvalCancellationConfirmation, setApprovalCancellationConfirmation,
-    handleToggleShiftSubmitted, handleConfirmSubmission,
-    handleToggleShiftRemanded, handleConfirmRemand,
-    handleToggleShiftApproved, handleConfirmApproval, handleConfirmApprovalCancellation,
-    handleFinalizeModification
-  };
+  /**
+   * 欠勤通知
+   */
+  async sendAbsence(name) {
+    const payload = {
+      text: `【欠勤連絡】\n本日は ${name} さんが欠勤となります。業務調整をお願いします。`
+    };
+    return await postToChat(WEBHOOKS.ABSENCE, payload, 'Absence');
+  }
 };
