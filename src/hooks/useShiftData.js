@@ -27,11 +27,18 @@ const deepEqual = (a, b) => {
  */
 const mergeArray = (localArr, serverArr, lastServerArr) => {
   if (!lastServerArr) return serverArr;
+  if (!serverArr) return localArr; // サーバーが空の場合はローカルを優先
+  if (!localArr) return serverArr;
+
   const merged = [];
+  const processedServerIds = new Set();
   
   serverArr.forEach(serverItem => {
-    const localItem = localArr.find(item => item.id === serverItem.id);
-    const lastItem = lastServerArr.find(item => item.id === serverItem.id);
+    if (!serverItem || !serverItem.id) return;
+    processedServerIds.add(serverItem.id);
+
+    const localItem = localArr.find(item => item && item.id === serverItem.id);
+    const lastItem = lastServerArr.find(item => item && item.id === serverItem.id);
 
     if (!localItem) {
       // ローカルで削除された場合はマージしない（削除を優先）
@@ -60,8 +67,8 @@ const mergeArray = (localArr, serverArr, lastServerArr) => {
 
   // 自分が新規追加したもの（サーバーにはまだ存在しない）を追加
   localArr.forEach(localItem => {
-    if (!serverArr.find(item => item.id === localItem.id)) {
-      if (!lastServerArr.find(item => item.id === localItem.id)) {
+    if (localItem && localItem.id && !processedServerIds.has(localItem.id)) {
+      if (!lastServerArr.find(item => item && item.id === localItem.id)) {
         merged.push(localItem);
       }
     }
@@ -138,24 +145,54 @@ export const useShiftData = (currentYear, currentMonth) => {
         setLoadingMessage("設定データを読み込んでいます...");
         
         const configSnap = await getDoc(configDocRef);
-        if (!configSnap.exists()) {
+        let needsMigration = !configSnap.exists();
+
+        if (needsMigration) {
           const legacySnap = await getDoc(legacyDocRef);
           if (legacySnap.exists()) {
             setLoadingMessage("データの移行処理を行っています...");
             const legacyData = legacySnap.data();
-            _setStaff(legacyData.staff || initialStaffData);
-            _setTasks(legacyData.tasks || initialTasks);
-            _setShiftPatterns(legacyData.shiftPatterns || initialShiftPatterns);
-            _setAdminConfig(legacyData.adminConfig || initialAdminConfig);
+            
+            // 初回のマスタデータをセット
+            const initialStaff = legacyData.staff || initialStaffData;
+            const initialTasksData = legacyData.tasks || initialTasks;
+            const initialPatterns = legacyData.shiftPatterns || initialShiftPatterns;
+            const initialAdmin = legacyData.adminConfig || initialAdminConfig;
+
+            _setStaff(initialStaff);
+            _setTasks(initialTasksData);
+            _setShiftPatterns(initialPatterns);
+            _setAdminConfig(initialAdmin);
+            
             if (legacyData.schedule) setSchedule(legacyData.schedule);
             
+            lastServerConfigRef.current = {
+               staff: initialStaff,
+               tasks: initialTasksData,
+               shiftPatterns: initialPatterns,
+               adminConfig: initialAdmin
+            };
+
             await setDoc(configDocRef, {
-              staff: legacyData.staff || initialStaffData,
-              tasks: legacyData.tasks || initialTasks,
-              shiftPatterns: legacyData.shiftPatterns || initialShiftPatterns,
-              adminConfig: legacyData.adminConfig || initialAdminConfig,
+              staff: initialStaff,
+              tasks: initialTasksData,
+              shiftPatterns: initialPatterns,
+              adminConfig: initialAdmin,
               updatedAt: new Date().toISOString()
             });
+            
+            setInitialDataLoaded(true);
+            // マイグレーション直後は、リスナーを貼る前に一旦終了する（直後の変更を無視）
+            // 次回のマウントやリロードでリスナーが貼られる
+          } else {
+             // どちらのドキュメントも無い場合（完全な新規）
+             await setDoc(configDocRef, {
+                staff: initialStaffData,
+                tasks: initialTasks,
+                shiftPatterns: initialShiftPatterns,
+                adminConfig: initialAdminConfig,
+                updatedAt: new Date().toISOString()
+             });
           }
         }
 
@@ -168,20 +205,35 @@ export const useShiftData = (currentYear, currentMonth) => {
             const serverPatterns = data.shiftPatterns || initialShiftPatterns;
             const serverAdmin = data.adminConfig || initialAdminConfig;
 
+            // サーバーのデータとローカルのデータが完全に一致する場合は何もしない（ループ防止）
+            const isStaffEqual = deepEqual(lastServerConfigRef.current.staff, serverStaff);
+            const isTasksEqual = deepEqual(lastServerConfigRef.current.tasks, serverTasks);
+            const isPatternsEqual = deepEqual(lastServerConfigRef.current.shiftPatterns, serverPatterns);
+            const isAdminEqual = deepEqual(lastServerConfigRef.current.adminConfig, serverAdmin);
+
+            if (isStaffEqual && isTasksEqual && isPatternsEqual && isAdminEqual && isInitialLoadComplete.current) {
+                // 初回ロード完了済みで、サーバーデータに変化がなければスキップ
+                return;
+            }
+
             // ローカルの未保存状態とサーバー状態を賢くマージする
             _setStaff(prev => {
+                if (isStaffEqual) return prev; // サーバー側に変更がなければローカルを維持
                 const merged = mergeArray(prev, serverStaff, lastServerConfigRef.current.staff);
                 return deepEqual(prev, merged) ? prev : merged;
             });
             _setTasks(prev => {
+                if (isTasksEqual) return prev;
                 const merged = mergeArray(prev, serverTasks, lastServerConfigRef.current.tasks);
                 return deepEqual(prev, merged) ? prev : merged;
             });
             _setShiftPatterns(prev => {
+                if (isPatternsEqual) return prev;
                 const merged = mergeArray(prev, serverPatterns, lastServerConfigRef.current.shiftPatterns);
                 return deepEqual(prev, merged) ? prev : merged;
             });
             _setAdminConfig(prev => {
+               if (isAdminEqual) return prev;
                const isLocalChanged = !deepEqual(prev, lastServerConfigRef.current.adminConfig);
                if (isLocalChanged) return prev; 
                return deepEqual(prev, serverAdmin) ? prev : serverAdmin;
@@ -194,8 +246,12 @@ export const useShiftData = (currentYear, currentMonth) => {
                shiftPatterns: serverPatterns,
                adminConfig: serverAdmin
             };
-            setInitialDataLoaded(true);
+            
+            if (!isInitialLoadComplete.current) {
+                setInitialDataLoaded(true);
+            }
           } else {
+             // ドキュメントが削除されたなどの異常系
              _setStaff(prev => deepEqual(prev, initialStaffData) ? prev : initialStaffData);
              _setTasks(prev => deepEqual(prev, initialTasks) ? prev : initialTasks);
              _setShiftPatterns(prev => deepEqual(prev, initialShiftPatterns) ? prev : initialShiftPatterns);
@@ -335,7 +391,6 @@ export const useShiftData = (currentYear, currentMonth) => {
 
     if (debouncedSaveConfig.current) clearTimeout(debouncedSaveConfig.current);
 
-    // ★ 保存のデバウンスを 2000ms から 500ms に短縮し、競合する隙を減らす
     debouncedSaveConfig.current = setTimeout(async () => {
       pendingConfigSave.current = false;
       
