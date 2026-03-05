@@ -3,6 +3,7 @@ import { formatValue } from '../utils/dateUtils';
 /**
  * 環境変数の取得と検証
  * Viteでは VITE_ で始まる変数のみがクライアントサイドで有効です。
+ * 安定版で使用されていた VITE_GOOGLE_CHAT_WEBHOOK_URL を優先的にチェックします。
  */
 const WEBHOOK_URL = (
   import.meta.env.VITE_GOOGLE_CHAT_WEBHOOK_URL || 
@@ -15,8 +16,10 @@ const WEBHOOK_URL = (
  */
 async function postToChat(payload, type = 'notification') {
   if (!WEBHOOK_URL) {
-    console.warn(`[ChatService] Webhook URLが設定されていません (${type})`);
-    return false;
+    // 修正: サイレントに終了せず、エラーを投げてUI側に通知する
+    const errorMsg = `[ChatService] Webhook URLが設定されていません (${type})`;
+    console.error(errorMsg);
+    throw new Error(errorMsg);
   }
 
   try {
@@ -28,9 +31,8 @@ async function postToChat(payload, type = 'notification') {
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error(`[ChatService] 送信失敗 (${type}): ステータス ${response.status}`, errorText);
-      // Google Chatからの具体的なエラーメッセージを通知に含めて、開発者に知らせる
-      throw new Error(`Google Chat API Error: ${response.status}`);
+      console.error(`[ChatService] Google Chatからのエラー返信 (${type}):`, errorText);
+      throw new Error(`Google Chat送信失敗: ${response.status}`);
     }
 
     console.log(`[ChatService] 送信成功 (${type})`);
