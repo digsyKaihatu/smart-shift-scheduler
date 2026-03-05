@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react';
-// 関数を個別にインポートする形式に変更
-import { sendSubmission, sendRemand, sendApproval, sendChangeAfterApproval } from '../services/chatService';
+// ビルドが通る正しいインポート形式（名前付きインポート）に戻します
+import { chatService } from '../services/chatService';
 import { summarizePattern } from '../utils/scheduleUtils';
 import { formatValue } from '../utils/dateUtils';
 
@@ -50,7 +50,12 @@ export const useShiftActions = ({
 
     // バックグラウンドで通信（画面ブロックしない）
     try { 
-        await sendSubmission(name, year, month, mentions); 
+        if (chatService && typeof chatService.sendSubmission === 'function') {
+            await chatService.sendSubmission(name, year, month, mentions); 
+        } else {
+            console.error("エラー: chatServiceに 'sendSubmission' メソッドが存在しません。利用可能なメソッド:", chatService);
+            alert("開発者用エラー: 通知関数名が一致しません。コンソールを確認してください。");
+        }
     } catch (e) { 
         console.error("提出通知の送信に失敗しました:", e);
         alert('通信エラー: 提出通知の送信に失敗したため、状態を元に戻しました。');
@@ -81,7 +86,12 @@ export const useShiftActions = ({
     setRemandConfirmation(null);
 
     try { 
-        await sendRemand(name, s.chatUserId); 
+        if (chatService && typeof chatService.sendRemand === 'function') {
+            await chatService.sendRemand(name, s.chatUserId); 
+        } else {
+            console.error("エラー: chatServiceに 'sendRemand' メソッドが存在しません。利用可能なメソッド:", chatService);
+            alert("開発者用エラー: 通知関数名が一致しません。コンソールを確認してください。");
+        }
     } catch (e) { 
         console.error(e); 
         alert('通信エラー: 差戻通知の送信に失敗したため、状態を元に戻しました。');
@@ -111,7 +121,12 @@ export const useShiftActions = ({
     setApprovalModalStaffId(null);
 
     try {
-      await sendApproval(s, year, month, summarizePattern(s.defaultShift.pattern, shiftPatterns, s.defaultShift.hasBreakArray), irregularText, remarks);
+      if (chatService && typeof chatService.sendApproval === 'function') {
+          await chatService.sendApproval(s, year, month, summarizePattern(s.defaultShift.pattern, shiftPatterns, s.defaultShift.hasBreakArray), irregularText, remarks);
+      } else {
+          console.error("エラー: chatServiceに 'sendApproval' メソッドが存在しません。利用可能なメソッド:", chatService);
+          alert("開発者用エラー: 通知関数名が一致しません。コンソールを確認してください。");
+      }
       
       // 送信成功後に承認後変更のクリア処理を実行
       const staffSchedule = schedule[key]?.[s.id] || {};
@@ -165,8 +180,11 @@ export const useShiftActions = ({
           mentions = adminConfig.submissionNotificationIds.split(',').map(id => id.trim()).filter(id => id !== '').map(id => `<users/${id}>`).join(' ');
         }
 
-        // ここでエラーが起きればcatchブロックに飛ぶ
-        await sendChangeAfterApproval(targetStaff.name, year, month, dateSummary, changeDetails, mentions);
+        if (chatService && typeof chatService.sendChangeAfterApproval === 'function') {
+            await chatService.sendChangeAfterApproval(targetStaff.name, year, month, dateSummary, changeDetails, mentions);
+        } else {
+            console.error("エラー: chatServiceに 'sendChangeAfterApproval' メソッドが存在しません。利用可能なメソッド:", chatService);
+        }
         
         successfulStaffIds.push(sId);
 
@@ -195,8 +213,6 @@ export const useShiftActions = ({
     } catch (error) {
       console.error("変更確定エラー:", error);
       alert('通信エラー: 通知の送信に失敗したため、処理を中断しました。');
-      // ※通信に成功した分だけの状態を反映するなどの高度なロールバックも可能ですが、
-      // ここでは安全のため処理をストップします。
     } finally {
       setIsLoading(false);
     }
