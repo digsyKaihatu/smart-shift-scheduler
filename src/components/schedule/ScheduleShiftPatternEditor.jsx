@@ -1,14 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { checkPatternHasBreak } from '../../utils/scheduleUtils';
-
-// ユーティリティからのインポート解決エラーを回避するため、ヘルパー関数をコンポーネント内に定義
-const checkPatternHasBreak = (pId, patterns) => {
-    if (pId === 'シフト休') return false;
-    const p = patterns.find(x => x.id === pId);
-    if (!p) return true; // デフォルト
-    return p.breakHours !== undefined ? p.breakHours > 0 : (p.breakTime !== undefined && p.breakTime !== '0:00' && p.breakTime !== '00:00');
-};
+import { checkPatternHasBreak } from '../../utils/scheduleUtils.js';
 
 /**
  * シフト表内での基本パターン編集コンポーネント
