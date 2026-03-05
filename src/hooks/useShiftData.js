@@ -83,21 +83,22 @@ export const useShiftData = (currentYear, currentMonth) => {
         }
 
         // リアルタイム同期（onSnapshot）の開始
-        // これにより、他の人が承認や提出を行った場合も即座に画面に反映され、
-        // 古いデータで上書きしてしまう同期ズレ（先祖返り）を防ぎます。
         unsubscribeConfig = onSnapshot(configDocRef, (snap) => {
           if (snap.exists()) {
             const data = snap.data();
-            setStaff(data.staff || initialStaffData);
-            setTasks(data.tasks || initialTasks);
-            setShiftPatterns(data.shiftPatterns || initialShiftPatterns);
-            setAdminConfig(data.adminConfig || initialAdminConfig);
+            
+            // 変更: JSON.stringifyで比較し、差分がない場合はStateを更新しない（無限ループ防止）
+            setStaff(prev => JSON.stringify(prev) === JSON.stringify(data.staff || initialStaffData) ? prev : (data.staff || initialStaffData));
+            setTasks(prev => JSON.stringify(prev) === JSON.stringify(data.tasks || initialTasks) ? prev : (data.tasks || initialTasks));
+            setShiftPatterns(prev => JSON.stringify(prev) === JSON.stringify(data.shiftPatterns || initialShiftPatterns) ? prev : (data.shiftPatterns || initialShiftPatterns));
+            setAdminConfig(prev => JSON.stringify(prev) === JSON.stringify(data.adminConfig || initialAdminConfig) ? prev : (data.adminConfig || initialAdminConfig));
+
             setInitialDataLoaded(true);
           } else {
-             setStaff(initialStaffData);
-             setTasks(initialTasks);
-             setShiftPatterns(initialShiftPatterns);
-             setAdminConfig(initialAdminConfig);
+             setStaff(prev => JSON.stringify(prev) === JSON.stringify(initialStaffData) ? prev : initialStaffData);
+             setTasks(prev => JSON.stringify(prev) === JSON.stringify(initialTasks) ? prev : initialTasks);
+             setShiftPatterns(prev => JSON.stringify(prev) === JSON.stringify(initialShiftPatterns) ? prev : initialShiftPatterns);
+             setAdminConfig(prev => JSON.stringify(prev) === JSON.stringify(initialAdminConfig) ? prev : initialAdminConfig);
              setInitialDataLoaded(true);
           }
         });
