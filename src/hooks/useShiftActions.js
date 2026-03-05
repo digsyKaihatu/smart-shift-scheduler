@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react';
-// 波括弧 {} を外してデフォルトインポートに修正
-import chatService from '../services/chatService';
+// 個別エクスポートを全てchatServiceオブジェクトとしてまとめる形式に修正
+import * as chatService from '../services/chatService';
 import { summarizePattern } from '../utils/scheduleUtils';
 import { formatValue } from '../utils/dateUtils';
 
