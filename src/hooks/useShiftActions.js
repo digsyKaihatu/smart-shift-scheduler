@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react';
-// 個別エクスポートを全てchatServiceオブジェクトとしてまとめる形式に修正
-import * as chatService from '../services/chatService';
+// 関数を個別にインポートする形式に変更
+import { sendSubmission, sendRemand, sendApproval, sendChangeAfterApproval } from '../services/chatService';
 import { summarizePattern } from '../utils/scheduleUtils';
 import { formatValue } from '../utils/dateUtils';
 
@@ -50,7 +50,7 @@ export const useShiftActions = ({
 
     // バックグラウンドで通信（画面ブロックしない）
     try { 
-        await chatService.sendSubmission(name, year, month, mentions); 
+        await sendSubmission(name, year, month, mentions); 
     } catch (e) { 
         console.error("提出通知の送信に失敗しました:", e);
         alert('通信エラー: 提出通知の送信に失敗したため、状態を元に戻しました。');
@@ -81,7 +81,7 @@ export const useShiftActions = ({
     setRemandConfirmation(null);
 
     try { 
-        await chatService.sendRemand(name, s.chatUserId); 
+        await sendRemand(name, s.chatUserId); 
     } catch (e) { 
         console.error(e); 
         alert('通信エラー: 差戻通知の送信に失敗したため、状態を元に戻しました。');
@@ -111,7 +111,7 @@ export const useShiftActions = ({
     setApprovalModalStaffId(null);
 
     try {
-      await chatService.sendApproval(s, year, month, summarizePattern(s.defaultShift.pattern, shiftPatterns, s.defaultShift.hasBreakArray), irregularText, remarks);
+      await sendApproval(s, year, month, summarizePattern(s.defaultShift.pattern, shiftPatterns, s.defaultShift.hasBreakArray), irregularText, remarks);
       
       // 送信成功後に承認後変更のクリア処理を実行
       const staffSchedule = schedule[key]?.[s.id] || {};
@@ -166,7 +166,7 @@ export const useShiftActions = ({
         }
 
         // ここでエラーが起きればcatchブロックに飛ぶ
-        await chatService.sendChangeAfterApproval(targetStaff.name, year, month, dateSummary, changeDetails, mentions);
+        await sendChangeAfterApproval(targetStaff.name, year, month, dateSummary, changeDetails, mentions);
         
         successfulStaffIds.push(sId);
 
