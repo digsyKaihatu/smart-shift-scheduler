@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react';
-import { chatService } from '../services/chatService';
+// 波括弧 {} を外してデフォルトインポートに修正
+import chatService from '../services/chatService';
 import { summarizePattern } from '../utils/scheduleUtils';
 import { formatValue } from '../utils/dateUtils';
 
