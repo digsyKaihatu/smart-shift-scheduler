@@ -1,6 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { checkPatternHasBreak } from '../../utils/scheduleUtils.js';
+
+// ユーティリティからのインポート解決エラーを回避するため、ヘルパー関数をコンポーネント内に定義
+const checkPatternHasBreak = (pId, patterns) => {
+    if (pId === 'シフト休') return false;
+    const p = patterns.find(x => x.id === pId);
+    if (!p) return true; // デフォルト
+    return p.breakHours !== undefined ? p.breakHours > 0 : (p.breakTime !== undefined && p.breakTime !== '0:00' && p.breakTime !== '00:00');
+};
 
 /**
  * シフト表内での基本パターン編集コンポーネント
@@ -10,8 +17,9 @@ const ScheduleShiftPatternEditor = ({ pattern, hasBreakArray, patterns, onApply,
   const [isOpen, setIsOpen] = useState(false);
   const [editedPattern, setEditedPattern] = useState(pattern || Array(5).fill('シフト休'));
   
-  // 9:00スタートのパターンを除外するフィルタリング
-  const filteredPatterns = patterns.filter(p => p.startTime !== '9:00' && p.startTime !== '09:00');
+  // 旧パターンのA〜Hのみを除外するように変更（9:00開始の新パターンは表示可能に）
+  const legacyPatternIds = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
+  const filteredPatterns = patterns.filter(p => !legacyPatternIds.includes(p.id));
   
   const [bulkPatternId, setBulkPatternId] = useState(filteredPatterns[0]?.id || 'シフト休');
   
