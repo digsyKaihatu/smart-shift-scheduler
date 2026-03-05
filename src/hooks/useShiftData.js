@@ -410,6 +410,9 @@ export const useShiftData = (currentYear, currentMonth) => {
     if (!isInitialLoadComplete.current) return;
     if (!pendingConfigSave.current) return;
 
+    // ★ 他人の更新を受信しただけの場合は保存処理をスキップ（無限ループ防止の要）
+    if (!pendingConfigSave.current) return;
+
     if (debouncedSaveConfig.current) clearTimeout(debouncedSaveConfig.current);
 
     debouncedSaveConfig.current = setTimeout(async () => {
