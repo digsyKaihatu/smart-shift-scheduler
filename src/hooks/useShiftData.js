@@ -139,6 +139,7 @@ export const useShiftData = (currentYear, currentMonth) => {
   // ---------------------------------------------------------------------------
   useEffect(() => {
     let unsubscribeConfig = () => {};
+    let isFirstConfigLoad = true; // 初回ロードフラグを追加
 
     const loadMasterData = async () => {
       try {
@@ -182,8 +183,7 @@ export const useShiftData = (currentYear, currentMonth) => {
             });
             
             setInitialDataLoaded(true);
-            // マイグレーション直後は、リスナーを貼る前に一旦終了する（直後の変更を無視）
-            // 次回のマウントやリロードでリスナーが貼られる
+            isFirstConfigLoad = false; // マイグレーションを行った場合はここで初回ロード完了とする
           } else {
              // どちらのドキュメントも無い場合（完全な新規）
              await setDoc(configDocRef, {
@@ -204,6 +204,25 @@ export const useShiftData = (currentYear, currentMonth) => {
             const serverTasks = data.tasks || initialTasks;
             const serverPatterns = data.shiftPatterns || initialShiftPatterns;
             const serverAdmin = data.adminConfig || initialAdminConfig;
+
+            // 初回ロード時は、無条件でサーバーデータをStateにセットして反映する
+            if (isFirstConfigLoad) {
+                _setStaff(serverStaff);
+                _setTasks(serverTasks);
+                _setShiftPatterns(serverPatterns);
+                _setAdminConfig(serverAdmin);
+
+                lastServerConfigRef.current = {
+                   staff: serverStaff,
+                   tasks: serverTasks,
+                   shiftPatterns: serverPatterns,
+                   adminConfig: serverAdmin
+                };
+                
+                isFirstConfigLoad = false;
+                setInitialDataLoaded(true);
+                return;
+            }
 
             // サーバーのデータとローカルのデータが完全に一致する場合は何もしない（ループ防止）
             const isStaffEqual = deepEqual(lastServerConfigRef.current.staff, serverStaff);
@@ -256,6 +275,8 @@ export const useShiftData = (currentYear, currentMonth) => {
              _setTasks(prev => deepEqual(prev, initialTasks) ? prev : initialTasks);
              _setShiftPatterns(prev => deepEqual(prev, initialShiftPatterns) ? prev : initialShiftPatterns);
              _setAdminConfig(prev => deepEqual(prev, initialAdminConfig) ? prev : initialAdminConfig);
+             
+             isFirstConfigLoad = false;
              setInitialDataLoaded(true);
           }
         });
