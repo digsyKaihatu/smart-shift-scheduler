@@ -23,11 +23,12 @@ export const useShiftActions = ({
   const [absenceNotificationConfirmation, setAbsenceNotificationConfirmation] = useState(null);
   const [approvalCancellationConfirmation, setApprovalCancellationConfirmation] = useState(null);
 
+  // ==========================================
   // 1. 提出処理
+  // ==========================================
   const handleToggleShiftSubmitted = useCallback((staffId) => {
     const s = staff.find(x => x.id === staffId);
     if (s?.shiftSubmitted?.[key]) {
-      // 即座にUIへ反映（チェックを外す）
       setStaff(prev => prev.map(x => x.id === staffId ? { ...x, shiftSubmitted: { ...x.shiftSubmitted, [key]: false } } : x));
     } else {
       setSubmissionConfirmation({ staffId, name: s.name });
@@ -42,22 +43,24 @@ export const useShiftActions = ({
       mentions = adminConfig.submissionNotificationIds.split(',').map(id => id.trim()).filter(id => id !== '').map(id => `<users/${id}>`).join(' ');
     }
     
-    // 即座にUIへ反映させる（通信完了を待たずにチェックを付ける）
+    // 即座にUIへ反映させる
     setStaff(prev => prev.map(x => x.id === staffId ? { ...x, shiftSubmitted: { ...x.shiftSubmitted, [key]: true } } : x));
     setSubmissionConfirmation(null);
 
-    setIsLoading(true);
-    setLoadingMessage('提出通知を送信中...');
+    // バックグラウンドで通信（画面ブロックしない）
     try { 
         await chatService.sendSubmission(name, year, month, mentions); 
     } catch (e) { 
         console.error("提出通知の送信に失敗しました:", e);
-        // エラー時はロールバックする処理を入れることも可能
+        alert('通信エラー: 提出通知の送信に失敗したため、状態を元に戻しました。');
+        // エラー時はロールバック
+        setStaff(prev => prev.map(x => x.id === staffId ? { ...x, shiftSubmitted: { ...x.shiftSubmitted, [key]: false } } : x));
     }
-    setIsLoading(false);
   };
 
+  // ==========================================
   // 2. 差戻処理
+  // ==========================================
   const handleToggleShiftRemanded = useCallback((staffId) => {
     const s = staff.find(x => x.id === staffId);
     if (s?.shiftRemanded?.[key]) {
@@ -76,13 +79,18 @@ export const useShiftActions = ({
     setStaff(prev => prev.map(x => x.id === staffId ? { ...x, shiftRemanded: { ...x.shiftRemanded, [key]: true } } : x));
     setRemandConfirmation(null);
 
-    setIsLoading(true);
-    setLoadingMessage('差戻通知を送信中...');
-    try { await chatService.sendRemand(name, s.chatUserId); } catch (e) { console.error(e); }
-    setIsLoading(false);
+    try { 
+        await chatService.sendRemand(name, s.chatUserId); 
+    } catch (e) { 
+        console.error(e); 
+        alert('通信エラー: 差戻通知の送信に失敗したため、状態を元に戻しました。');
+        setStaff(prev => prev.map(x => x.id === staffId ? { ...x, shiftRemanded: { ...x.shiftRemanded, [key]: false } } : x));
+    }
   };
 
+  // ==========================================
   // 3. 承認処理
+  // ==========================================
   const handleToggleShiftApproved = useCallback((staffId) => {
     const s = staff.find(x => x.id === staffId);
     if (s?.shiftApproved?.[key]) {
@@ -94,31 +102,34 @@ export const useShiftActions = ({
 
   const handleConfirmApproval = async (remarks, irregularText) => {
     if (!approvalModalStaffId) return;
-    const s = staff.find(x => x.id === approvalModalStaffId);
+    const targetStaffId = approvalModalStaffId;
+    const s = staff.find(x => x.id === targetStaffId);
 
     // UIを即座に更新
-    setStaff(prev => prev.map(x => x.id === approvalModalStaffId ? { ...x, shiftApproved: { ...x.shiftApproved, [key]: true } } : x));
+    setStaff(prev => prev.map(x => x.id === targetStaffId ? { ...x, shiftApproved: { ...x.shiftApproved, [key]: true } } : x));
     setApprovalModalStaffId(null);
 
-    setIsLoading(true);
-    setLoadingMessage('承認通知を送信中...');
     try {
       await chatService.sendApproval(s, year, month, summarizePattern(s.defaultShift.pattern, shiftPatterns, s.defaultShift.hasBreakArray), irregularText, remarks);
-    } catch (e) { console.error(e); }
-    setIsLoading(false);
+      
+      // 送信成功後に承認後変更のクリア処理を実行
+      const staffSchedule = schedule[key]?.[s.id] || {};
+      const updates = [];
+      Object.entries(staffSchedule).forEach(([d, val]) => {
+        if (typeof val === 'object' && val?.modified) {
+          const { modified, ...rest } = val;
+          let cleanedVal = Object.keys(rest).length === 1 && rest.type ? rest.type : rest;
+          if (rest.type === '稼働' && typeof rest.hours === 'number') cleanedVal = rest.hours;
+          updates.push({ staffId: s.id, day: Number(d), value: cleanedVal });
+        }
+      });
+      if (updates.length > 0) updateShiftItems(year, month, updates);
 
-    // 承認後変更のクリア処理
-    const staffSchedule = schedule[key]?.[s.id] || {};
-    const updates = [];
-    Object.entries(staffSchedule).forEach(([d, val]) => {
-      if (typeof val === 'object' && val?.modified) {
-        const { modified, ...rest } = val;
-        let cleanedVal = Object.keys(rest).length === 1 && rest.type ? rest.type : rest;
-        if (rest.type === '稼働' && typeof rest.hours === 'number') cleanedVal = rest.hours;
-        updates.push({ staffId: s.id, day: Number(d), value: cleanedVal });
-      }
-    });
-    if (updates.length > 0) updateShiftItems(year, month, updates);
+    } catch (e) { 
+        console.error(e);
+        alert('通信エラー: 承認通知の送信に失敗したため、状態を元に戻しました。');
+        setStaff(prev => prev.map(x => x.id === targetStaffId ? { ...x, shiftApproved: { ...x.shiftApproved, [key]: false } } : x));
+    }
   };
 
   const handleConfirmApprovalCancellation = () => {
@@ -128,15 +139,19 @@ export const useShiftActions = ({
     setApprovalCancellationConfirmation(null);
   };
 
-  // 4. 承認後の変更確定処理
+  // ==========================================
+  // 4. 承認後の変更確定処理 (一括処理のためローディング必須)
+  // ==========================================
   const handleFinalizeModification = async () => {
     const targetStaffIds = [...new Set(pendingChanges.map(c => c.staffId))];
     setIsLoading(true);
-    setLoadingMessage('変更を確定中...');
+    setLoadingMessage('変更を確定し、通知を送信中...');
     
     try {
       const updatesToSave = [];
+      const successfulStaffIds = [];
 
+      // 1件ずつ通信処理を行う
       for (const sId of targetStaffIds) {
         const staffChanges = pendingChanges.filter(c => c.staffId === sId);
         const targetStaff = staff.find(s => s.id === sId);
@@ -149,10 +164,11 @@ export const useShiftActions = ({
           mentions = adminConfig.submissionNotificationIds.split(',').map(id => id.trim()).filter(id => id !== '').map(id => `<users/${id}>`).join(' ');
         }
 
+        // ここでエラーが起きればcatchブロックに飛ぶ
         await chatService.sendChangeAfterApproval(targetStaff.name, year, month, dateSummary, changeDetails, mentions);
         
-        setStaff(prev => prev.map(s => s.id === sId ? { ...s, shiftApproved: { ...s.shiftApproved, [key]: false } } : s));
-        
+        successfulStaffIds.push(sId);
+
         staffChanges.forEach(c => {
            const val = c.rawValue;
            let cleanedVal = val;
@@ -165,17 +181,24 @@ export const useShiftActions = ({
         });
       }
 
+      // 全ての通信が成功した場合のみ、一括でStaffとScheduleを更新
+      setStaff(prev => prev.map(s => successfulStaffIds.includes(s.id) ? { ...s, shiftApproved: { ...s.shiftApproved, [key]: false } } : s));
+      
       if (updatesToSave.length > 0) {
         updateShiftItems(year, month, updatesToSave);
       }
 
-    } catch (error) {
-      alert('通知の送信に失敗しました。');
-    }
+      setPendingChanges([]);
+      setShowModificationConfirm(false);
 
-    setIsLoading(false);
-    setPendingChanges([]);
-    setShowModificationConfirm(false);
+    } catch (error) {
+      console.error("変更確定エラー:", error);
+      alert('通信エラー: 通知の送信に失敗したため、処理を中断しました。');
+      // ※通信に成功した分だけの状態を反映するなどの高度なロールバックも可能ですが、
+      // ここでは安全のため処理をストップします。
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return {
