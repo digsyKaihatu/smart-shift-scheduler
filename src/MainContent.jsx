@@ -74,27 +74,52 @@ const MainContent = () => {
   }, [schedule, key, staff, tasks, daysInMonth, initialDataLoaded]);
 
   // ハンドラー
-  const handleUpdateSchedule = (staffId, day, value) => {
+const handleUpdateSchedule = (staffId, day, value) => {
     const currentVal = schedule[key]?.[staffId]?.[day];
+    
+    // すでに保留中の変更があるか確認し、最初の承認済みデータ（originalValue）を取得する
+    const existingChange = actions.pendingChanges.find(c => c.staffId === staffId && c.day === day);
+    const originalValue = existingChange ? existingChange.originalValue : currentVal;
+
+    // 現在入力された値と元の値が同一か判定
+    const normOrg = (originalValue === undefined || originalValue === null) ? '' : originalValue;
+    const normVal = (value === undefined || value === null) ? '' : value;
+    const isSameAsOriginal = JSON.stringify(normOrg) === JSON.stringify(normVal);
+
     if (JSON.stringify(currentVal) === JSON.stringify(value)) return;
 
     const isApproved = staff.find(s => s.id === staffId)?.shiftApproved?.[key];
     let newValue = value;
 
     if (isApproved) {
-        if (typeof value === 'number') newValue = { type: '稼働', hours: value, modified: true };
-        else if (typeof value === 'string') newValue = { type: value, modified: true };
-        else if (typeof value === 'object' && value !== null) newValue = { ...value, modified: true };
-        
-        actions.setPendingChanges(prev => [...prev.filter(c => !(c.staffId === staffId && c.day === day)), {
-            staffId, day, displayValue: formatValue(newValue), rawYear: year, rawMonth: month, rawValue: newValue
-        }]);
-        actions.setShowModificationConfirm(true);
-        
-        // Firestoreには保存せず、ローカルStateのみ更新
-        updateLocalShiftItem(year, month, staffId, day, newValue);
+        if (isSameAsOriginal) {
+            // 元の値に戻った場合は保留リストから削除し、通知対象外とする
+            actions.setPendingChanges(prev => {
+                const newChanges = prev.filter(c => !(c.staffId === staffId && c.day === day));
+                if (newChanges.length === 0) {
+                    actions.setShowModificationConfirm(false);
+                }
+                return newChanges;
+            });
+            // ローカル状態も元の値に戻す (modifiedフラグを消す)
+            updateLocalShiftItem(year, month, staffId, day, originalValue);
+        } else {
+            // 新しい変更として扱う
+            if (typeof value === 'number') newValue = { type: '稼働', hours: value, modified: true };
+            else if (typeof value === 'string') newValue = { type: value, modified: true };
+            else if (typeof value === 'object' && value !== null) newValue = { ...value, modified: true };
+            
+            actions.setPendingChanges(prev => [...prev.filter(c => !(c.staffId === staffId && c.day === day)), {
+                staffId, day, displayValue: formatValue(newValue), rawYear: year, rawMonth: month, rawValue: newValue, originalValue
+            }]);
+            actions.setShowModificationConfirm(true);
+            
+            // Firestoreには保存せず、ローカルStateのみ更新
+            updateLocalShiftItem(year, month, staffId, day, newValue);
+        }
     } else {
-        if (isAdmin && value === '欠') {
+        // 未承認時・承認解除時の欠勤入力チェック ('欠勤'と'欠'両方に対応)
+        if (isAdmin && (value === '欠勤' || value === '欠')) {
             actions.setAbsenceNotificationConfirmation({ staffMember: staff.find(s => s.id === staffId), day, value });
         }
         updateShiftItem(year, month, staffId, day, newValue);
