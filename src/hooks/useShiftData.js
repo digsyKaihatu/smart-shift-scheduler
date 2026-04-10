@@ -22,6 +22,45 @@ const deepEqual = (a, b) => {
 };
 
 /**
+ * オブジェクトのプロパティ単位でのマージ関数
+ * ローカル、サーバー、前回の状態を比較し、変更箇所を細かく結合します。
+ */
+const mergeObject = (localObj, serverObj, lastObj) => {
+  if (!lastObj) return serverObj;
+  const merged = { ...serverObj }; // サーバーの最新状態をベースにする
+
+  Object.keys(localObj).forEach(key => {
+    const localVal = localObj[key];
+    const serverVal = serverObj[key];
+    const lastVal = lastObj[key];
+
+    // 中にさらにデータが入れ子になっている場合は、奥まで確認して結合します
+    if (
+      typeof localVal === 'object' && localVal !== null && !Array.isArray(localVal) &&
+      typeof serverVal === 'object' && serverVal !== null && !Array.isArray(serverVal) &&
+      typeof lastVal === 'object' && lastVal !== null && !Array.isArray(lastVal)
+    ) {
+      merged[key] = mergeObject(localVal, serverVal, lastVal);
+    } else {
+      // 値を比較して、変更があったかを判定します
+      const isLocalChanged = !deepEqual(localVal, lastVal);
+      const isServerChanged = !deepEqual(serverVal, lastVal);
+
+      // 自分だけが変更した場合は、自分の変更を適用します
+      if (isLocalChanged && !isServerChanged) {
+        merged[key] = localVal;
+      }
+      // もし同じ項目を同時に変更していた場合は、自分の操作を優先します
+      else if (isLocalChanged && isServerChanged) {
+        merged[key] = localVal;
+      }
+    }
+  });
+
+  return merged;
+};
+
+/**
  * 配列の差分マージ関数（複数人同時操作による先祖返り防止用）
  * ローカルの変更とサーバーの変更を比較し、競合を解決します。
  */
@@ -58,7 +97,9 @@ const mergeArray = (localArr, serverArr, lastServerArr) => {
       } else if (!isLocalChanged && isServerChanged) {
         merged.push(serverItem); // 他人だけが変更した
       } else if (isLocalChanged && isServerChanged) {
-        merged.push(localItem); // 競合時（同時編集）は自分の操作を優先
+        // ★ここを修正しました！
+        // 全体をごそっと上書きするのではなく、項目ごとに細かく結合します
+        merged.push(mergeObject(localItem, serverItem, lastItem)); 
       } else {
         merged.push(serverItem); // 変更なし
       }
