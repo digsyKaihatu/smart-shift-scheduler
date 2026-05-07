@@ -496,7 +496,7 @@ export const useShiftData = (currentYear, currentMonth) => {
     return () => clearTimeout(debouncedSaveConfig.current);
   }, [staff, tasks, shiftPatterns, adminConfig]);
 
-  const triggerScheduleSave = useCallback(() => {
+const triggerScheduleSave = useCallback(() => {
     setSaveStatus('unsaved');
     if (debouncedSaveSchedule.current) clearTimeout(debouncedSaveSchedule.current);
 
@@ -520,37 +520,19 @@ export const useShiftData = (currentYear, currentMonth) => {
         const [y, m] = monthKey.split('-');
         const docRef = getMonthDocRef(y, m);
         
-        updates['updatedAt'] = new Date().toISOString();
+        // オブジェクトの階層をそのままFirestoreに渡す
+        const nestedData = {
+            updatedAt: new Date().toISOString(),
+            scheduleData: updates
+        };
 
         try {
-          await updateDoc(docRef, updates);
+          // updateDocの代わりにsetDoc(merge:true)を使用することで、ドットを含むキーも正しく保存されます
+          await setDoc(docRef, nestedData, { merge: true });
         } catch (error) {
-          if (error.code === 'not-found') {
-             const nestedData = {
-               year: parseInt(y),
-               month: parseInt(m),
-               updatedAt: new Date().toISOString(),
-               scheduleData: {}
-             };
-             
-             for (const [key, value] of Object.entries(updates)) {
-                 if (key.startsWith('scheduleData.')) {
-                     const parts = key.split('.');
-                     const staffId = parts[1];
-                     const day = parts[2];
-                     if (!nestedData.scheduleData[staffId]) {
-                         nestedData.scheduleData[staffId] = {};
-                     }
-                     nestedData.scheduleData[staffId][day] = value;
-                 }
-             }
-
-             await setDoc(docRef, nestedData, { merge: true });
-          } else {
-            console.error(`Schedule update failed for ${monthKey}:`, error);
-            setSaveStatus('error');
-            throw error;
-          }
+          console.error(`Schedule update failed for ${monthKey}:`, error);
+          setSaveStatus('error');
+          throw error;
         }
       });
 
@@ -570,12 +552,12 @@ export const useShiftData = (currentYear, currentMonth) => {
       }
     }, 1000);
   }, []);
-
+  
   // ---------------------------------------------------------------------------
   // 4. データ更新用関数 (UIから呼び出す)
   // ---------------------------------------------------------------------------
 
-  const updateShiftItem = useCallback((year, month, staffId, day, value) => {
+const updateShiftItem = useCallback((year, month, staffId, day, value) => {
     const key = `${year}-${month}`;
 
     setSchedule(prev => {
@@ -600,11 +582,61 @@ export const useShiftData = (currentYear, currentMonth) => {
     });
 
     if (!pendingChanges.current[key]) pendingChanges.current[key] = {};
-    pendingChanges.current[key][`scheduleData.${staffId}.${day}`] = value;
+    if (!pendingChanges.current[key][staffId]) pendingChanges.current[key][staffId] = {};
+    pendingChanges.current[key][staffId][day] = value;
 
     triggerScheduleSave();
   }, [triggerScheduleSave]);
 
+  const updateShiftItems = useCallback((year, month, updates) => {
+    if (!updates || updates.length === 0) return;
+    const key = `${year}-${month}`;
+
+    setSchedule(prev => {
+      const currentMonthData = { ...(prev[key] || {}) };
+      let hasChange = false;
+
+      updates.forEach(({ staffId, day, value }) => {
+        if (!currentMonthData[staffId]) currentMonthData[staffId] = {};
+        if (JSON.stringify(currentMonthData[staffId][day]) !== JSON.stringify(value)) {
+           currentMonthData[staffId] = { ...currentMonthData[staffId], [day]: value };
+           hasChange = true;
+        }
+      });
+
+      if (!hasChange) return prev;
+      setHistory(h => ({ past: [...h.past, prev], future: [] }));
+      return { ...prev, [key]: currentMonthData };
+    });
+
+    if (!pendingChanges.current[key]) pendingChanges.current[key] = {};
+    
+    updates.forEach(({ staffId, day, value }) => {
+      if (!pendingChanges.current[key][staffId]) pendingChanges.current[key][staffId] = {};
+      pendingChanges.current[key][staffId][day] = value;
+      
+      if (localPendingChanges.current[key]?.[`${staffId}.${day}`]) {
+          delete localPendingChanges.current[key][`${staffId}.${day}`];
+      }
+    });
+
+    triggerScheduleSave();
+  }, [triggerScheduleSave]);
+
+  const updateShiftUserMonth = useCallback((year, month, staffId, monthData) => {
+    const key = `${year}-${month}`;
+    
+    setSchedule(prev => {
+      const currentMonthData = { ...(prev[key] || {}) };
+      currentMonthData[staffId] = monthData;
+      return { ...prev, [key]: currentMonthData };
+    });
+
+    if (!pendingChanges.current[key]) pendingChanges.current[key] = {};
+    pendingChanges.current[key][staffId] = monthData;
+    
+    triggerScheduleSave();
+  }, [triggerScheduleSave]);
   const updateLocalShiftItem = useCallback((year, month, staffId, day, value) => {
     const key = `${year}-${month}`;
     
