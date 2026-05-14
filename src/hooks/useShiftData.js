@@ -26,20 +26,23 @@ const deepEqual = (a, b) => {
  * ローカル、サーバー、前回の状態を比較し、変更箇所を細かく結合します。
  */
 const mergeObject = (localObj, serverObj, lastObj) => {
-  if (!lastObj) return serverObj;
-  const merged = { ...serverObj }; // サーバーの最新状態をベースにする
+  // undefined や null を安全に扱うためにデフォルトの空オブジェクトを用意
+  const safeLocal = localObj || {};
+  const safeServer = serverObj || {};
+  const safeLast = lastObj || {};
 
-  Object.keys(localObj).forEach(key => {
-    const localVal = localObj[key];
-    const serverVal = serverObj[key];
-    const lastVal = lastObj[key];
+  const merged = { ...safeServer }; // サーバーの最新状態をベースにする
+
+  Object.keys(safeLocal).forEach(key => {
+    const localVal = safeLocal[key];
+    const serverVal = safeServer[key];
+    const lastVal = safeLast[key];
 
     // 中にさらにデータが入れ子になっている場合は、奥まで確認して結合します
-    if (
-      typeof localVal === 'object' && localVal !== null && !Array.isArray(localVal) &&
-      typeof serverVal === 'object' && serverVal !== null && !Array.isArray(serverVal) &&
-      typeof lastVal === 'object' && lastVal !== null && !Array.isArray(lastVal)
-    ) {
+    const isLocalObj = typeof localVal === 'object' && localVal !== null && !Array.isArray(localVal);
+    const isServerObj = typeof serverVal === 'object' && serverVal !== null && !Array.isArray(serverVal);
+    
+    if (isLocalObj || isServerObj) {
       merged[key] = mergeObject(localVal, serverVal, lastVal);
     } else {
       // 値を比較して、変更があったかを判定します
