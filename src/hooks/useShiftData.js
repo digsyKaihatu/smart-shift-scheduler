@@ -555,12 +555,11 @@ const triggerScheduleSave = useCallback(() => {
       }
     }, 1000);
   }, []);
-  
   // ---------------------------------------------------------------------------
   // 4. データ更新用関数 (UIから呼び出す)
   // ---------------------------------------------------------------------------
 
-const updateShiftItem = useCallback((year, month, staffId, day, value) => {
+  const updateShiftItem = useCallback((year, month, staffId, day, value) => {
     const key = `${year}-${month}`;
 
     setSchedule(prev => {
@@ -590,6 +589,20 @@ const updateShiftItem = useCallback((year, month, staffId, day, value) => {
 
     triggerScheduleSave();
   }, [triggerScheduleSave]);
+
+  const updateLocalShiftItem = useCallback((year, month, staffId, day, value) => {
+    const key = `${year}-${month}`;
+    
+    setSchedule(prev => {
+      const currentMonthData = prev[key] || {};
+      const currentStaffData = currentMonthData[staffId] || {};
+      if (JSON.stringify(currentStaffData[day]) === JSON.stringify(value)) return prev;
+      return { ...prev, [key]: { ...currentMonthData, [staffId]: { ...currentStaffData, [day]: value } } };
+    });
+
+    if (!localPendingChanges.current[key]) localPendingChanges.current[key] = {};
+    localPendingChanges.current[key][`${staffId}.${day}`] = true;
+  }, []);
 
   const updateShiftItems = useCallback((year, month, updates) => {
     if (!updates || updates.length === 0) return;
@@ -637,67 +650,6 @@ const updateShiftItem = useCallback((year, month, staffId, day, value) => {
 
     if (!pendingChanges.current[key]) pendingChanges.current[key] = {};
     pendingChanges.current[key][staffId] = monthData;
-    
-    triggerScheduleSave();
-  }, [triggerScheduleSave]);
-  const updateLocalShiftItem = useCallback((year, month, staffId, day, value) => {
-    const key = `${year}-${month}`;
-    
-    setSchedule(prev => {
-      const currentMonthData = prev[key] || {};
-      const currentStaffData = currentMonthData[staffId] || {};
-      if (JSON.stringify(currentStaffData[day]) === JSON.stringify(value)) return prev;
-      return { ...prev, [key]: { ...currentMonthData, [staffId]: { ...currentStaffData, [day]: value } } };
-    });
-
-    if (!localPendingChanges.current[key]) localPendingChanges.current[key] = {};
-    localPendingChanges.current[key][`${staffId}.${day}`] = true;
-  }, []);
-
-  const updateShiftItems = useCallback((year, month, updates) => {
-    if (!updates || updates.length === 0) return;
-    const key = `${year}-${month}`;
-
-    setSchedule(prev => {
-      const currentMonthData = { ...(prev[key] || {}) };
-      let hasChange = false;
-
-      updates.forEach(({ staffId, day, value }) => {
-        if (!currentMonthData[staffId]) currentMonthData[staffId] = {};
-        if (JSON.stringify(currentMonthData[staffId][day]) !== JSON.stringify(value)) {
-           currentMonthData[staffId] = { ...currentMonthData[staffId], [day]: value };
-           hasChange = true;
-        }
-      });
-
-      if (!hasChange) return prev;
-      setHistory(h => ({ past: [...h.past, prev], future: [] }));
-      return { ...prev, [key]: currentMonthData };
-    });
-
-    if (!pendingChanges.current[key]) pendingChanges.current[key] = {};
-    
-    updates.forEach(({ staffId, day, value }) => {
-      pendingChanges.current[key][`scheduleData.${staffId}.${day}`] = value;
-      if (localPendingChanges.current[key]?.[`${staffId}.${day}`]) {
-          delete localPendingChanges.current[key][`${staffId}.${day}`];
-      }
-    });
-
-    triggerScheduleSave();
-  }, [triggerScheduleSave]);
-
-  const updateShiftUserMonth = useCallback((year, month, staffId, monthData) => {
-    const key = `${year}-${month}`;
-    
-    setSchedule(prev => {
-      const currentMonthData = { ...(prev[key] || {}) };
-      currentMonthData[staffId] = monthData;
-      return { ...prev, [key]: currentMonthData };
-    });
-
-    if (!pendingChanges.current[key]) pendingChanges.current[key] = {};
-    pendingChanges.current[key][`scheduleData.${staffId}`] = monthData;
     
     triggerScheduleSave();
   }, [triggerScheduleSave]);
