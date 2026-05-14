@@ -26,36 +26,39 @@ const deepEqual = (a, b) => {
  * ローカル、サーバー、前回の状態を比較し、変更箇所を細かく結合します。
  */
 const mergeObject = (localObj, serverObj, lastObj) => {
-  // undefined や null を安全に扱うためにデフォルトの空オブジェクトを用意
   const safeLocal = localObj || {};
   const safeServer = serverObj || {};
   const safeLast = lastObj || {};
 
-  const merged = { ...safeServer }; // サーバーの最新状態をベースにする
+  const merged = { ...safeServer };
 
-  Object.keys(safeLocal).forEach(key => {
+  // 両方のキーを網羅して比較する
+  const allKeys = new Set([...Object.keys(safeLocal), ...Object.keys(safeServer)]);
+
+  allKeys.forEach(key => {
     const localVal = safeLocal[key];
     const serverVal = safeServer[key];
     const lastVal = safeLast[key];
 
-    // 中にさらにデータが入れ子になっている場合は、奥まで確認して結合します
     const isLocalObj = typeof localVal === 'object' && localVal !== null && !Array.isArray(localVal);
     const isServerObj = typeof serverVal === 'object' && serverVal !== null && !Array.isArray(serverVal);
     
     if (isLocalObj || isServerObj) {
       merged[key] = mergeObject(localVal, serverVal, lastVal);
     } else {
-      // 値を比較して、変更があったかを判定します
       const isLocalChanged = !deepEqual(localVal, lastVal);
       const isServerChanged = !deepEqual(serverVal, lastVal);
 
-      // 自分だけが変更した場合は、自分の変更を適用します
       if (isLocalChanged && !isServerChanged) {
-        merged[key] = localVal;
-      }
-      // もし同じ項目を同時に変更していた場合は、自分の操作を優先します
-      else if (isLocalChanged && isServerChanged) {
-        merged[key] = localVal;
+        if (localVal === undefined) delete merged[key];
+        else merged[key] = localVal;
+      } else if (!isLocalChanged && isServerChanged) {
+        if (serverVal === undefined) delete merged[key];
+        else merged[key] = serverVal;
+      } else if (isLocalChanged && isServerChanged) {
+        // 同時変更時はローカル（自分の操作）を優先
+        if (localVal === undefined) delete merged[key];
+        else merged[key] = localVal;
       }
     }
   });
@@ -100,7 +103,6 @@ const mergeArray = (localArr, serverArr, lastServerArr) => {
       } else if (!isLocalChanged && isServerChanged) {
         merged.push(serverItem); // 他人だけが変更した
       } else if (isLocalChanged && isServerChanged) {
-        // ★ここを修正しました！
         // 全体をごそっと上書きするのではなく、項目ごとに細かく結合します
         merged.push(mergeObject(localItem, serverItem, lastItem)); 
       } else {
@@ -244,6 +246,14 @@ export const useShiftData = (currentYear, currentMonth) => {
         unsubscribeConfig = onSnapshot(configDocRef, (snap) => {
           if (snap.exists()) {
             const data = snap.data();
+
+            // サーバーから降ってきたデータが古いキャッシュの場合は無視して先祖返りを防ぐ
+            if (lastServerConfigRef.current.updatedAt && data.updatedAt) {
+                if (new Date(data.updatedAt) < new Date(lastServerConfigRef.current.updatedAt)) {
+                    return;
+                }
+            }
+
             const serverStaff = data.staff || initialStaffData;
             const serverTasks = data.tasks || initialTasks;
             const serverPatterns = data.shiftPatterns || initialShiftPatterns;
@@ -260,7 +270,8 @@ export const useShiftData = (currentYear, currentMonth) => {
                    staff: serverStaff,
                    tasks: serverTasks,
                    shiftPatterns: serverPatterns,
-                   adminConfig: serverAdmin
+                   adminConfig: serverAdmin,
+                   updatedAt: data.updatedAt 
                 };
                 
                 isFirstConfigLoad = false;
@@ -307,7 +318,8 @@ export const useShiftData = (currentYear, currentMonth) => {
                staff: serverStaff,
                tasks: serverTasks,
                shiftPatterns: serverPatterns,
-               adminConfig: serverAdmin
+               adminConfig: serverAdmin,
+               updatedAt: data.updatedAt
             };
             
             if (!isInitialLoadComplete.current) {
@@ -454,9 +466,6 @@ export const useShiftData = (currentYear, currentMonth) => {
     if (!isInitialLoadComplete.current) return;
     if (!pendingConfigSave.current) return;
 
-    // ★ 他人の更新を受信しただけの場合は保存処理をスキップ（無限ループ防止の要）
-    if (!pendingConfigSave.current) return;
-
     if (debouncedSaveConfig.current) clearTimeout(debouncedSaveConfig.current);
 
     debouncedSaveConfig.current = setTimeout(async () => {
@@ -488,7 +497,8 @@ export const useShiftData = (currentYear, currentMonth) => {
             staff: dataToSave.staff,
             tasks: dataToSave.tasks,
             shiftPatterns: dataToSave.shiftPatterns,
-            adminConfig: dataToSave.adminConfig
+            adminConfig: dataToSave.adminConfig,
+            updatedAt: dataToSave.updatedAt
         };
 
       } catch (error) {
@@ -499,7 +509,7 @@ export const useShiftData = (currentYear, currentMonth) => {
     return () => clearTimeout(debouncedSaveConfig.current);
   }, [staff, tasks, shiftPatterns, adminConfig]);
 
-const triggerScheduleSave = useCallback(() => {
+  const triggerScheduleSave = useCallback(() => {
     setSaveStatus('unsaved');
     if (debouncedSaveSchedule.current) clearTimeout(debouncedSaveSchedule.current);
 
@@ -555,6 +565,7 @@ const triggerScheduleSave = useCallback(() => {
       }
     }, 1000);
   }, []);
+
   // ---------------------------------------------------------------------------
   // 4. データ更新用関数 (UIから呼び出す)
   // ---------------------------------------------------------------------------
