@@ -26,20 +26,23 @@ const deepEqual = (a, b) => {
  * ローカル、サーバー、前回の状態を比較し、変更箇所を細かく結合します。
  */
 const mergeObject = (localObj, serverObj, lastObj) => {
-  if (!lastObj) return serverObj;
-  const merged = { ...serverObj }; // サーバーの最新状態をベースにする
+  // undefined や null を安全に扱うためにデフォルトの空オブジェクトを用意
+  const safeLocal = localObj || {};
+  const safeServer = serverObj || {};
+  const safeLast = lastObj || {};
 
-  Object.keys(localObj).forEach(key => {
-    const localVal = localObj[key];
-    const serverVal = serverObj[key];
-    const lastVal = lastObj[key];
+  const merged = { ...safeServer }; // サーバーの最新状態をベースにする
+
+  Object.keys(safeLocal).forEach(key => {
+    const localVal = safeLocal[key];
+    const serverVal = safeServer[key];
+    const lastVal = safeLast[key];
 
     // 中にさらにデータが入れ子になっている場合は、奥まで確認して結合します
-    if (
-      typeof localVal === 'object' && localVal !== null && !Array.isArray(localVal) &&
-      typeof serverVal === 'object' && serverVal !== null && !Array.isArray(serverVal) &&
-      typeof lastVal === 'object' && lastVal !== null && !Array.isArray(lastVal)
-    ) {
+    const isLocalObj = typeof localVal === 'object' && localVal !== null && !Array.isArray(localVal);
+    const isServerObj = typeof serverVal === 'object' && serverVal !== null && !Array.isArray(serverVal);
+    
+    if (isLocalObj || isServerObj) {
       merged[key] = mergeObject(localVal, serverVal, lastVal);
     } else {
       // 値を比較して、変更があったかを判定します
@@ -496,7 +499,7 @@ export const useShiftData = (currentYear, currentMonth) => {
     return () => clearTimeout(debouncedSaveConfig.current);
   }, [staff, tasks, shiftPatterns, adminConfig]);
 
-  const triggerScheduleSave = useCallback(() => {
+const triggerScheduleSave = useCallback(() => {
     setSaveStatus('unsaved');
     if (debouncedSaveSchedule.current) clearTimeout(debouncedSaveSchedule.current);
 
@@ -520,37 +523,19 @@ export const useShiftData = (currentYear, currentMonth) => {
         const [y, m] = monthKey.split('-');
         const docRef = getMonthDocRef(y, m);
         
-        updates['updatedAt'] = new Date().toISOString();
+        // オブジェクトの階層をそのままFirestoreに渡す
+        const nestedData = {
+            updatedAt: new Date().toISOString(),
+            scheduleData: updates
+        };
 
         try {
-          await updateDoc(docRef, updates);
+          // updateDocの代わりにsetDoc(merge:true)を使用することで、ドットを含むキーも正しく保存されます
+          await setDoc(docRef, nestedData, { merge: true });
         } catch (error) {
-          if (error.code === 'not-found') {
-             const nestedData = {
-               year: parseInt(y),
-               month: parseInt(m),
-               updatedAt: new Date().toISOString(),
-               scheduleData: {}
-             };
-             
-             for (const [key, value] of Object.entries(updates)) {
-                 if (key.startsWith('scheduleData.')) {
-                     const parts = key.split('.');
-                     const staffId = parts[1];
-                     const day = parts[2];
-                     if (!nestedData.scheduleData[staffId]) {
-                         nestedData.scheduleData[staffId] = {};
-                     }
-                     nestedData.scheduleData[staffId][day] = value;
-                 }
-             }
-
-             await setDoc(docRef, nestedData, { merge: true });
-          } else {
-            console.error(`Schedule update failed for ${monthKey}:`, error);
-            setSaveStatus('error');
-            throw error;
-          }
+          console.error(`Schedule update failed for ${monthKey}:`, error);
+          setSaveStatus('error');
+          throw error;
         }
       });
 
@@ -570,7 +555,6 @@ export const useShiftData = (currentYear, currentMonth) => {
       }
     }, 1000);
   }, []);
-
   // ---------------------------------------------------------------------------
   // 4. データ更新用関数 (UIから呼び出す)
   // ---------------------------------------------------------------------------
@@ -600,7 +584,8 @@ export const useShiftData = (currentYear, currentMonth) => {
     });
 
     if (!pendingChanges.current[key]) pendingChanges.current[key] = {};
-    pendingChanges.current[key][`scheduleData.${staffId}.${day}`] = value;
+    if (!pendingChanges.current[key][staffId]) pendingChanges.current[key][staffId] = {};
+    pendingChanges.current[key][staffId][day] = value;
 
     triggerScheduleSave();
   }, [triggerScheduleSave]);
@@ -643,7 +628,9 @@ export const useShiftData = (currentYear, currentMonth) => {
     if (!pendingChanges.current[key]) pendingChanges.current[key] = {};
     
     updates.forEach(({ staffId, day, value }) => {
-      pendingChanges.current[key][`scheduleData.${staffId}.${day}`] = value;
+      if (!pendingChanges.current[key][staffId]) pendingChanges.current[key][staffId] = {};
+      pendingChanges.current[key][staffId][day] = value;
+      
       if (localPendingChanges.current[key]?.[`${staffId}.${day}`]) {
           delete localPendingChanges.current[key][`${staffId}.${day}`];
       }
@@ -662,7 +649,7 @@ export const useShiftData = (currentYear, currentMonth) => {
     });
 
     if (!pendingChanges.current[key]) pendingChanges.current[key] = {};
-    pendingChanges.current[key][`scheduleData.${staffId}`] = monthData;
+    pendingChanges.current[key][staffId] = monthData;
     
     triggerScheduleSave();
   }, [triggerScheduleSave]);

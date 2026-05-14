@@ -74,7 +74,7 @@ const MainContent = () => {
   }, [schedule, key, staff, tasks, daysInMonth, initialDataLoaded]);
 
   // ハンドラー
-const handleUpdateSchedule = (staffId, day, value) => {
+  const handleUpdateSchedule = (staffId, day, value) => {
     const currentVal = schedule[key]?.[staffId]?.[day];
     
     // すでに保留中の変更があるか確認し、最初の承認済みデータ（originalValue）を取得する
@@ -189,38 +189,79 @@ const handleUpdateSchedule = (staffId, day, value) => {
             onDeleteStaff={(id) => setConfirmDelete({ type: 'staff', id, name: staff.find(s => s.id === id)?.name })} 
             onUpdateStaffInfo={(id, f, v) => setStaff(prev => prev.map(s => s.id === id ? { ...s, [f]: v } : s))}
             onApplyStaffPattern={(sid, p, hb) => {
+              // 変更前のスタッフデータを取得
+              const targetStaff = staff.find(s => s.id === sid);
+              const oldPattern = targetStaff?.defaultShift?.pattern || Array(5).fill('シフト休');
+              const oldHbArray = targetStaff?.defaultShift?.hasBreakArray;
+
+              // 基本シフトパターンを更新
               setStaff(prev => prev.map(s => s.id === sid ? { ...s, defaultShift: { pattern: p, hasBreakArray: hb } } : s));
-              const updates = days.map(d => {
+              
+              const updates = [];
+              days.forEach(d => {
                 const date = new Date(year, month - 1, d.day);
                 const dw = date.getDay();
-                let v = '';
+                
+                // --- 【古いパターン】での本来の予定値を計算 ---
+                let oldExpectedValue = '';
                 if (currentMonthHolidays.includes(d.day) || dw === 0 || dw === 6) {
-                    v = 'シフト休';
-                } else if (p[dw-1] === 'シフト休') {
-                    v = 'シフト休';
+                    oldExpectedValue = 'シフト休';
+                } else if (oldPattern[dw-1] === 'シフト休') {
+                    oldExpectedValue = 'シフト休';
                 } else {
-                    const pat = shiftPatterns.find(pat => pat.id === p[dw-1]);
-                    if (pat) {
-                        let workHours = Number(pat.workHours) || 0;
-                        const hasBreak = Array.isArray(hb) ? hb[dw-1] : checkPatternHasBreak(pat.id, shiftPatterns);
-                        
-                        // 休憩なしの場合、もともと休憩があるパターンから休憩を抜いた場合のみ稼働時間に休憩時間を足す
+                    const oldPat = shiftPatterns.find(pat => pat.id === oldPattern[dw-1]);
+                    if (oldPat) {
+                        let workH = Number(oldPat.workHours) || 0;
+                        const hasBreak = Array.isArray(oldHbArray) ? oldHbArray[dw-1] : checkPatternHasBreak(oldPat.id, shiftPatterns);
                         if (!hasBreak) {
-                            let breakH = Number(pat.breakHours) || 0;
-                            if (breakH === 0 && pat.breakTime && pat.breakTime !== '0:00' && pat.breakTime !== '00:00') {
-                                const [h, m] = pat.breakTime.split(':').map(Number);
+                            let breakH = Number(oldPat.breakHours) || 0;
+                            if (breakH === 0 && oldPat.breakTime && oldPat.breakTime !== '0:00' && oldPat.breakTime !== '00:00') {
+                                const [h, m] = oldPat.breakTime.split(':').map(Number);
                                 breakH = h + (m / 60);
                             }
-                            if (breakH > 0) {
-                                workHours += breakH;
-                            }
+                            if (breakH > 0) workH += breakH;
                         }
-                        v = workHours;
+                        oldExpectedValue = workH;
                     }
                 }
-                return { staffId: sid, day: d.day, value: v };
+
+                // --- 【新しいパターン】での予定値を計算 ---
+                let newExpectedValue = '';
+                if (currentMonthHolidays.includes(d.day) || dw === 0 || dw === 6) {
+                    newExpectedValue = 'シフト休';
+                } else if (p[dw-1] === 'シフト休') {
+                    newExpectedValue = 'シフト休';
+                } else {
+                    const newPat = shiftPatterns.find(pat => pat.id === p[dw-1]);
+                    if (newPat) {
+                        let workH = Number(newPat.workHours) || 0;
+                        const hasBreak = Array.isArray(hb) ? hb[dw-1] : checkPatternHasBreak(newPat.id, shiftPatterns);
+                        if (!hasBreak) {
+                            let breakH = Number(newPat.breakHours) || 0;
+                            if (breakH === 0 && newPat.breakTime && newPat.breakTime !== '0:00' && newPat.breakTime !== '00:00') {
+                                const [h, m] = newPat.breakTime.split(':').map(Number);
+                                breakH = h + (m / 60);
+                            }
+                            if (breakH > 0) workH += breakH;
+                        }
+                        newExpectedValue = workH;
+                    }
+                }
+
+                // 現在シフト表に入力されている値を取得
+                const currentValue = currentMonthSchedule[sid]?.[d.day] ?? '';
+                
+                // ★ 判定: 現在の値が「変更前のパターン通りの値」だった場合のみ、新しいパターンで上書きする
+                // (手入力で「有休」や「別の時間」に変更されている日は上書きせず保護する)
+                const normCurrent = (typeof currentValue === 'object' && currentValue !== null) ? (currentValue.type || currentValue.hours) : currentValue;
+                if (String(normCurrent) === String(oldExpectedValue) || normCurrent === '') {
+                    updates.push({ staffId: sid, day: d.day, value: newExpectedValue });
+                }
               });
-              updateShiftItems(year, month, updates);
+
+              if (updates.length > 0) {
+                  updateShiftItems(year, month, updates);
+              }
             }} 
             onToggleShiftSubmitted={actions.handleToggleShiftSubmitted}
             onToggleShiftApproved={actions.handleToggleShiftApproved} 
