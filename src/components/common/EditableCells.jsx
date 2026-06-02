@@ -258,10 +258,10 @@ export const EditableCell = React.memo(({
           className="absolute inset-0 w-full h-full opacity-100 bg-transparent text-center text-sm cursor-pointer appearance-none outline-none focus:ring-2 focus:ring-sky-500"
           defaultValue=""
         >
-          <option value="" disabled hidden>選択...</option>
           <option value="稼働時間入力">稼働時間入力</option>
           <optgroup label="ステータス">
               <option value="有休">有休</option>
+              <option value="夏季休暇">夏季休暇</option> {/* 追加 */}
               <option value="シフト休">シフト休</option>
               <option value="通休">通院休暇</option>
               <option value="欠勤">欠勤</option>
