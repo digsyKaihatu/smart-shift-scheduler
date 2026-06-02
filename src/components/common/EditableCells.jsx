@@ -9,6 +9,7 @@ const formatValue = (value) => {
     '欠勤': '欠',
     '通休': '通',
     '有休': '有',
+    '夏季休暇': '夏', // これを追加
     '遅刻': '遅',
     '早退': '早'
   };
@@ -198,10 +199,10 @@ export const EditableCell = React.memo(({
     else if (isHoliday || dayOfWeek === '日') baseBg = 'bg-pink-50';
     else if (dayOfWeek === '土') baseBg = 'bg-sky-50';
 
-    if (typeof value === 'number' && value > 0) return `bg-green-100 ${hoverClass}`;
     if (typeof value === 'object' && value !== null && 'type' in value) {
         if (value.type === '稼働') return `bg-green-100 ${hoverClass}`;
-        if (value.type.includes('有休')) return `bg-yellow-100 ${hoverClass}`;
+        // 修正前: if (value.type.includes('有休')) return `bg-yellow-100 ${hoverClass}`;
+        if (value.type.includes('有休') || value.type === '夏季休暇') return `bg-yellow-100 ${hoverClass}`; // 変更
         if (value.type === 'シフト休') {
              if (!isHoliday && !isWeekend) return `bg-white text-black ${hoverClass}`;
              return `bg-slate-200 ${hoverClass}`;
@@ -209,7 +210,9 @@ export const EditableCell = React.memo(({
         return `bg-slate-200 ${hoverClass}`;
     }
     switch(value) {
-      case '有休': return `bg-yellow-100 ${hoverClass}`;
+      case '有休': 
+      case '夏季休暇': // 追加
+          return `bg-yellow-100 ${hoverClass}`;
       case '通休': return `bg-blue-100 ${hoverClass}`;
       case 'シフト休': 
           if (!isHoliday && !isWeekend) return `bg-white text-black ${hoverClass}`;
