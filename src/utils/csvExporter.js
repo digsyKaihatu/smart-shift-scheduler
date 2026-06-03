@@ -29,7 +29,6 @@ const formatForCsv = (value) => {
       '欠勤': '欠',
       '遅刻': '遅',
       '早退': '早',
-      '夏': '有' // 追加（画面上で「夏」と表示されているものを「有」に変換）
     };
 
     Object.entries(replacements).forEach(([full, short]) => {
