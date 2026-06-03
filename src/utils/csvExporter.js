@@ -28,7 +28,7 @@ const formatForCsv = (value) => {
       'シフト休': '休',
       '欠勤': '欠',
       '遅刻': '遅',
-      '早退': '早'
+      '早退': '早',
     };
 
     Object.entries(replacements).forEach(([full, short]) => {

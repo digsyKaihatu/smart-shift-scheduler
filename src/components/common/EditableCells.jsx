@@ -9,6 +9,7 @@ const formatValue = (value) => {
     '欠勤': '欠',
     '通休': '通',
     '有休': '有',
+    '夏季休暇': '夏', // これを追加
     '遅刻': '遅',
     '早退': '早'
   };
@@ -198,18 +199,25 @@ export const EditableCell = React.memo(({
     else if (isHoliday || dayOfWeek === '日') baseBg = 'bg-pink-50';
     else if (dayOfWeek === '土') baseBg = 'bg-sky-50';
 
-    if (typeof value === 'number' && value > 0) return `bg-green-100 ${hoverClass}`;
     if (typeof value === 'object' && value !== null && 'type' in value) {
         if (value.type === '稼働') return `bg-green-100 ${hoverClass}`;
-        if (value.type.includes('有休')) return `bg-yellow-100 ${hoverClass}`;
+        // 修正前: if (value.type.includes('有休')) return `bg-yellow-100 ${hoverClass}`;
+        if (value.type.includes('有休') || value.type === '夏季休暇') return `bg-yellow-100 ${hoverClass}`; // 変更
         if (value.type === 'シフト休') {
              if (!isHoliday && !isWeekend) return `bg-white text-black ${hoverClass}`;
              return `bg-slate-200 ${hoverClass}`;
         }
         return `bg-slate-200 ${hoverClass}`;
     }
+
+    if (typeof value === 'number' && value > 0) {
+        return `bg-green-100 ${hoverClass}`;
+    }
+    
     switch(value) {
-      case '有休': return `bg-yellow-100 ${hoverClass}`;
+      case '有休': 
+      case '夏季休暇': // 追加
+          return `bg-yellow-100 ${hoverClass}`;
       case '通休': return `bg-blue-100 ${hoverClass}`;
       case 'シフト休': 
           if (!isHoliday && !isWeekend) return `bg-white text-black ${hoverClass}`;
@@ -255,10 +263,10 @@ export const EditableCell = React.memo(({
           className="absolute inset-0 w-full h-full opacity-100 bg-transparent text-center text-sm cursor-pointer appearance-none outline-none focus:ring-2 focus:ring-sky-500"
           defaultValue=""
         >
-          <option value="" disabled hidden>選択...</option>
           <option value="稼働時間入力">稼働時間入力</option>
           <optgroup label="ステータス">
               <option value="有休">有休</option>
+              <option value="夏季休暇">夏季休暇</option> {/* 追加 */}
               <option value="シフト休">シフト休</option>
               <option value="通休">通院休暇</option>
               <option value="欠勤">欠勤</option>

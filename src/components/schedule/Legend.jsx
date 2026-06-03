@@ -11,7 +11,7 @@ const Legend = () => {
     return (
         <div className="flex items-center flex-wrap gap-x-4 gap-y-1">
             <LegendItem colorClass="bg-green-200" label="稼働" />
-            <LegendItem colorClass="bg-yellow-200" label="有休/半日有休" />
+            <LegendItem colorClass="bg-yellow-200" label="有休/半日有休/夏季休暇" />
             <LegendItem colorClass="bg-blue-200" label="通休/半日通休" />
             <LegendItem colorClass="bg-slate-300" label="シフト休/午前休" />
             <LegendItem colorClass="bg-red-200" label="欠勤" />
