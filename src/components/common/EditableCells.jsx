@@ -209,6 +209,11 @@ export const EditableCell = React.memo(({
         }
         return `bg-slate-200 ${hoverClass}`;
     }
+
+    if (typeof value === 'number' && value > 0) {
+        return `bg-green-100 ${hoverClass}`;
+    }
+    
     switch(value) {
       case '有休': 
       case '夏季休暇': // 追加
