@@ -1,7 +1,6 @@
 import { useState, useCallback } from 'react';
 import { chatService } from '../services/chatService';
 import { summarizePattern } from '../utils/scheduleUtils';
-import { formatValue } from '../utils/dateUtils';
 
 /**
  * シフトに関する各種アクション（提出、承認、通知など）を管理するフック
@@ -60,13 +59,9 @@ export const useShiftActions = ({
     try { 
       await chatService.sendSubmission(name, year, month, mentions); 
     } catch (e) { 
+      // 【修正点】通知に失敗してもチェックは外さず、警告のみ表示する
       console.error("提出通知の送信に失敗しました:", e);
-      alert(`通知エラー: ${e.message}\n(チェックを元に戻しました)`);
-      // 送信失敗時はロールバック
-      setStaff(prev => prev.map(x => x.id === staffId ? { 
-        ...x, 
-        shiftSubmitted: { ...x.shiftSubmitted, [key]: false } 
-      } : x));
+      alert(`チャットへの通知に失敗しましたが、シフトの提出は完了しました。\n(エラー詳細: ${e.message})`);
     }
   };
 
@@ -99,12 +94,9 @@ export const useShiftActions = ({
     try { 
       await chatService.sendRemand(name, s.chatUserId); 
     } catch (e) { 
+      // 【修正点】通知に失敗してもチェックは外さず、警告のみ表示する
       console.error("差戻通知の送信に失敗しました:", e);
-      alert(`通知エラー: ${e.message}\n(チェックを元に戻しました)`);
-      setStaff(prev => prev.map(x => x.id === staffId ? { 
-        ...x, 
-        shiftRemanded: { ...x.shiftRemanded, [key]: false } 
-      } : x));
+      alert(`チャットへの通知に失敗しましたが、シフトの差戻は完了しました。\n(エラー詳細: ${e.message})`);
     }
   };
 
@@ -131,6 +123,19 @@ export const useShiftActions = ({
     } : x));
     setApprovalModalStaffId(null);
 
+    // 【修正点】通知の成功/失敗に関わらず、承認済みのシフト変更（オレンジ色のセル）を確定させる
+    const staffSchedule = schedule[key]?.[s.id] || {};
+    const updates = [];
+    Object.entries(staffSchedule).forEach(([d, val]) => {
+      if (typeof val === 'object' && val?.modified) {
+        const { modified, ...rest } = val;
+        let cleanedVal = Object.keys(rest).length === 1 && rest.type ? rest.type : rest;
+        if (rest.type === '稼働' && typeof rest.hours === 'number') cleanedVal = rest.hours;
+        updates.push({ staffId: s.id, day: Number(d), value: cleanedVal });
+      }
+    });
+    if (updates.length > 0) updateShiftItems(year, month, updates);
+
     try {
       await chatService.sendApproval(
         s, 
@@ -140,26 +145,10 @@ export const useShiftActions = ({
         irregularText, 
         remarks
       );
-      
-      const staffSchedule = schedule[key]?.[s.id] || {};
-      const updates = [];
-      Object.entries(staffSchedule).forEach(([d, val]) => {
-        if (typeof val === 'object' && val?.modified) {
-          const { modified, ...rest } = val;
-          let cleanedVal = Object.keys(rest).length === 1 && rest.type ? rest.type : rest;
-          if (rest.type === '稼働' && typeof rest.hours === 'number') cleanedVal = rest.hours;
-          updates.push({ staffId: s.id, day: Number(d), value: cleanedVal });
-        }
-      });
-      if (updates.length > 0) updateShiftItems(year, month, updates);
-
     } catch (e) { 
+      // 【修正点】通知に失敗してもチェックは外さず、警告のみ表示する
       console.error("承認通知の送信に失敗しました:", e);
-      alert(`通知エラー: ${e.message}\n(チェックを元に戻しました)`);
-      setStaff(prev => prev.map(x => x.id === targetId ? { 
-        ...x, 
-        shiftApproved: { ...x.shiftApproved, [key]: false } 
-      } : x));
+      alert(`チャットへの通知に失敗しましたが、シフトの承認とデータの確定は完了しました。\n(エラー詳細: ${e.message})`);
     }
   };
 
@@ -205,14 +194,19 @@ export const useShiftActions = ({
             .join(' ');
         }
 
-        await chatService.sendChangeAfterApproval(
-          targetStaff.name, 
-          year, 
-          month, 
-          dateSummary, 
-          changeDetails, 
-          mentions
-        );
+        try {
+            await chatService.sendChangeAfterApproval(
+              targetStaff.name, 
+              year, 
+              month, 
+              dateSummary, 
+              changeDetails, 
+              mentions
+            );
+        } catch (e) {
+            console.warn(`通知送信エラー (${targetStaff.name}):`, e);
+            // エラーを無視してデータ保存の処理に進む
+        }
         
         successfulStaffIds.push(sId);
 
@@ -242,7 +236,7 @@ export const useShiftActions = ({
 
     } catch (error) {
       console.error("一括変更確定エラー:", error);
-      alert(`通知エラー: 一部の通知送信に失敗したため処理を中断しました。\n${error.message}`);
+      alert(`処理中にエラーが発生しました。\n${error.message}`);
     } finally {
       setIsLoading(false);
     }
