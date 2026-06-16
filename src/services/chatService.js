@@ -14,12 +14,13 @@ const WEBHOOKS = {
 /**
  * 共通の送信処理
  * エラーが発生した場合は throw し、UI側のロールバック処理を発火させます。
+ * （※Webhook URLが未設定の場合はスキップし、エラー扱いにしないように修正済み）
  */
 async function postToChat(url, payload, type = 'notification') {
   if (!url) {
-    const errorMsg = `[ChatService] Webhook URLが設定されていません: ${type}`;
-    console.error(errorMsg);
-    throw new Error(errorMsg);
+    // 【修正点】エラーを発生させず、警告を出して処理を完了（スキップ）させます
+    console.warn(`[ChatService] Webhook URLが設定されていません: ${type}。通知をスキップして続行します。`);
+    return false; 
   }
 
   try {
