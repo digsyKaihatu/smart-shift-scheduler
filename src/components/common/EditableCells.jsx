@@ -107,7 +107,7 @@ export const EditableCell = React.memo(({
                 commitInput();
             } else if (mode === 'select' && selectRef.current) {
                  const val = selectRef.current.value;
-                 if (val && val !== '稼働時間入力' && !['遅刻', '早退', '午前有休', '午後有休', '午前休', '午後休', '午前通休', '午後通休'].includes(val)) {
+                 if (val && val !== '稼働時間入力' && !['遅刻', '早退', '午前有休', '午後有休', '午前夏季休暇', '午後夏季休暇', '午前休', '午後休', '午前通休', '午後通休'].includes(val)) {
                      onUpdate(val);
                      setMode('view');
                  } else if (val === '稼働時間入力') {
@@ -166,7 +166,7 @@ export const EditableCell = React.memo(({
 
   const handleSelectChange = (e) => {
     const selected = e.target.value;
-    const specialShiftOptions = ['遅刻', '早退', '午前有休', '午後有休', '午前休', '午後休', '午前通休', '午後通休'];
+    const specialShiftOptions = ['遅刻', '早退', '午前有休', '午後有休', '午前夏季休暇', '午後夏季休暇', '午前休', '午後休', '午前通休', '午後通休'];
 
     if (specialShiftOptions.includes(selected)) {
         const currentHours = (typeof value === 'object' && value?.type === selected) ? value.hours : 4.0;
@@ -202,7 +202,7 @@ export const EditableCell = React.memo(({
     if (typeof value === 'object' && value !== null && 'type' in value) {
         if (value.type === '稼働') return `bg-green-100 ${hoverClass}`;
         // 修正前: if (value.type.includes('有休')) return `bg-yellow-100 ${hoverClass}`;
-        if (value.type.includes('有休') || value.type === '夏季休暇') return `bg-yellow-100 ${hoverClass}`; // 変更
+        if (value.type.includes('有休') || value.type.includes('夏季休暇')) return `bg-yellow-100 ${hoverClass}`;
         if (value.type === 'シフト休') {
              if (!isHoliday && !isWeekend) return `bg-white text-black ${hoverClass}`;
              return `bg-slate-200 ${hoverClass}`;
@@ -271,11 +271,11 @@ export const EditableCell = React.memo(({
               <option value="通休">通院休暇</option>
               <option value="欠勤">欠勤</option>
           </optgroup>
-          <optgroup label="時間単位">
-              {['遅刻', '早退', '午前有休', '午後有休', '午前休', '午後休', '午前通休', '午後通休'].map(opt => (
-                  <option key={opt} value={opt}>{opt.replace('通休', '通院休暇')}</option>
+         <optgroup label="時間単位">
+             {['遅刻', '早退', '午前有休', '午後有休', '午前夏季休暇', '午後夏季休暇', '午前休', '午後休', '午前通休', '午後通休'].map(opt => (
+                   <option key={opt} value={opt}>{opt.replace('通休', '通院休暇')}</option>
               ))}
-          </optgroup>
+         </optgroup>
           <option value="">(クリア)</option>
         </select>
       ) : (
