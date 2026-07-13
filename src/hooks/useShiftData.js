@@ -5,7 +5,7 @@ import { initialShiftPatterns, initialStaffData, initialAdminConfig, initialTask
 import { generateScheduleForMonth } from '../utils/scheduleUtils';
 
 // ---------------------------------------------------------------------------
-// 汎用的なディープイコール関数・マージ関数（変更なし）
+// 汎用的なディープイコール関数・マージ関数
 // ---------------------------------------------------------------------------
 const deepEqual = (a, b) => {
   if (a === b) return true;
@@ -114,8 +114,7 @@ const initialState = {
   schedule: {},
   tasks: [],
   shiftPatterns: [],
-  adminConfig: initialAdminConfig,
-  history: { past: [], future: [] }
+  adminConfig: initialAdminConfig
 };
 
 function shiftReducer(state, action) {
@@ -131,10 +130,8 @@ function shiftReducer(state, action) {
     case 'SET_INITIAL_DATA_LOADED':
       return { ...state, initialDataLoaded: true };
     case 'UPDATE_MASTER_DATA':
-      // staff, tasks などのマスタデータを更新
       return { ...state, ...action.payload };
     case 'SYNC_SCHEDULE':
-      // サーバーからのスケジュール更新
       return {
         ...state,
         schedule: {
@@ -142,40 +139,10 @@ function shiftReducer(state, action) {
           [action.payload.key]: action.payload.nextMonthData
         }
       };
-    case 'UPDATE_SCHEDULE_AND_HISTORY':
-      // ローカルでのスケジュール更新（Undo用履歴保存）
-      return {
-        ...state,
-        schedule: action.payload,
-        history: { past: [...state.history.past, state.schedule], future: [] }
-      };
-    case 'UPDATE_LOCAL_SCHEDULE':
-      // 履歴に残さないローカル更新
+    case 'UPDATE_SCHEDULE':
       return {
         ...state,
         schedule: action.payload
-      };
-    case 'UNDO':
-      if (state.history.past.length === 0) return state;
-      const previous = state.history.past[state.history.past.length - 1];
-      return {
-        ...state,
-        schedule: previous,
-        history: { 
-          past: state.history.past.slice(0, -1), 
-          future: [state.schedule, ...state.history.future] 
-        }
-      };
-    case 'REDO':
-      if (state.history.future.length === 0) return state;
-      const next = state.history.future[0];
-      return {
-        ...state,
-        schedule: next,
-        history: { 
-          past: [...state.history.past, state.schedule], 
-          future: state.history.future.slice(1) 
-        }
       };
     default:
       return state;
@@ -187,9 +154,8 @@ function shiftReducer(state, action) {
 // ---------------------------------------------------------------------------
 export const useShiftData = (currentYear, currentMonth) => {
   const [state, dispatch] = useReducer(shiftReducer, initialState);
-  const { staff, schedule, tasks, shiftPatterns, adminConfig, isLoading, loadingMessage, saveStatus, initialDataLoaded, history } = state;
+  const { staff, schedule, tasks, shiftPatterns, adminConfig, isLoading, loadingMessage, saveStatus, initialDataLoaded } = state;
 
-  // Refs
   const debouncedSaveConfig = useRef(null);
   const debouncedSaveSchedule = useRef(null);
   const isInitialLoadComplete = useRef(false);
@@ -207,11 +173,10 @@ export const useShiftData = (currentYear, currentMonth) => {
   });
 
   const configDocRef = doc(db, "schedules", "config");
-  const legacyDocRef = doc(db, "schedules", "main");
   const getMonthDocRef = (year, month) => doc(db, "schedules", `${year}-${month}`);
 
   // ---------------------------------------------------------------------------
-  // ローカル更新用のラッパー関数 (dispatchを発行)
+  // ローカル更新用のラッパー関数
   // ---------------------------------------------------------------------------
   const setStaff = useCallback((value) => {
     pendingConfigSave.current = true;
@@ -249,47 +214,25 @@ export const useShiftData = (currentYear, currentMonth) => {
         dispatch({ type: 'SET_LOADING', payload: { isLoading: true, message: "設定データを読み込んでいます..." } });
         
         const configSnap = await getDoc(configDocRef);
-        let needsMigration = !configSnap.exists();
 
-        if (needsMigration) {
-          const legacySnap = await getDoc(legacyDocRef);
-          if (legacySnap.exists()) {
-            dispatch({ type: 'SET_LOADING', payload: { isLoading: true, message: "データの移行処理を行っています..." } });
-            const legacyData = legacySnap.data();
-            
-            const initialStaff = legacyData.staff || initialStaffData;
-            const initialTasksData = legacyData.tasks || initialTasks;
-            const initialPatterns = legacyData.shiftPatterns || initialShiftPatterns;
-            const initialAdmin = legacyData.adminConfig || initialAdminConfig;
-
-            dispatch({ type: 'UPDATE_MASTER_DATA', payload: { 
-              staff: initialStaff, tasks: initialTasksData, shiftPatterns: initialPatterns, adminConfig: initialAdmin 
-            }});
-            
-            if (legacyData.schedule) {
-               dispatch({ type: 'UPDATE_LOCAL_SCHEDULE', payload: legacyData.schedule });
-            }
-            
-            lastServerConfigRef.current = {
-               staff: initialStaff, tasks: initialTasksData, shiftPatterns: initialPatterns, adminConfig: initialAdmin
-            };
-
-            await setDoc(configDocRef, {
-              ...lastServerConfigRef.current,
-              updatedAt: new Date().toISOString()
-            });
-            
-            dispatch({ type: 'SET_INITIAL_DATA_LOADED' });
-            isFirstConfigLoad = false;
-          } else {
+        if (!configSnap.exists()) {
+             // configドキュメントが無い場合は、初期データをそのまま保存して開始
              await setDoc(configDocRef, {
-                staff: initialStaffData, tasks: initialTasks, shiftPatterns: initialShiftPatterns, adminConfig: initialAdminConfig,
+                staff: initialStaffData, 
+                tasks: initialTasks, 
+                shiftPatterns: initialShiftPatterns, 
+                adminConfig: initialAdminConfig,
                 updatedAt: new Date().toISOString()
              });
-          }
+             
+             dispatch({ type: 'UPDATE_MASTER_DATA', payload: { 
+                 staff: initialStaffData, tasks: initialTasks, shiftPatterns: initialShiftPatterns, adminConfig: initialAdminConfig 
+             }});
+             dispatch({ type: 'SET_INITIAL_DATA_LOADED' });
+             isFirstConfigLoad = false;
         }
 
-        // リアルタイム同期
+        // リアルタイム同期（onSnapshot）
         unsubscribeConfig = onSnapshot(configDocRef, (snap) => {
           if (snap.exists()) {
             const data = snap.data();
@@ -322,7 +265,6 @@ export const useShiftData = (currentYear, currentMonth) => {
 
             if (isStaffEqual && isTasksEqual && isPatternsEqual && isAdminEqual && isInitialLoadComplete.current) return;
 
-            // マージ処理
             let newStaff = staff;
             let newTasks = tasks;
             let newPatterns = shiftPatterns;
@@ -355,6 +297,7 @@ export const useShiftData = (currentYear, currentMonth) => {
             
             if (!isInitialLoadComplete.current) dispatch({ type: 'SET_INITIAL_DATA_LOADED' });
           } else {
+             // 異常系: ドキュメントが消えた場合
              dispatch({ type: 'UPDATE_MASTER_DATA', payload: { 
                  staff: initialStaffData, tasks: initialTasks, shiftPatterns: initialShiftPatterns, adminConfig: initialAdminConfig 
              }});
@@ -371,7 +314,7 @@ export const useShiftData = (currentYear, currentMonth) => {
 
     loadMasterData();
     return () => unsubscribeConfig();
-  }, [staff, tasks, shiftPatterns, adminConfig]); // マージのために最新状態への依存が必要
+  }, [staff, tasks, shiftPatterns, adminConfig]);
 
   // ---------------------------------------------------------------------------
   // 2. 月次データロード (リアルタイム同期)
@@ -453,7 +396,7 @@ export const useShiftData = (currentYear, currentMonth) => {
       } else {
         if (!schedule[key]) {
             const initialSchedule = generateScheduleForMonth(currentYear, currentMonth, staff, shiftPatterns);
-            dispatch({ type: 'UPDATE_LOCAL_SCHEDULE', payload: { ...schedule, [key]: initialSchedule } });
+            dispatch({ type: 'UPDATE_SCHEDULE', payload: { ...schedule, [key]: initialSchedule } });
         }
         dispatch({ type: 'SET_LOADING', payload: { isLoading: false } });
       }
@@ -566,7 +509,7 @@ export const useShiftData = (currentYear, currentMonth) => {
       [key]: { ...currentMonthData, [staffId]: { ...currentStaffData, [day]: value } }
     };
     
-    dispatch({ type: 'UPDATE_SCHEDULE_AND_HISTORY', payload: newSchedule });
+    dispatch({ type: 'UPDATE_SCHEDULE', payload: newSchedule });
 
     if (!pendingChanges.current[key]) pendingChanges.current[key] = {};
     if (!pendingChanges.current[key][staffId]) pendingChanges.current[key][staffId] = {};
@@ -586,7 +529,7 @@ export const useShiftData = (currentYear, currentMonth) => {
       ...schedule,
       [key]: { ...currentMonthData, [staffId]: { ...currentStaffData, [day]: value } }
     };
-    dispatch({ type: 'UPDATE_LOCAL_SCHEDULE', payload: newSchedule });
+    dispatch({ type: 'UPDATE_SCHEDULE', payload: newSchedule });
 
     if (!localPendingChanges.current[key]) localPendingChanges.current[key] = {};
     localPendingChanges.current[key][`${staffId}.${day}`] = true;
@@ -609,7 +552,7 @@ export const useShiftData = (currentYear, currentMonth) => {
     if (!hasChange) return;
 
     const newSchedule = { ...schedule, [key]: currentMonthData };
-    dispatch({ type: 'UPDATE_SCHEDULE_AND_HISTORY', payload: newSchedule });
+    dispatch({ type: 'UPDATE_SCHEDULE', payload: newSchedule });
 
     if (!pendingChanges.current[key]) pendingChanges.current[key] = {};
     updates.forEach(({ staffId, day, value }) => {
@@ -629,16 +572,13 @@ export const useShiftData = (currentYear, currentMonth) => {
     currentMonthData[staffId] = monthData;
     
     const newSchedule = { ...schedule, [key]: currentMonthData };
-    dispatch({ type: 'UPDATE_LOCAL_SCHEDULE', payload: newSchedule }); // 保存は走らせるが履歴には一旦残さない
+    dispatch({ type: 'UPDATE_SCHEDULE', payload: newSchedule });
 
     if (!pendingChanges.current[key]) pendingChanges.current[key] = {};
     pendingChanges.current[key][staffId] = monthData;
     
     triggerScheduleSave();
   }, [schedule, triggerScheduleSave]);
-
-  const undo = useCallback(() => dispatch({ type: 'UNDO' }), []);
-  const redo = useCallback(() => dispatch({ type: 'REDO' }), []);
 
   return {
     staff, setStaff,
@@ -647,7 +587,6 @@ export const useShiftData = (currentYear, currentMonth) => {
     updateLocalShiftItem,
     updateShiftItems,
     updateShiftUserMonth,
-    undo, redo, canUndo: history.past.length > 0, canRedo: history.future.length > 0,
     tasks, setTasks,
     shiftPatterns, setShiftPatterns,
     adminConfig, setAdminConfig,
