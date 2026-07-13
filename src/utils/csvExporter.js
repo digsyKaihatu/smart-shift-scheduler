@@ -1,3 +1,4 @@
+import { SHIFT_STATUS_MAP } from '../constants/status'; // ★定数をインポート
 import { summarizePattern, generateScheduleForMonth } from './scheduleUtils';
 import { formatValue } from './dateUtils';
 
@@ -18,20 +19,9 @@ const formatForCsv = (value) => {
   // まず標準のフォーマット関数を通す
   let formatted = formatValue(value);
 
-  // 文字列の場合、特定のキーワードを短縮形に置換する
-  // (formatValueは完全一致のみの変換やオブジェクト処理を行うが、
-  //  "午前通休"のような文字列の部分一致置換をここで行う)
+  // 文字列の場合、定数を使って短縮形に置換する
   if (typeof formatted === 'string') {
-    const replacements = {
-      '通休': '通',
-      '有休': '有',
-      'シフト休': '休',
-      '欠勤': '欠',
-      '遅刻': '遅',
-      '早退': '早',
-    };
-
-    Object.entries(replacements).forEach(([full, short]) => {
+    Object.entries(SHIFT_STATUS_MAP).forEach(([full, short]) => {
       // split/joinを使って全ての出現箇所を置換
       formatted = formatted.split(full).join(short);
     });
@@ -99,7 +89,6 @@ export const downloadScheduleCSV = (staffList, scheduleData, arg3, arg4, arg5) =
   const baseSchedule = generateScheduleForMonth(year, month, sortedStaffList, safeShiftPatterns);
 
   // データ取得用のキーを生成 (YYYY-M 形式)
-  // MainContent.jsxなどの保存ロジックと形式を合わせる必要があります
   const monthKey = `${year}-${month}`;
   const currentMonthData = scheduleData[monthKey] || {};
 
@@ -122,7 +111,6 @@ export const downloadScheduleCSV = (staffList, scheduleData, arg3, arg4, arg5) =
 
     for (let d = 1; d <= daysInMonth; d++) {
       // 1. 手入力データの取得
-      // scheduleData -> monthKey -> staffId -> day (数値) の順でアクセス
       const staffMonthData = currentMonthData[staff.id] || {};
       const userVal = staffMonthData[d];
 

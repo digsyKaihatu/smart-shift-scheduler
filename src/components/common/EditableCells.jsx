@@ -1,19 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { SHIFT_STATUS_MAP, SHIFT_STATUS_OPTIONS } from '../../constants/status';
 
-/**
- * 閲覧モードでの表記を短縮するヘルパー関数
- */
+// formatValueはdateUtils.jsと同じロジック（定数使用）に統一
 const formatValue = (value) => {
-  const mapping = {
-    'シフト休': '休',
-    '欠勤': '欠',
-    '通休': '通',
-    '有休': '有',
-    '夏季休暇': '夏', // これを追加
-    '遅刻': '遅',
-    '早退': '早'
-  };
-
   if (typeof value === 'number') {
     return value % 1 === 0 ? Math.floor(value) : value.toFixed(1);
   }
@@ -25,10 +14,10 @@ const formatValue = (value) => {
     }
 
     let displayType = value.type;
-    if (mapping[value.type]) {
-      displayType = mapping[value.type];
+    if (SHIFT_STATUS_MAP[value.type]) {
+      displayType = SHIFT_STATUS_MAP[value.type];
     } else {
-      Object.entries(mapping).forEach(([full, short]) => {
+      Object.entries(SHIFT_STATUS_MAP).forEach(([full, short]) => {
         displayType = displayType.replace(full, short);
       });
     }
@@ -40,15 +29,12 @@ const formatValue = (value) => {
   }
 
   if (typeof value === 'string') {
-    return mapping[value] || value;
+    return SHIFT_STATUS_MAP[value] || value;
   }
 
   return value;
 };
 
-/**
- * シフト入力セル
- */
 export const EditableCell = React.memo(({ 
   value, onUpdate, borderClass, disabled = false, isAdmin = false, 
   isToday = false, isHoliday = false, isWeekend = false, dayOfWeek, 
@@ -85,11 +71,8 @@ export const EditableCell = React.memo(({
     if (direction === 'ArrowRight') nextCol++;
     
     if (direction === 'Tab') {
-        if (e && e.shiftKey) {
-            nextCol--;
-        } else {
-            nextCol++;
-        }
+        if (e && e.shiftKey) nextCol--;
+        else nextCol++;
     }
 
     const target = document.querySelector(`[data-row="${nextRow}"][data-col="${nextCol}"]`);
@@ -107,7 +90,7 @@ export const EditableCell = React.memo(({
                 commitInput();
             } else if (mode === 'select' && selectRef.current) {
                  const val = selectRef.current.value;
-                 if (val && val !== '稼働時間入力' && !['遅刻', '早退', '午前有休', '午後有休', '午前夏季休暇', '午後夏季休暇', '午前休', '午後休', '午前通休', '午後通休'].includes(val)) {
+                 if (val && val !== '稼働時間入力' && !SHIFT_STATUS_OPTIONS.hourly.includes(val)) {
                      onUpdate(val);
                      setMode('view');
                  } else if (val === '稼働時間入力') {
@@ -166,9 +149,8 @@ export const EditableCell = React.memo(({
 
   const handleSelectChange = (e) => {
     const selected = e.target.value;
-    const specialShiftOptions = ['遅刻', '早退', '午前有休', '午後有休', '午前夏季休暇', '午後夏季休暇', '午前休', '午後休', '午前通休', '午後通休'];
 
-    if (specialShiftOptions.includes(selected)) {
+    if (SHIFT_STATUS_OPTIONS.hourly.includes(selected)) {
         const currentHours = (typeof value === 'object' && value?.type === selected) ? value.hours : 4.0;
         setEditingSpecialShift(selected);
         setInputValue(String(currentHours));
@@ -185,13 +167,8 @@ export const EditableCell = React.memo(({
   };
 
   const getBackgroundColor = () => {
-    if (isSelected) {
-        return `bg-sky-200 ring-2 ring-inset ring-sky-500 z-20 ${isEffectivelyDisabled ? '' : 'hover:bg-sky-300'}`;
-    }
-
-    if (typeof value === 'object' && value?.modified) {
-        return `bg-orange-50 ring-2 ring-inset ring-orange-400 ${isEffectivelyDisabled ? '' : 'hover:bg-orange-100'}`;
-    }
+    if (isSelected) return `bg-sky-200 ring-2 ring-inset ring-sky-500 z-20 ${isEffectivelyDisabled ? '' : 'hover:bg-sky-300'}`;
+    if (typeof value === 'object' && value?.modified) return `bg-orange-50 ring-2 ring-inset ring-orange-400 ${isEffectivelyDisabled ? '' : 'hover:bg-orange-100'}`;
 
     const hoverClass = isEffectivelyDisabled ? '' : 'hover:bg-opacity-80';
     let baseBg = 'bg-white';
@@ -201,7 +178,6 @@ export const EditableCell = React.memo(({
 
     if (typeof value === 'object' && value !== null && 'type' in value) {
         if (value.type === '稼働') return `bg-green-100 ${hoverClass}`;
-        // 修正前: if (value.type.includes('有休')) return `bg-yellow-100 ${hoverClass}`;
         if (value.type.includes('有休') || value.type.includes('夏季休暇')) return `bg-yellow-100 ${hoverClass}`;
         if (value.type === 'シフト休') {
              if (!isHoliday && !isWeekend) return `bg-white text-black ${hoverClass}`;
@@ -210,13 +186,11 @@ export const EditableCell = React.memo(({
         return `bg-slate-200 ${hoverClass}`;
     }
 
-    if (typeof value === 'number' && value > 0) {
-        return `bg-green-100 ${hoverClass}`;
-    }
+    if (typeof value === 'number' && value > 0) return `bg-green-100 ${hoverClass}`;
     
     switch(value) {
       case '有休': 
-      case '夏季休暇': // 追加
+      case '夏季休暇':
           return `bg-yellow-100 ${hoverClass}`;
       case '通休': return `bg-blue-100 ${hoverClass}`;
       case 'シフト休': 
@@ -232,9 +206,7 @@ export const EditableCell = React.memo(({
   if (mode === 'view') {
     return (
       <div 
-        ref={cellRef}
-        tabIndex={isEffectivelyDisabled ? -1 : 0}
-        onClick={() => {}}
+        ref={cellRef} tabIndex={isEffectivelyDisabled ? -1 : 0}
         onDoubleClick={() => { if (!isEffectivelyDisabled) setMode('select'); }}
         onFocus={(e) => { if (!isEffectivelyDisabled && onFocus) onFocus(e); }}
         onKeyDown={handleKeyDown}
@@ -242,8 +214,7 @@ export const EditableCell = React.memo(({
         onMouseEnter={() => !isEffectivelyDisabled && onMouseEnter && onMouseEnter()}
         onContextMenu={(e) => !isEffectivelyDisabled && onContextMenu && onContextMenu(e)}
         className={`relative ${baseClasses} transition-colors duration-150 ${getBackgroundColor()} ${isEffectivelyDisabled ? 'cursor-not-allowed text-slate-500' : 'cursor-pointer'}`}
-        data-row={rowIndex}
-        data-col={colIndex}
+        data-row={rowIndex} data-col={colIndex}
       >
         <span className="truncate w-full px-0.5 pointer-events-none block">{formatValue(value)}</span>
       </div>
@@ -257,43 +228,34 @@ export const EditableCell = React.memo(({
           ref={selectRef}
           onKeyDown={handleKeyDown}
           onChange={handleSelectChange}
-          onBlur={() => {
-              if (mode !== 'input') setMode('view');
-          }}
+          onBlur={() => { if (mode !== 'input') setMode('view'); }}
           className="absolute inset-0 w-full h-full opacity-100 bg-transparent text-center text-sm cursor-pointer appearance-none outline-none focus:ring-2 focus:ring-sky-500"
           defaultValue=""
         >
           <option value="稼働時間入力">稼働時間入力</option>
           <optgroup label="ステータス">
-              <option value="有休">有休</option>
-              <option value="夏季休暇">夏季休暇</option> {/* 追加 */}
-              <option value="シフト休">シフト休</option>
-              <option value="通休">通院休暇</option>
-              <option value="欠勤">欠勤</option>
+              {SHIFT_STATUS_OPTIONS.status.map(opt => (
+                  <option key={opt} value={opt}>{opt === '通休' ? '通院休暇' : opt}</option>
+              ))}
           </optgroup>
-         <optgroup label="時間単位">
-             {['遅刻', '早退', '午前有休', '午後有休', '午前夏季休暇', '午後夏季休暇', '午前休', '午後休', '午前通休', '午後通休'].map(opt => (
+          <optgroup label="時間単位">
+             {SHIFT_STATUS_OPTIONS.hourly.map(opt => (
                    <option key={opt} value={opt}>{opt.replace('通休', '通院休暇')}</option>
               ))}
-         </optgroup>
+          </optgroup>
           <option value="">(クリア)</option>
         </select>
       ) : (
         <>
           {editingSpecialShift && <span className="absolute left-0.5 top-1/2 -translate-y-1/2 text-[10px] text-slate-500 pointer-events-none scale-75">入力:</span>}
           <input
-            ref={inputRef}
-            type="number"
-            step="0.5"
-            value={inputValue}
-            onChange={(e) => setInputValue(e.target.value)}
-            onBlur={commitInput}
+            ref={inputRef} type="number" step="0.5" value={inputValue}
+            onChange={(e) => setInputValue(e.target.value)} onBlur={commitInput}
             onKeyDown={(e) => {
                 if (e.key === 'Enter' || e.key === 'Tab') {
                     e.preventDefault();
                     commitInput();
-                    const moveDir = e.key === 'Tab' ? 'Tab' : 'ArrowDown';
-                    setTimeout(() => moveFocus(moveDir, e), 0);
+                    setTimeout(() => moveFocus(e.key === 'Tab' ? 'Tab' : 'ArrowDown', e), 0);
                 }
             }}
             className="absolute inset-0 w-full h-full p-0 m-0 bg-transparent text-center text-sm outline-none"
@@ -309,17 +271,12 @@ export const EditableStaffInfoCell = React.memo(({ value, onUpdate, className, d
   const [isEditing, setIsEditing] = useState(false);
   const [currentValue, setCurrentValue] = useState(value);
 
-  // 編集中は外部からの変更（リアルタイム同期による上書き）を無視して入力内容を保護する
   useEffect(() => {
-    if (!isEditing) {
-      setCurrentValue(value);
-    }
+    if (!isEditing) setCurrentValue(value);
   }, [value, isEditing]);
 
   const handleBlur = () => {
-    if (currentValue.trim() !== value) {
-      onUpdate(currentValue.trim());
-    }
+    if (currentValue.trim() !== value) onUpdate(currentValue.trim());
     setIsEditing(false);
   };
 
@@ -329,12 +286,8 @@ export const EditableStaffInfoCell = React.memo(({ value, onUpdate, className, d
     return (
       <div className={`${wrapperClass} bg-white`}>
         <input
-          type="text"
-          value={currentValue}
-          onChange={(e) => setCurrentValue(e.target.value)}
-          onBlur={handleBlur}
-          onKeyDown={(e) => e.key === 'Enter' && handleBlur()}
-          autoFocus
+          type="text" value={currentValue} onChange={(e) => setCurrentValue(e.target.value)}
+          onBlur={handleBlur} onKeyDown={(e) => e.key === 'Enter' && handleBlur()} autoFocus
           className="w-full h-full bg-transparent outline-none"
         />
       </div>

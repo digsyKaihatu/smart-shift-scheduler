@@ -1,10 +1,11 @@
-import React, { useState, useMemo, useEffect } from 'react';
-import { useOktaAuth } from '@okta/okta-react';
+// src/MainContent.jsx
+import React, { useState, useMemo } from 'react';
 
 // Hooks & Services
 import { useShiftData } from './hooks/useShiftData.js';
 import { useUserStatus } from './hooks/useUserStatus.js';
 import { useShiftActions } from './hooks/useShiftActions.js';
+import { useTaskCounts } from './hooks/useTaskCounts.js'; // 追加したフック
 import { chatService } from './services/chatService.js';
 import { getJapaneseHolidays, formatValue } from './utils/dateUtils.js';
 import { downloadScheduleCSV } from './utils/csvExporter.js';
@@ -12,7 +13,7 @@ import { checkPatternHasBreak } from './utils/scheduleUtils.js';
 
 // Components
 import LoadingScreen from './components/common/LoadingScreen.jsx';
-import Legend from './components/schedule/Legend.jsx';
+import Header from './components/layout/Header.jsx'; // 追加したコンポーネント
 import ShiftSchedule from './components/schedule/ShiftSchedule.jsx';
 import MonthlyCalendar from './components/schedule/MonthlyCalendar.jsx';
 import ShiftPatternDisplay from './components/schedule/ShiftPatternDisplay.jsx';
@@ -23,17 +24,15 @@ const MainContent = () => {
   const [year, setYear] = useState(new Date().getFullYear());
   const [month, setMonth] = useState(new Date().getMonth() + 1);
 
-  // データ取得フック
+  // --- 状態管理フックの呼び出し ---
   const {
-    staff, setStaff, schedule, updateShiftItem, updateShiftItems, updateLocalShiftItem, updateShiftUserMonth,
+    staff, setStaff, schedule, updateShiftItem, updateShiftItems, updateLocalShiftItem,
     tasks, setTasks, shiftPatterns, setShiftPatterns, adminConfig, setAdminConfig,
     isLoading, loadingMessage, setLoadingMessage, setIsLoading, saveStatus, initialDataLoaded
   } = useShiftData(year, month);
 
-  // ユーザー状態・権限フック (initialDataLoaded を渡すように修正)
-  const { currentUser, isAdmin, isAuthenticated } = useUserStatus(staff, adminConfig, initialDataLoaded);
+  const { currentUser, isAdmin } = useUserStatus(staff, adminConfig, initialDataLoaded);
 
-  // シフトアクションフック
   const actions = useShiftActions({
     staff, setStaff, schedule, year, month, adminConfig, shiftPatterns,
     setIsLoading, setLoadingMessage, updateShiftItems
@@ -47,7 +46,7 @@ const MainContent = () => {
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [holidayConfirmation, setHolidayConfirmation] = useState(null);
 
-  // 定数・メモ化
+  // --- 定数・メモ化 ---
   const key = `${year}-${month}`;
   const daysInMonth = new Date(year, month, 0).getDate();
   const currentMonthHolidays = useMemo(() => getJapaneseHolidays(year, month), [year, month]);
@@ -56,32 +55,15 @@ const MainContent = () => {
     return { day: i + 1, dayOfWeek: ['日', '月', '火', '水', '木', '金', '土'][date.getDay()] };
   }), [year, month, daysInMonth]);
 
-  // タスクカウント集計ロジック
-  const [taskCountsByDay, setTaskCountsByDay] = useState({});
-  useEffect(() => {
-    if (!initialDataLoaded) return;
-    const counts = {};
-    for (let day = 1; day <= daysInMonth; day++) {
-      counts[day] = {};
-      tasks.forEach(t => counts[day][t.id] = 0);
-      staff.forEach(s => {
-        const entry = (schedule[key] || {})[s.id]?.[day];
-        const isWorking = (typeof entry === 'number' && entry > 0) || (typeof entry === 'object' && entry?.hours > 0);
-        if (isWorking) s.possibleTasks.forEach(tId => { if (counts[day][tId] !== undefined) counts[day][tId]++; });
-      });
-    }
-    setTaskCountsByDay(counts);
-  }, [schedule, key, staff, tasks, daysInMonth, initialDataLoaded]);
+  // 新設したタスク集計フックの利用
+  const taskCountsByDay = useTaskCounts(initialDataLoaded, daysInMonth, tasks, staff, schedule, key);
 
-  // ハンドラー
+  // --- イベントハンドラー ---
   const handleUpdateSchedule = (staffId, day, value) => {
     const currentVal = schedule[key]?.[staffId]?.[day];
-    
-    // すでに保留中の変更があるか確認し、最初の承認済みデータ（originalValue）を取得する
     const existingChange = actions.pendingChanges.find(c => c.staffId === staffId && c.day === day);
     const originalValue = existingChange ? existingChange.originalValue : currentVal;
 
-    // 現在入力された値と元の値が同一か判定
     const normOrg = (originalValue === undefined || originalValue === null) ? '' : originalValue;
     const normVal = (value === undefined || value === null) ? '' : value;
     const isSameAsOriginal = JSON.stringify(normOrg) === JSON.stringify(normVal);
@@ -93,18 +75,13 @@ const MainContent = () => {
 
     if (isApproved) {
         if (isSameAsOriginal) {
-            // 元の値に戻った場合は保留リストから削除し、通知対象外とする
             actions.setPendingChanges(prev => {
                 const newChanges = prev.filter(c => !(c.staffId === staffId && c.day === day));
-                if (newChanges.length === 0) {
-                    actions.setShowModificationConfirm(false);
-                }
+                if (newChanges.length === 0) actions.setShowModificationConfirm(false);
                 return newChanges;
             });
-            // ローカル状態も元の値に戻す (modifiedフラグを消す)
             updateLocalShiftItem(year, month, staffId, day, originalValue);
         } else {
-            // 新しい変更として扱う
             if (typeof value === 'number') newValue = { type: '稼働', hours: value, modified: true };
             else if (typeof value === 'string') newValue = { type: value, modified: true };
             else if (typeof value === 'object' && value !== null) newValue = { ...value, modified: true };
@@ -113,12 +90,9 @@ const MainContent = () => {
                 staffId, day, displayValue: formatValue(newValue), rawYear: year, rawMonth: month, rawValue: newValue, originalValue
             }]);
             actions.setShowModificationConfirm(true);
-            
-            // Firestoreには保存せず、ローカルStateのみ更新
             updateLocalShiftItem(year, month, staffId, day, newValue);
         }
     } else {
-        // 未承認時・承認解除時の欠勤入力チェック ('欠勤'と'欠'両方に対応)
         if (isAdmin && (value === '欠勤' || value === '欠')) {
             actions.setAbsenceNotificationConfirmation({ staffMember: staff.find(s => s.id === staffId), day, value });
         }
@@ -136,6 +110,7 @@ const MainContent = () => {
     setConfirmDelete(null);
   };
 
+  // --- レンダリング ---
   if (isLoading || !currentUser) return <LoadingScreen message={loadingMessage} />;
 
   const currentMonthSchedule = schedule[key] || {};
@@ -152,6 +127,7 @@ const MainContent = () => {
 
   return (
     <div className="min-h-screen bg-[#FFF9F6] text-slate-800 p-2 sm:p-4 font-sans relative">
+      {/* 承認後変更の通知バー */}
       {actions.pendingChanges.length > 0 && !actions.showModificationConfirm && (
         <div className="fixed top-0 left-0 right-0 bg-orange-100 border-b border-orange-300 text-orange-800 px-4 py-2 z-[60] shadow-md flex justify-between items-center animate-slideDown">
           <div className="flex items-center gap-2">
@@ -162,25 +138,11 @@ const MainContent = () => {
       )}
 
       <div className="max-w-screen-2xl mx-auto pt-2">
-        <header className="mb-4 bg-[#F4B896] text-white rounded-md shadow-lg p-3 flex justify-between items-center sticky top-0 z-40">
-          <div className="flex items-center gap-4">
-            <select value={year} onChange={(e) => setYear(Number(e.target.value))} className="bg-transparent border-none rounded p-1 text-2xl font-bold text-black">
-              {Array.from({length: 10}, (_, i) => 2020 + i).map(y => <option key={y} value={y} className="text-black">{y}</option>)}
-            </select>
-            <span className="text-xl">年</span>
-            <select value={month} onChange={(e) => setMonth(Number(e.target.value))} className="bg-transparent border-none rounded p-1 text-2xl font-bold text-black">
-              {Array.from({length: 12}, (_, i) => i + 1).map(m => <option key={m} value={m} className="text-black">{m}</option>)}
-            </select>
-            <span className="text-xl">月</span>
-            <h1 className="text-2xl font-bold hidden sm:block">digsyシフト表</h1>
-          </div>
-          <div className="flex items-center gap-4">
-              <span className="text-sm font-semibold w-32 text-center">{saveStatus === 'saved' ? '自動保存済み' : '保存中...'}</span>
-              <button onClick={() => window.location.reload()} className="px-3 py-1.5 bg-white/20 rounded hover:bg-white/30 text-sm font-bold">更新</button>
-              <button onClick={() => setIsHelpOpen(true)} className="px-3 py-1.5 bg-white/20 rounded hover:bg-white/30 text-sm font-bold">ガイド</button>
-              <Legend />
-          </div>
-        </header>
+        {/* 分離したHeaderコンポーネント */}
+        <Header 
+          year={year} month={month} setYear={setYear} setMonth={setMonth} 
+          saveStatus={saveStatus} setIsHelpOpen={setIsHelpOpen} 
+        />
 
         <main className="space-y-6">
           <ShiftSchedule 
@@ -189,12 +151,11 @@ const MainContent = () => {
             onDeleteStaff={(id) => setConfirmDelete({ type: 'staff', id, name: staff.find(s => s.id === id)?.name })} 
             onUpdateStaffInfo={(id, f, v) => setStaff(prev => prev.map(s => s.id === id ? { ...s, [f]: v } : s))}
             onApplyStaffPattern={(sid, p, hb) => {
-              // 変更前のスタッフデータを取得
+              // ...パターン適用ロジックは既存のまま...
               const targetStaff = staff.find(s => s.id === sid);
               const oldPattern = targetStaff?.defaultShift?.pattern || Array(5).fill('シフト休');
               const oldHbArray = targetStaff?.defaultShift?.hasBreakArray;
 
-              // 基本シフトパターンを更新
               setStaff(prev => prev.map(s => s.id === sid ? { ...s, defaultShift: { pattern: p, hasBreakArray: hb } } : s));
               
               const updates = [];
@@ -202,7 +163,6 @@ const MainContent = () => {
                 const date = new Date(year, month - 1, d.day);
                 const dw = date.getDay();
                 
-                // --- 【古いパターン】での本来の予定値を計算 ---
                 let oldExpectedValue = '';
                 if (currentMonthHolidays.includes(d.day) || dw === 0 || dw === 6) {
                     oldExpectedValue = 'シフト休';
@@ -225,7 +185,6 @@ const MainContent = () => {
                     }
                 }
 
-                // --- 【新しいパターン】での予定値を計算 ---
                 let newExpectedValue = '';
                 if (currentMonthHolidays.includes(d.day) || dw === 0 || dw === 6) {
                     newExpectedValue = 'シフト休';
@@ -248,20 +207,14 @@ const MainContent = () => {
                     }
                 }
 
-                // 現在シフト表に入力されている値を取得
                 const currentValue = currentMonthSchedule[sid]?.[d.day] ?? '';
-                
-                // ★ 判定: 現在の値が「変更前のパターン通りの値」だった場合のみ、新しいパターンで上書きする
-                // (手入力で「有休」や「別の時間」に変更されている日は上書きせず保護する)
                 const normCurrent = (typeof currentValue === 'object' && currentValue !== null) ? (currentValue.type || currentValue.hours) : currentValue;
                 if (String(normCurrent) === String(oldExpectedValue) || normCurrent === '') {
                     updates.push({ staffId: sid, day: d.day, value: newExpectedValue });
                 }
               });
 
-              if (updates.length > 0) {
-                  updateShiftItems(year, month, updates);
-              }
+              if (updates.length > 0) updateShiftItems(year, month, updates);
             }} 
             onToggleShiftSubmitted={actions.handleToggleShiftSubmitted}
             onToggleShiftApproved={actions.handleToggleShiftApproved} 
