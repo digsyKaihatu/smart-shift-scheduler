@@ -156,6 +156,12 @@ export const useShiftData = (currentYear, currentMonth) => {
   const [state, dispatch] = useReducer(shiftReducer, initialState);
   const { staff, schedule, tasks, shiftPatterns, adminConfig, isLoading, loadingMessage, saveStatus, initialDataLoaded } = state;
 
+  // ★修正ポイント: 最新のStateをRefに保持して無限ループを防ぐ
+  const stateRef = useRef(state);
+  useEffect(() => {
+    stateRef.current = state;
+  }, [state]);
+
   const debouncedSaveConfig = useRef(null);
   const debouncedSaveSchedule = useRef(null);
   const isInitialLoadComplete = useRef(false);
@@ -180,28 +186,28 @@ export const useShiftData = (currentYear, currentMonth) => {
   // ---------------------------------------------------------------------------
   const setStaff = useCallback((value) => {
     pendingConfigSave.current = true;
-    dispatch({ type: 'SET_SAVE_STATUS', payload: 'unsaved' }); // 追加: 即座に未保存ステータスへ
+    dispatch({ type: 'SET_SAVE_STATUS', payload: 'unsaved' });
     const newValue = typeof value === 'function' ? value(staff) : value;
     dispatch({ type: 'UPDATE_MASTER_DATA', payload: { staff: newValue } });
   }, [staff]);
 
   const setTasks = useCallback((value) => {
     pendingConfigSave.current = true;
-    dispatch({ type: 'SET_SAVE_STATUS', payload: 'unsaved' }); // 追加: 即座に未保存ステータスへ
+    dispatch({ type: 'SET_SAVE_STATUS', payload: 'unsaved' });
     const newValue = typeof value === 'function' ? value(tasks) : value;
     dispatch({ type: 'UPDATE_MASTER_DATA', payload: { tasks: newValue } });
   }, [tasks]);
 
   const setShiftPatterns = useCallback((value) => {
     pendingConfigSave.current = true;
-    dispatch({ type: 'SET_SAVE_STATUS', payload: 'unsaved' }); // 追加: 即座に未保存ステータスへ
+    dispatch({ type: 'SET_SAVE_STATUS', payload: 'unsaved' });
     const newValue = typeof value === 'function' ? value(shiftPatterns) : value;
     dispatch({ type: 'UPDATE_MASTER_DATA', payload: { shiftPatterns: newValue } });
   }, [shiftPatterns]);
 
   const setAdminConfig = useCallback((value) => {
     pendingConfigSave.current = true;
-    dispatch({ type: 'SET_SAVE_STATUS', payload: 'unsaved' }); // 追加: 即座に未保存ステータスへ
+    dispatch({ type: 'SET_SAVE_STATUS', payload: 'unsaved' });
     const newValue = typeof value === 'function' ? value(adminConfig) : value;
     dispatch({ type: 'UPDATE_MASTER_DATA', payload: { adminConfig: newValue } });
   }, [adminConfig]);
@@ -261,6 +267,9 @@ export const useShiftData = (currentYear, currentMonth) => {
                 return;
             }
 
+            // ★修正ポイント: 最新の状態を stateRef から取得して比較・マージを行う
+            const { staff: currentStaff, tasks: currentTasks, shiftPatterns: currentPatterns, adminConfig: currentAdminConfig } = stateRef.current;
+
             const isStaffEqual = deepEqual(lastServerConfigRef.current.staff, serverStaff);
             const isTasksEqual = deepEqual(lastServerConfigRef.current.tasks, serverTasks);
             const isPatternsEqual = deepEqual(lastServerConfigRef.current.shiftPatterns, serverPatterns);
@@ -268,25 +277,25 @@ export const useShiftData = (currentYear, currentMonth) => {
 
             if (isStaffEqual && isTasksEqual && isPatternsEqual && isAdminEqual && isInitialLoadComplete.current) return;
 
-            let newStaff = staff;
-            let newTasks = tasks;
-            let newPatterns = shiftPatterns;
-            let newAdminConfig = adminConfig;
+            let newStaff = currentStaff;
+            let newTasks = currentTasks;
+            let newPatterns = currentPatterns;
+            let newAdminConfig = currentAdminConfig;
 
             if (!isStaffEqual) {
-                const merged = mergeArray(staff, serverStaff, lastServerConfigRef.current.staff);
-                newStaff = deepEqual(staff, merged) ? staff : merged;
+                const merged = mergeArray(currentStaff, serverStaff, lastServerConfigRef.current.staff);
+                newStaff = deepEqual(currentStaff, merged) ? currentStaff : merged;
             }
             if (!isTasksEqual) {
-                const merged = mergeArray(tasks, serverTasks, lastServerConfigRef.current.tasks);
-                newTasks = deepEqual(tasks, merged) ? tasks : merged;
+                const merged = mergeArray(currentTasks, serverTasks, lastServerConfigRef.current.tasks);
+                newTasks = deepEqual(currentTasks, merged) ? currentTasks : merged;
             }
             if (!isPatternsEqual) {
-                const merged = mergeArray(shiftPatterns, serverPatterns, lastServerConfigRef.current.shiftPatterns);
-                newPatterns = deepEqual(shiftPatterns, merged) ? shiftPatterns : merged;
+                const merged = mergeArray(currentPatterns, serverPatterns, lastServerConfigRef.current.shiftPatterns);
+                newPatterns = deepEqual(currentPatterns, merged) ? currentPatterns : merged;
             }
             if (!isAdminEqual) {
-                const isLocalChanged = !deepEqual(adminConfig, lastServerConfigRef.current.adminConfig);
+                const isLocalChanged = !deepEqual(currentAdminConfig, lastServerConfigRef.current.adminConfig);
                 if (!isLocalChanged) newAdminConfig = serverAdmin;
             }
 
@@ -316,7 +325,7 @@ export const useShiftData = (currentYear, currentMonth) => {
 
     loadMasterData();
     return () => unsubscribeConfig();
-  }, [staff, tasks, shiftPatterns, adminConfig]);
+  }, []); // ★修正ポイント: 依存配列を空にして無限ループを防止
 
   // ---------------------------------------------------------------------------
   // 2. 月次データロード (リアルタイム同期)
@@ -330,11 +339,14 @@ export const useShiftData = (currentYear, currentMonth) => {
     dispatch({ type: 'SET_LOADING', payload: { isLoading: true } });
 
     const unsubscribe = onSnapshot(monthDocRef, (monthSnap) => {
+      // ★修正ポイント: 最新の状態を stateRef から取得
+      const { schedule: currentSchedule, staff: currentStaff, shiftPatterns: currentPatterns } = stateRef.current;
+
       if (monthSnap.exists()) {
         const data = monthSnap.data();
         const serverSchedule = data.scheduleData || {};
 
-        const prevMonthData = schedule[key] || {};
+        const prevMonthData = currentSchedule[key] || {};
         let hasChange = false;
         const nextMonthData = { ...prevMonthData };
 
@@ -396,9 +408,9 @@ export const useShiftData = (currentYear, currentMonth) => {
         }
         dispatch({ type: 'SET_LOADING', payload: { isLoading: false } });
       } else {
-        if (!schedule[key]) {
-            const initialSchedule = generateScheduleForMonth(currentYear, currentMonth, staff, shiftPatterns);
-            dispatch({ type: 'UPDATE_SCHEDULE', payload: { ...schedule, [key]: initialSchedule } });
+        if (!currentSchedule[key]) {
+            const initialSchedule = generateScheduleForMonth(currentYear, currentMonth, currentStaff, currentPatterns);
+            dispatch({ type: 'UPDATE_SCHEDULE', payload: { ...currentSchedule, [key]: initialSchedule } });
         }
         dispatch({ type: 'SET_LOADING', payload: { isLoading: false } });
       }
@@ -409,7 +421,7 @@ export const useShiftData = (currentYear, currentMonth) => {
     });
 
     return () => unsubscribe();
-  }, [currentYear, currentMonth, initialDataLoaded, schedule, staff, shiftPatterns]);
+  }, [currentYear, currentMonth, initialDataLoaded]); // ★修正ポイント: 依存配列からschedule等を削除
 
   // ---------------------------------------------------------------------------
   // 3. データ保存ロジック
@@ -420,7 +432,7 @@ export const useShiftData = (currentYear, currentMonth) => {
 
     debouncedSaveConfig.current = setTimeout(async () => {
       pendingConfigSave.current = false;
-      dispatch({ type: 'SET_SAVE_STATUS', payload: 'saving' }); // 追加: 保存処理中ステータス
+      dispatch({ type: 'SET_SAVE_STATUS', payload: 'saving' }); 
       
       try {
         const snap = await getDoc(configDocRef);
@@ -444,10 +456,10 @@ export const useShiftData = (currentYear, currentMonth) => {
             adminConfig: dataToSave.adminConfig, updatedAt: dataToSave.updatedAt
         };
         
-        dispatch({ type: 'SET_SAVE_STATUS', payload: 'saved' }); // 追加: 保存完了ステータス
+        dispatch({ type: 'SET_SAVE_STATUS', payload: 'saved' }); 
       } catch (error) {
         console.error("Config save failed:", error);
-        dispatch({ type: 'SET_SAVE_STATUS', payload: 'error' }); // 追加: エラーステータス
+        dispatch({ type: 'SET_SAVE_STATUS', payload: 'error' }); 
       }
     }, 500);
 
@@ -592,10 +604,9 @@ export const useShiftData = (currentYear, currentMonth) => {
   // ---------------------------------------------------------------------------
   useEffect(() => {
     const handleBeforeUnload = (e) => {
-      // 保存処理が未完了のままページを去ろうとした場合
       if (saveStatus !== 'saved' || pendingConfigSave.current) {
         e.preventDefault();
-        e.returnValue = ''; // 多くのブラウザで警告ダイアログを出すために必要です
+        e.returnValue = ''; 
       }
     };
     window.addEventListener('beforeunload', handleBeforeUnload);
