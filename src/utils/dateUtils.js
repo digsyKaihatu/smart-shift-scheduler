@@ -1,3 +1,5 @@
+import { SHIFT_STATUS_MAP } from '../constants/status';
+
 /**
  * 指定された年・月の第n月曜日の日付を取得するヘルパー関数
  */
@@ -99,16 +101,6 @@ export const getJapaneseHolidays = (year, month) => {
  * 閲覧モードでの表記を短縮するヘルパー関数
  */
 export const formatValue = (value) => {
-  const mapping = {
-    'シフト休': '休',
-    '欠勤': '欠',
-    '通休': '通',
-    '有休': '有',
-    '夏季休暇': '夏', // ★これを追加
-    '遅刻': '遅',
-    '早退': '早'
-  };
-
   if (typeof value === 'number') {
     return value % 1 === 0 ? Math.floor(value) : value.toFixed(1);
   }
@@ -116,12 +108,13 @@ export const formatValue = (value) => {
   // オブジェクト形式（時間単位の休暇など）の場合
   if (value && typeof value === 'object' && 'type' in value) {
     let displayType = value.type;
-    // 完全一致での置換
-    if (mapping[value.type]) {
-      displayType = mapping[value.type];
+    
+    // 定数での完全一致の置換
+    if (SHIFT_STATUS_MAP[value.type]) {
+      displayType = SHIFT_STATUS_MAP[value.type];
     } else {
       // 部分一致（午前有休 -> 午前有 など）の置換
-      Object.entries(mapping).forEach(([full, short]) => {
+      Object.entries(SHIFT_STATUS_MAP).forEach(([full, short]) => {
         displayType = displayType.replace(full, short);
       });
     }
@@ -134,7 +127,7 @@ export const formatValue = (value) => {
 
   // 文字列の場合
   if (typeof value === 'string') {
-    return mapping[value] || value;
+    return SHIFT_STATUS_MAP[value] || value;
   }
 
   return value;
