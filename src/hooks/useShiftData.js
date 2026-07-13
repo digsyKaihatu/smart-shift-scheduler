@@ -180,24 +180,28 @@ export const useShiftData = (currentYear, currentMonth) => {
   // ---------------------------------------------------------------------------
   const setStaff = useCallback((value) => {
     pendingConfigSave.current = true;
+    dispatch({ type: 'SET_SAVE_STATUS', payload: 'unsaved' }); // 追加: 即座に未保存ステータスへ
     const newValue = typeof value === 'function' ? value(staff) : value;
     dispatch({ type: 'UPDATE_MASTER_DATA', payload: { staff: newValue } });
   }, [staff]);
 
   const setTasks = useCallback((value) => {
     pendingConfigSave.current = true;
+    dispatch({ type: 'SET_SAVE_STATUS', payload: 'unsaved' }); // 追加: 即座に未保存ステータスへ
     const newValue = typeof value === 'function' ? value(tasks) : value;
     dispatch({ type: 'UPDATE_MASTER_DATA', payload: { tasks: newValue } });
   }, [tasks]);
 
   const setShiftPatterns = useCallback((value) => {
     pendingConfigSave.current = true;
+    dispatch({ type: 'SET_SAVE_STATUS', payload: 'unsaved' }); // 追加: 即座に未保存ステータスへ
     const newValue = typeof value === 'function' ? value(shiftPatterns) : value;
     dispatch({ type: 'UPDATE_MASTER_DATA', payload: { shiftPatterns: newValue } });
   }, [shiftPatterns]);
 
   const setAdminConfig = useCallback((value) => {
     pendingConfigSave.current = true;
+    dispatch({ type: 'SET_SAVE_STATUS', payload: 'unsaved' }); // 追加: 即座に未保存ステータスへ
     const newValue = typeof value === 'function' ? value(adminConfig) : value;
     dispatch({ type: 'UPDATE_MASTER_DATA', payload: { adminConfig: newValue } });
   }, [adminConfig]);
@@ -216,7 +220,6 @@ export const useShiftData = (currentYear, currentMonth) => {
         const configSnap = await getDoc(configDocRef);
 
         if (!configSnap.exists()) {
-             // configドキュメントが無い場合は、初期データをそのまま保存して開始
              await setDoc(configDocRef, {
                 staff: initialStaffData, 
                 tasks: initialTasks, 
@@ -297,7 +300,6 @@ export const useShiftData = (currentYear, currentMonth) => {
             
             if (!isInitialLoadComplete.current) dispatch({ type: 'SET_INITIAL_DATA_LOADED' });
           } else {
-             // 異常系: ドキュメントが消えた場合
              dispatch({ type: 'UPDATE_MASTER_DATA', payload: { 
                  staff: initialStaffData, tasks: initialTasks, shiftPatterns: initialShiftPatterns, adminConfig: initialAdminConfig 
              }});
@@ -418,6 +420,8 @@ export const useShiftData = (currentYear, currentMonth) => {
 
     debouncedSaveConfig.current = setTimeout(async () => {
       pendingConfigSave.current = false;
+      dispatch({ type: 'SET_SAVE_STATUS', payload: 'saving' }); // 追加: 保存処理中ステータス
+      
       try {
         const snap = await getDoc(configDocRef);
         const serverData = snap.exists() ? snap.data() : null;
@@ -439,8 +443,11 @@ export const useShiftData = (currentYear, currentMonth) => {
             staff: dataToSave.staff, tasks: dataToSave.tasks, shiftPatterns: dataToSave.shiftPatterns,
             adminConfig: dataToSave.adminConfig, updatedAt: dataToSave.updatedAt
         };
+        
+        dispatch({ type: 'SET_SAVE_STATUS', payload: 'saved' }); // 追加: 保存完了ステータス
       } catch (error) {
         console.error("Config save failed:", error);
+        dispatch({ type: 'SET_SAVE_STATUS', payload: 'error' }); // 追加: エラーステータス
       }
     }, 500);
 
@@ -579,6 +586,21 @@ export const useShiftData = (currentYear, currentMonth) => {
     
     triggerScheduleSave();
   }, [schedule, triggerScheduleSave]);
+
+  // ---------------------------------------------------------------------------
+  // 5. タブ閉じ防止機能 (セーフティネット)
+  // ---------------------------------------------------------------------------
+  useEffect(() => {
+    const handleBeforeUnload = (e) => {
+      // 保存処理が未完了のままページを去ろうとした場合
+      if (saveStatus !== 'saved' || pendingConfigSave.current) {
+        e.preventDefault();
+        e.returnValue = ''; // 多くのブラウザで警告ダイアログを出すために必要です
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [saveStatus]);
 
   return {
     staff, setStaff,
