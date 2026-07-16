@@ -1,6 +1,8 @@
-import { useReducer, useEffect, useRef, useCallback } from 'react';
-import { doc, getDoc, setDoc, onSnapshot } from "firebase/firestore";
+// src/hooks/useShiftData.js
+import { useReducer, useEffect, useRef, useCallback, useState } from 'react';
+import { doc, getDoc, setDoc, onSnapshot, collection, query, where } from "firebase/firestore";
 import { db } from '../config/firebase';
+import { useOktaAuth } from '@okta/okta-react'; // Oktaからユーザー情報を取得するために追加
 import { initialShiftPatterns, initialStaffData, initialAdminConfig, initialTasks } from '../constants/initialData';
 import { generateScheduleForMonth } from '../utils/scheduleUtils';
 
@@ -18,42 +20,6 @@ const deepEqual = (a, b) => {
     if (!keysB.includes(key) || !deepEqual(a[key], b[key])) return false;
   }
   return true;
-};
-
-const mergeObject = (localObj, serverObj, lastObj) => {
-  const safeLocal = localObj || {};
-  const safeServer = serverObj || {};
-  const safeLast = lastObj || {};
-  const merged = { ...safeServer };
-  const allKeys = new Set([...Object.keys(safeLocal), ...Object.keys(safeServer)]);
-
-  allKeys.forEach(key => {
-    const localVal = safeLocal[key];
-    const serverVal = safeServer[key];
-    const lastVal = safeLast[key];
-
-    const isLocalObj = typeof localVal === 'object' && localVal !== null && !Array.isArray(localVal);
-    const isServerObj = typeof serverVal === 'object' && serverVal !== null && !Array.isArray(serverVal);
-    
-    if (isLocalObj || isServerObj) {
-      merged[key] = mergeObject(localVal, serverVal, lastVal);
-    } else {
-      const isLocalChanged = !deepEqual(localVal, lastVal);
-      const isServerChanged = !deepEqual(serverVal, lastVal);
-
-      if (isLocalChanged && !isServerChanged) {
-        if (localVal === undefined) delete merged[key];
-        else merged[key] = localVal;
-      } else if (!isLocalChanged && isServerChanged) {
-        if (serverVal === undefined) delete merged[key];
-        else merged[key] = serverVal;
-      } else if (isLocalChanged && isServerChanged) {
-        if (localVal === undefined) delete merged[key];
-        else merged[key] = localVal;
-      }
-    }
-  });
-  return merged;
 };
 
 const mergeArray = (localArr, serverArr, lastServerArr) => {
@@ -83,8 +49,6 @@ const mergeArray = (localArr, serverArr, lastServerArr) => {
         merged.push(localItem); 
       } else if (!isLocalChanged && isServerChanged) {
         merged.push(serverItem); 
-      } else if (isLocalChanged && isServerChanged) {
-        merged.push(mergeObject(localItem, serverItem, lastItem)); 
       } else {
         merged.push(serverItem); 
       }
@@ -111,7 +75,8 @@ const initialState = {
   saveStatus: 'saved',
   initialDataLoaded: false,
   staff: [],
-  schedule: {},
+  summarySchedule: {}, // サマリ（確定版）データ
+  individualSchedules: {}, // 各個人の下書きデータ
   tasks: [],
   shiftPatterns: [],
   adminConfig: initialAdminConfig
@@ -131,18 +96,21 @@ function shiftReducer(state, action) {
       return { ...state, initialDataLoaded: true };
     case 'UPDATE_MASTER_DATA':
       return { ...state, ...action.payload };
-    case 'SYNC_SCHEDULE':
+    case 'SYNC_SUMMARY_SCHEDULE':
       return {
         ...state,
-        schedule: {
-          ...state.schedule,
-          [action.payload.key]: action.payload.nextMonthData
+        summarySchedule: {
+          ...state.summarySchedule,
+          [action.payload.key]: action.payload.data
         }
       };
-    case 'UPDATE_SCHEDULE':
+    case 'SYNC_INDIVIDUAL_SCHEDULES':
       return {
         ...state,
-        schedule: action.payload
+        individualSchedules: {
+          ...state.individualSchedules,
+          [action.payload.key]: action.payload.data
+        }
       };
     default:
       return state;
@@ -154,22 +122,52 @@ function shiftReducer(state, action) {
 // ---------------------------------------------------------------------------
 export const useShiftData = (currentYear, currentMonth) => {
   const [state, dispatch] = useReducer(shiftReducer, initialState);
-  const { staff, schedule, tasks, shiftPatterns, adminConfig, isLoading, loadingMessage, saveStatus, initialDataLoaded } = state;
+  const { authState, oktaAuth } = useOktaAuth();
+  const [currentUserId, setCurrentUserId] = useState(null);
+  const [currentUserEmail, setCurrentUserEmail] = useState("");
 
-  // ★修正ポイント: 最新のStateをRefに保持して無限ループを防ぐ
+  const { staff, summarySchedule, individualSchedules, tasks, shiftPatterns, adminConfig, isLoading, loadingMessage, saveStatus, initialDataLoaded } = state;
+
+  // 最新のStateとUserを保持
   const stateRef = useRef(state);
+  const userRef = useRef({ id: null, email: "", isAdmin: false });
+
   useEffect(() => {
     stateRef.current = state;
   }, [state]);
 
-  const debouncedSaveConfig = useRef(null);
-  const debouncedSaveSchedule = useRef(null);
-  const isInitialLoadComplete = useRef(false);
+  // 1. Oktaから現在ログイン中のユーザーを識別
+  useEffect(() => {
+    const fetchUser = async () => {
+      if (authState?.isAuthenticated) {
+        try {
+          const info = await oktaAuth.getUser();
+          setCurrentUserEmail(info.email || "");
+        } catch (e) {
+          console.error("Oktaユーザー取得エラー:", e);
+        }
+      }
+    };
+    fetchUser();
+  }, [authState, oktaAuth]);
 
+  // 2. マスタデータがロードされたら、ログインユーザーの staff ID を特定
+  useEffect(() => {
+    if (currentUserEmail && staff.length > 0) {
+      const matched = staff.find(s => s.email === currentUserEmail);
+      const matchedId = matched ? matched.id : (currentUserEmail === (adminConfig.adminEmails || '').split(',')[0]?.trim() ? 'admin' : 'okta-user');
+      
+      const adminEmails = (adminConfig.adminEmails || '').split(',').map(e => e.trim());
+      const isAdmin = matchedId === 'admin' || adminEmails.includes(currentUserEmail);
+
+      setCurrentUserId(matchedId);
+      userRef.current = { id: matchedId, email: currentUserEmail, isAdmin };
+    }
+  }, [currentUserEmail, staff, adminConfig]);
+
+  const debouncedSaveConfig = useRef(null);
+  const isInitialLoadComplete = useRef(false);
   const pendingConfigSave = useRef(false);
-  const pendingChanges = useRef({});
-  const inflightChanges = useRef({});
-  const localPendingChanges = useRef({});
 
   const lastServerConfigRef = useRef({
     staff: initialStaffData,
@@ -179,10 +177,11 @@ export const useShiftData = (currentYear, currentMonth) => {
   });
 
   const configDocRef = doc(db, "schedules", "config");
-  const getMonthDocRef = (year, month) => doc(db, "schedules", `${year}-${month}`);
+  const getSummaryDocRef = (year, month) => doc(db, "schedules", `${year}-${month}`);
+  const getIndividualDocRef = (staffId, year, month) => doc(db, "individual_schedules", `${staffId}_${year}-${month}`);
 
   // ---------------------------------------------------------------------------
-  // ローカル更新用のラッパー関数
+  // ローカル更新用のラッパー関数 (schedules/configの更新)
   // ---------------------------------------------------------------------------
   const setStaff = useCallback((value) => {
     pendingConfigSave.current = true;
@@ -213,7 +212,7 @@ export const useShiftData = (currentYear, currentMonth) => {
   }, [adminConfig]);
 
   // ---------------------------------------------------------------------------
-  // 1. 初期データロード (マスタデータ)
+  // 1. 設定データロード (リアルタイム同期)
   // ---------------------------------------------------------------------------
   useEffect(() => {
     let unsubscribeConfig = () => {};
@@ -222,7 +221,6 @@ export const useShiftData = (currentYear, currentMonth) => {
     const loadMasterData = async () => {
       try {
         dispatch({ type: 'SET_LOADING', payload: { isLoading: true, message: "設定データを読み込んでいます..." } });
-        
         const configSnap = await getDoc(configDocRef);
 
         if (!configSnap.exists()) {
@@ -233,7 +231,6 @@ export const useShiftData = (currentYear, currentMonth) => {
                 adminConfig: initialAdminConfig,
                 updatedAt: new Date().toISOString()
              });
-             
              dispatch({ type: 'UPDATE_MASTER_DATA', payload: { 
                  staff: initialStaffData, tasks: initialTasks, shiftPatterns: initialShiftPatterns, adminConfig: initialAdminConfig 
              }});
@@ -241,11 +238,9 @@ export const useShiftData = (currentYear, currentMonth) => {
              isFirstConfigLoad = false;
         }
 
-        // リアルタイム同期（onSnapshot）
         unsubscribeConfig = onSnapshot(configDocRef, (snap) => {
           if (snap.exists()) {
             const data = snap.data();
-
             if (lastServerConfigRef.current.updatedAt && data.updatedAt) {
                 if (new Date(data.updatedAt) < new Date(lastServerConfigRef.current.updatedAt)) return;
             }
@@ -267,7 +262,6 @@ export const useShiftData = (currentYear, currentMonth) => {
                 return;
             }
 
-            // ★修正ポイント: 最新の状態を stateRef から取得して比較・マージを行う
             const { staff: currentStaff, tasks: currentTasks, shiftPatterns: currentPatterns, adminConfig: currentAdminConfig } = stateRef.current;
 
             const isStaffEqual = deepEqual(lastServerConfigRef.current.staff, serverStaff);
@@ -308,123 +302,290 @@ export const useShiftData = (currentYear, currentMonth) => {
             };
             
             if (!isInitialLoadComplete.current) dispatch({ type: 'SET_INITIAL_DATA_LOADED' });
-          } else {
-             dispatch({ type: 'UPDATE_MASTER_DATA', payload: { 
-                 staff: initialStaffData, tasks: initialTasks, shiftPatterns: initialShiftPatterns, adminConfig: initialAdminConfig 
-             }});
-             isFirstConfigLoad = false;
-             dispatch({ type: 'SET_INITIAL_DATA_LOADED' });
           }
         });
-
       } catch (error) {
         console.error("Master Data Load Error:", error);
-        dispatch({ type: 'SET_LOADING', payload: { isLoading: true, message: `エラー: ${error.message}` } });
       }
     };
 
     loadMasterData();
     return () => unsubscribeConfig();
-  }, []); // ★修正ポイント: 依存配列を空にして無限ループを防止
+  }, []);
 
   // ---------------------------------------------------------------------------
-  // 2. 月次データロード (リアルタイム同期)
+  // 2. 確定サマリデータの監視 (リアルタイム同期)
   // ---------------------------------------------------------------------------
   useEffect(() => {
     if (!initialDataLoaded) return;
-
     const key = `${currentYear}-${currentMonth}`;
-    const monthDocRef = getMonthDocRef(currentYear, currentMonth);
+    const summaryDocRef = getSummaryDocRef(currentYear, currentMonth);
 
-    dispatch({ type: 'SET_LOADING', payload: { isLoading: true } });
-
-    const unsubscribe = onSnapshot(monthDocRef, (monthSnap) => {
-      // ★修正ポイント: 最新の状態を stateRef から取得
-      const { schedule: currentSchedule, staff: currentStaff, shiftPatterns: currentPatterns } = stateRef.current;
-
-      if (monthSnap.exists()) {
-        const data = monthSnap.data();
-        const serverSchedule = data.scheduleData || {};
-
-        const prevMonthData = currentSchedule[key] || {};
-        let hasChange = false;
-        const nextMonthData = { ...prevMonthData };
-
-        Object.keys(serverSchedule).forEach(staffId => {
-          const serverStaffData = serverSchedule[staffId];
-          const localStaffData = prevMonthData[staffId] || {};
-
-          if (!deepEqual(serverStaffData, localStaffData)) {
-            const activeChanges = { 
-              ...(inflightChanges.current[key] || {}), 
-              ...(pendingChanges.current[key] || {}) 
-            };
-            
-            let hasPendingForThisStaff = false;
-            for (const activeKey in activeChanges) {
-              if (activeKey.startsWith(`scheduleData.${staffId}.`)) {
-                 hasPendingForThisStaff = true; break;
-              }
-            }
-            if (localPendingChanges.current[key]) {
-               for (const localKey in localPendingChanges.current[key]) {
-                  if (localKey.startsWith(`${staffId}.`)) {
-                      hasPendingForThisStaff = true; break;
-                  }
-               }
-            }
-
-            if (!hasPendingForThisStaff) {
-               nextMonthData[staffId] = serverStaffData;
-               hasChange = true;
-            } else {
-               const mergedStaffData = { ...serverStaffData };
-               for (const activeKey in activeChanges) {
-                   if (activeKey.startsWith(`scheduleData.${staffId}.`)) {
-                       const dayStr = activeKey.split('.').pop();
-                       mergedStaffData[dayStr] = activeChanges[activeKey];
-                   }
-               }
-               if (localPendingChanges.current[key]) {
-                   for (const localKey in localPendingChanges.current[key]) {
-                       if (localKey.startsWith(`${staffId}.`)) {
-                           const dayStr = localKey.split('.').pop();
-                           if (prevMonthData[staffId] && prevMonthData[staffId][dayStr] !== undefined) {
-                               mergedStaffData[dayStr] = prevMonthData[staffId][dayStr];
-                           }
-                       }
-                   }
-               }
-               if (!deepEqual(mergedStaffData, localStaffData)) {
-                   nextMonthData[staffId] = mergedStaffData;
-                   hasChange = true;
-               }
-            }
-          }
-        });
-
-        if (hasChange) {
-            dispatch({ type: 'SYNC_SCHEDULE', payload: { key, nextMonthData } });
-        }
-        dispatch({ type: 'SET_LOADING', payload: { isLoading: false } });
-      } else {
-        if (!currentSchedule[key]) {
-            const initialSchedule = generateScheduleForMonth(currentYear, currentMonth, currentStaff, currentPatterns);
-            dispatch({ type: 'UPDATE_SCHEDULE', payload: { ...currentSchedule, [key]: initialSchedule } });
-        }
-        dispatch({ type: 'SET_LOADING', payload: { isLoading: false } });
+    const unsubscribe = onSnapshot(summaryDocRef, (snap) => {
+      let summaryData = {};
+      if (snap.exists()) {
+        summaryData = snap.data().scheduleData || {};
       }
-      isInitialLoadComplete.current = true;
-    }, (error) => {
-      console.error("Monthly Data Load Error:", error);
+      dispatch({ type: 'SYNC_SUMMARY_SCHEDULE', payload: { key, data: summaryData } });
       dispatch({ type: 'SET_LOADING', payload: { isLoading: false } });
+    }, (error) => {
+      console.error("Summary Schedule Load Error:", error);
     });
 
     return () => unsubscribe();
-  }, [currentYear, currentMonth, initialDataLoaded]); // ★修正ポイント: 依存配列からschedule等を削除
+  }, [currentYear, currentMonth, initialDataLoaded]);
 
   // ---------------------------------------------------------------------------
-  // 3. データ保存ロジック
+  // 3. 個別下書きデータの監視 (リアルタイム同期) - 管理者/一般メンバーで切り替え
+  // ---------------------------------------------------------------------------
+  useEffect(() => {
+    if (!initialDataLoaded || !currentUserId) return;
+    const key = `${currentYear}-${currentMonth}`;
+    const isAdmin = userRef.current.isAdmin;
+
+    let unsubscribe = () => {};
+
+    if (isAdmin) {
+      // ■ 管理者の場合：全メンバーの個別入力データをリアルタイムで監視する
+      const q = query(
+        collection(db, "individual_schedules"),
+        where("year", "==", currentYear),
+        where("month", "==", currentMonth)
+      );
+
+      unsubscribe = onSnapshot(q, (snapshot) => {
+        const nextIndSchedules = {};
+        snapshot.forEach((docSnap) => {
+          const data = docSnap.data();
+          if (data.staffId) {
+            nextIndSchedules[data.staffId] = data;
+          }
+        });
+        dispatch({ type: 'SYNC_INDIVIDUAL_SCHEDULES', payload: { key, data: nextIndSchedules } });
+      }, (error) => {
+        console.error("Admin Individual Schedules Load Error:", error);
+      });
+    } else {
+      // ■ 一般メンバーの場合：自分自身の個別入力データだけをリアルタイムで監視する
+      const myDocRef = getIndividualDocRef(currentUserId, currentYear, currentMonth);
+
+      unsubscribe = onSnapshot(myDocRef, (docSnap) => {
+        const nextIndSchedules = {};
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          nextIndSchedules[currentUserId] = data;
+        }
+        dispatch({ type: 'SYNC_INDIVIDUAL_SCHEDULES', payload: { key, data: nextIndSchedules } });
+      }, (error) => {
+        console.error("Member Individual Schedule Load Error:", error);
+      });
+    }
+
+    return () => unsubscribe();
+  }, [currentYear, currentMonth, initialDataLoaded, currentUserId]);
+
+  // ---------------------------------------------------------------------------
+  // 4. 動的合成ロジック: UIに渡す `staff` と `schedule` を動的に組み立てる
+  // ---------------------------------------------------------------------------
+  const key = `${currentYear}-${currentMonth}`;
+
+  // UI用のstaffリストを合成 (提出、承認などのフラグを個別ドキュメントから結合)
+  const synthesizedStaff = useMemo(() => {
+    const currentMonthInds = individualSchedules[key] || {};
+    return staff.map(s => {
+      const indDoc = currentMonthInds[s.id] || {};
+      return {
+        ...s,
+        shiftSubmitted: { ...s.shiftSubmitted, [key]: !!indDoc.shiftSubmitted },
+        shiftRemanded: { ...s.shiftRemanded, [key]: !!indDoc.shiftRemanded },
+        shiftApproved: { ...s.shiftApproved, [key]: !!indDoc.shiftApproved }
+      };
+    });
+  }, [staff, individualSchedules, key]);
+
+  // UI用のスケジュールを合成 (サマリと下書きをマージ)
+  const synthesizedSchedule = useMemo(() => {
+    const summaryData = summarySchedule[key] || {};
+    const indData = individualSchedules[key] || {};
+    const isAdmin = userRef.current.isAdmin;
+
+    const finalSchedule = {};
+
+    staff.forEach(s => {
+      // 1. 各スタッフのベースとして、まずは確定サマリデータを設定
+      finalSchedule[s.id] = { ...(summaryData[s.id] || {}) };
+
+      const memberIndData = indData[s.id]?.scheduleData || {};
+
+      if (isAdmin) {
+        // ■ 管理者の場合：
+        // 全員分の下書きデータが存在すれば、サマリより優先して表示する (承認前のシフトを調整してあげるため)
+        if (indData[s.id]) {
+          finalSchedule[s.id] = { ...finalSchedule[s.id], ...memberIndData };
+        }
+      } else {
+        // ■ 一般メンバーの場合：
+        // 自分自身の行だけは、自分の下書きデータを表示。他のメンバーの行は確定されたサマリデータのみを表示。
+        if (s.id === currentUserId && indData[s.id]) {
+          finalSchedule[s.id] = { ...finalSchedule[s.id], ...memberIndData };
+        }
+      }
+
+      // 該当月のドキュメントもサマリも空なら初期スケジュールを生成する
+      if (Object.keys(finalSchedule[s.id]).length === 0) {
+        const defaultSched = generateScheduleForMonth(currentYear, currentMonth, [s], shiftPatterns)[s.id] || {};
+        finalSchedule[s.id] = defaultSched;
+      }
+    });
+
+    return { [key]: finalSchedule };
+  }, [staff, summarySchedule, individualSchedules, key, currentUserId, currentYear, currentMonth, shiftPatterns]);
+
+  // ---------------------------------------------------------------------------
+  // 5. データ保存＆更新用関数 (UIから呼び出し)
+  // ---------------------------------------------------------------------------
+  
+  // 個別入力ドキュメントの更新用
+  const saveIndividualShiftItem = useCallback(async (staffId, year, month, day, value) => {
+    dispatch({ type: 'SET_SAVE_STATUS', payload: 'saving' });
+    const docRef = getIndividualDocRef(staffId, year, month);
+    
+    try {
+      const snap = await getDoc(docRef);
+      const existingData = snap.exists() ? snap.data() : {
+        staffId,
+        year,
+        month,
+        scheduleData: {},
+        shiftSubmitted: false,
+        shiftRemanded: false,
+        shiftApproved: false
+      };
+
+      const updatedScheduleData = {
+        ...(existingData.scheduleData || {}),
+        [day]: value
+      };
+
+      await setDoc(docRef, {
+        ...existingData,
+        scheduleData: updatedScheduleData,
+        updatedAt: new Date().toISOString()
+      }, { merge: true });
+
+      dispatch({ type: 'SET_SAVE_STATUS', payload: 'saved' });
+    } catch (error) {
+      console.error("個別シフト保存失敗:", error);
+      dispatch({ type: 'SET_SAVE_STATUS', payload: 'error' });
+    }
+  }, []);
+
+  const updateShiftItem = useCallback((year, month, staffId, day, value) => {
+    // UIを即座に更新したいが、リアルタイム同期があるので直接保存メソッドを呼ぶ
+    saveIndividualShiftItem(staffId, year, month, day, value);
+  }, [saveIndividualShiftItem]);
+
+  const updateLocalShiftItem = useCallback((year, month, staffId, day, value) => {
+    // 保留変更中（オレンジ表示）の一時保存。ローカルステートはリアルタイム同期で即座に反映
+    saveIndividualShiftItem(staffId, year, month, day, value);
+  }, [saveIndividualShiftItem]);
+
+  // 一括でシフトを更新する処理 (一括休日設定等)
+  const updateShiftItems = useCallback(async (year, month, updates) => {
+    if (!updates || updates.length === 0) return;
+    dispatch({ type: 'SET_SAVE_STATUS', payload: 'saving' });
+
+    try {
+      const promises = updates.map(async ({ staffId, day, value }) => {
+        const docRef = getIndividualDocRef(staffId, year, month);
+        const snap = await getDoc(docRef);
+        const existingData = snap.exists() ? snap.data() : {
+          staffId, year, month, scheduleData: {}, shiftSubmitted: false, shiftRemanded: false, shiftApproved: false
+        };
+
+        const updatedScheduleData = {
+          ...(existingData.scheduleData || {}),
+          [day]: value
+        };
+
+        return setDoc(docRef, {
+          ...existingData,
+          scheduleData: updatedScheduleData,
+          updatedAt: new Date().toISOString()
+        }, { merge: true });
+      });
+
+      await Promise.all(promises);
+      dispatch({ type: 'SET_SAVE_STATUS', payload: 'saved' });
+    } catch (error) {
+      console.error("一括個別シフト保存失敗:", error);
+      dispatch({ type: 'SET_SAVE_STATUS', payload: 'error' });
+    }
+  }, []);
+
+  // 個別ドキュメントのステータスを更新する関数 (提出・差戻・承認取り消しで使用)
+  const updateIndividualStatus = useCallback(async (staffId, year, month, statusField, value) => {
+    dispatch({ type: 'SET_SAVE_STATUS', payload: 'saving' });
+    const docRef = getIndividualDocRef(staffId, year, month);
+    try {
+      await setDoc(docRef, {
+        [statusField]: value,
+        updatedAt: new Date().toISOString()
+      }, { merge: true });
+      dispatch({ type: 'SET_SAVE_STATUS', payload: 'saved' });
+    } catch (e) {
+      console.error("ステータス更新失敗:", e);
+      dispatch({ type: 'SET_SAVE_STATUS', payload: 'error' });
+    }
+  }, []);
+
+  // ■【重要】承認時に、個別下書きからサマリオールにコピーして確定する関数
+  const approveMemberShift = useCallback(async (staffId, year, month) => {
+    dispatch({ type: 'SET_SAVE_STATUS', payload: 'saving' });
+    const indDocRef = getIndividualDocRef(staffId, year, month);
+    const summaryDocRef = getSummaryDocRef(year, month);
+
+    try {
+      // 1. 個別下書きドキュメントを取得
+      const indSnap = await getDoc(indDocRef);
+      if (!indSnap.exists()) {
+        throw new Error("下書きデータが存在しません");
+      }
+
+      const indData = indSnap.data();
+      const shifts = indData.scheduleData || {};
+
+      // 2. サマリドキュメント（2026-5等）を取得し、マージして保存
+      const summarySnap = await getDoc(summaryDocRef);
+      const existingSummary = summarySnap.exists() ? summarySnap.data() : { scheduleData: {} };
+
+      const updatedSummarySchedule = {
+        ...(existingSummary.scheduleData || {}),
+        [staffId]: shifts
+      };
+
+      await setDoc(summaryDocRef, {
+        scheduleData: updatedSummarySchedule,
+        updatedAt: new Date().toISOString()
+      }, { merge: true });
+
+      // 3. 個別下書きのステータスを「承認済み（shiftApproved: true）」にする
+      await setDoc(indDocRef, {
+        shiftApproved: true,
+        shiftRemanded: false,
+        updatedAt: new Date().toISOString()
+      }, { merge: true });
+
+      dispatch({ type: 'SET_SAVE_STATUS', payload: 'saved' });
+    } catch (e) {
+      console.error("承認＆コピー処理に失敗しました:", e);
+      dispatch({ type: 'SET_SAVE_STATUS', payload: 'error' });
+      throw e;
+    }
+  }, []);
+
+  // ---------------------------------------------------------------------------
+  // 6. 設定データの自動保存 (マスター管理用)
   // ---------------------------------------------------------------------------
   useEffect(() => {
     if (!isInitialLoadComplete.current || !pendingConfigSave.current) return;
@@ -466,142 +627,7 @@ export const useShiftData = (currentYear, currentMonth) => {
     return () => clearTimeout(debouncedSaveConfig.current);
   }, [staff, tasks, shiftPatterns, adminConfig]);
 
-  const triggerScheduleSave = useCallback(() => {
-    dispatch({ type: 'SET_SAVE_STATUS', payload: 'unsaved' });
-    if (debouncedSaveSchedule.current) clearTimeout(debouncedSaveSchedule.current);
-
-    debouncedSaveSchedule.current = setTimeout(async () => {
-      dispatch({ type: 'SET_SAVE_STATUS', payload: 'saving' });
-      
-      const changesByMonth = { ...pendingChanges.current };
-      pendingChanges.current = {}; 
-
-      inflightChanges.current = { ...inflightChanges.current };
-      for (const mKey in changesByMonth) {
-          inflightChanges.current[mKey] = { ...(inflightChanges.current[mKey] || {}), ...changesByMonth[mKey] };
-      }
-
-      const promises = Object.entries(changesByMonth).map(async ([monthKey, updates]) => {
-        if (Object.keys(updates).length === 0) return;
-        const [y, m] = monthKey.split('-');
-        const docRef = getMonthDocRef(y, m);
-        const nestedData = { updatedAt: new Date().toISOString(), scheduleData: updates };
-
-        try {
-          await setDoc(docRef, nestedData, { merge: true });
-        } catch (error) {
-          console.error(`Schedule update failed for ${monthKey}:`, error);
-          dispatch({ type: 'SET_SAVE_STATUS', payload: 'error' });
-          throw error;
-        }
-      });
-
-      try {
-        await Promise.all(promises);
-        dispatch({ type: 'SET_SAVE_STATUS', payload: 'saved' });
-      } catch (e) {
-        dispatch({ type: 'SET_SAVE_STATUS', payload: 'error' });
-      } finally {
-        for (const mKey in changesByMonth) {
-           if (inflightChanges.current[mKey]) {
-               for (const updateKey in changesByMonth[mKey]) {
-                   delete inflightChanges.current[mKey][updateKey];
-               }
-           }
-        }
-      }
-    }, 1000);
-  }, []);
-
-  // ---------------------------------------------------------------------------
-  // 4. データ更新用関数 (UIから呼び出し)
-  // ---------------------------------------------------------------------------
-  const updateShiftItem = useCallback((year, month, staffId, day, value) => {
-    const key = `${year}-${month}`;
-    const currentMonthData = schedule[key] || {};
-    const currentStaffData = currentMonthData[staffId] || {};
-    
-    if (JSON.stringify(currentStaffData[day]) === JSON.stringify(value)) return;
-
-    const newSchedule = {
-      ...schedule,
-      [key]: { ...currentMonthData, [staffId]: { ...currentStaffData, [day]: value } }
-    };
-    
-    dispatch({ type: 'UPDATE_SCHEDULE', payload: newSchedule });
-
-    if (!pendingChanges.current[key]) pendingChanges.current[key] = {};
-    if (!pendingChanges.current[key][staffId]) pendingChanges.current[key][staffId] = {};
-    pendingChanges.current[key][staffId][day] = value;
-
-    triggerScheduleSave();
-  }, [schedule, triggerScheduleSave]);
-
-  const updateLocalShiftItem = useCallback((year, month, staffId, day, value) => {
-    const key = `${year}-${month}`;
-    const currentMonthData = schedule[key] || {};
-    const currentStaffData = currentMonthData[staffId] || {};
-    
-    if (JSON.stringify(currentStaffData[day]) === JSON.stringify(value)) return;
-    
-    const newSchedule = {
-      ...schedule,
-      [key]: { ...currentMonthData, [staffId]: { ...currentStaffData, [day]: value } }
-    };
-    dispatch({ type: 'UPDATE_SCHEDULE', payload: newSchedule });
-
-    if (!localPendingChanges.current[key]) localPendingChanges.current[key] = {};
-    localPendingChanges.current[key][`${staffId}.${day}`] = true;
-  }, [schedule]);
-
-  const updateShiftItems = useCallback((year, month, updates) => {
-    if (!updates || updates.length === 0) return;
-    const key = `${year}-${month}`;
-    const currentMonthData = { ...(schedule[key] || {}) };
-    let hasChange = false;
-
-    updates.forEach(({ staffId, day, value }) => {
-      if (!currentMonthData[staffId]) currentMonthData[staffId] = {};
-      if (JSON.stringify(currentMonthData[staffId][day]) !== JSON.stringify(value)) {
-         currentMonthData[staffId] = { ...currentMonthData[staffId], [day]: value };
-         hasChange = true;
-      }
-    });
-
-    if (!hasChange) return;
-
-    const newSchedule = { ...schedule, [key]: currentMonthData };
-    dispatch({ type: 'UPDATE_SCHEDULE', payload: newSchedule });
-
-    if (!pendingChanges.current[key]) pendingChanges.current[key] = {};
-    updates.forEach(({ staffId, day, value }) => {
-      if (!pendingChanges.current[key][staffId]) pendingChanges.current[key][staffId] = {};
-      pendingChanges.current[key][staffId][day] = value;
-      if (localPendingChanges.current[key]?.[`${staffId}.${day}`]) {
-          delete localPendingChanges.current[key][`${staffId}.${day}`];
-      }
-    });
-
-    triggerScheduleSave();
-  }, [schedule, triggerScheduleSave]);
-
-  const updateShiftUserMonth = useCallback((year, month, staffId, monthData) => {
-    const key = `${year}-${month}`;
-    const currentMonthData = { ...(schedule[key] || {}) };
-    currentMonthData[staffId] = monthData;
-    
-    const newSchedule = { ...schedule, [key]: currentMonthData };
-    dispatch({ type: 'UPDATE_SCHEDULE', payload: newSchedule });
-
-    if (!pendingChanges.current[key]) pendingChanges.current[key] = {};
-    pendingChanges.current[key][staffId] = monthData;
-    
-    triggerScheduleSave();
-  }, [schedule, triggerScheduleSave]);
-
-  // ---------------------------------------------------------------------------
-  // 5. タブ閉じ防止機能 (セーフティネット)
-  // ---------------------------------------------------------------------------
+  // タブ閉じ防止機能
   useEffect(() => {
     const handleBeforeUnload = (e) => {
       if (saveStatus !== 'saved' || pendingConfigSave.current) {
@@ -614,17 +640,18 @@ export const useShiftData = (currentYear, currentMonth) => {
   }, [saveStatus]);
 
   return {
-    staff, setStaff,
-    schedule, 
+    staff: synthesizedStaff, setStaff, // 合成された提出・承認フラグ付きのstaffリスト
+    schedule: synthesizedSchedule, // 合成されたスケジュールを表示
     updateShiftItem,
     updateLocalShiftItem,
     updateShiftItems,
-    updateShiftUserMonth,
+    updateIndividualStatus, // 提出・承認のステータス単体更新用
+    approveMemberShift, // 【新設】個別シフトを承認しサマリにコピーする
     tasks, setTasks,
     shiftPatterns, setShiftPatterns,
     adminConfig, setAdminConfig,
     isLoading, loadingMessage, 
-    setLoadingMessage: (msg) => dispatch({ type: 'SET_LOADING', payload: { isLoading: isLoading, message: msg } }), 
+    setLoadingMessage: (msg) => dispatch({ type: 'SET_LOADING', payload: { isLoading, message: msg } }), 
     setIsLoading: (loading) => dispatch({ type: 'SET_LOADING', payload: { isLoading: loading } }),
     saveStatus, initialDataLoaded
   };
