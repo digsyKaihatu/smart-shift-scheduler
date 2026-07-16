@@ -27,6 +27,7 @@ const MainContent = () => {
   // --- 状態管理フックの呼び出し ---
   const {
     staff, setStaff, schedule, updateShiftItem, updateShiftItems, updateLocalShiftItem,
+    updateIndividualStatus, approveMemberShift, // ★この行を追加
     tasks, setTasks, shiftPatterns, setShiftPatterns, adminConfig, setAdminConfig,
     isLoading, loadingMessage, setLoadingMessage, setIsLoading, saveStatus, initialDataLoaded
   } = useShiftData(year, month);
@@ -35,7 +36,8 @@ const MainContent = () => {
 
   const actions = useShiftActions({
     staff, setStaff, schedule, year, month, adminConfig, shiftPatterns,
-    setIsLoading, setLoadingMessage, updateShiftItems
+    setIsLoading, setLoadingMessage, updateShiftItems,
+    updateIndividualStatus, approveMemberShift // ★この行を追加
   });
 
   // UI状態管理
