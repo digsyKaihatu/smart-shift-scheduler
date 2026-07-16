@@ -1,8 +1,8 @@
 // src/hooks/useShiftData.js
-import { useReducer, useEffect, useRef, useCallback, useState } from 'react';
+import { useReducer, useEffect, useRef, useCallback, useState, useMemo } from 'react';
 import { doc, getDoc, setDoc, onSnapshot, collection, query, where } from "firebase/firestore";
 import { db } from '../config/firebase';
-import { useOktaAuth } from '@okta/okta-react'; // Oktaからユーザー情報を取得するために追加
+import { useOktaAuth } from '@okta/okta-react'; // Oktaからユーザー情報を取得
 import { initialShiftPatterns, initialStaffData, initialAdminConfig, initialTasks } from '../constants/initialData';
 import { generateScheduleForMonth } from '../utils/scheduleUtils';
 
@@ -112,6 +112,31 @@ function shiftReducer(state, action) {
           [action.payload.key]: action.payload.data
         }
       };
+    case 'UPDATE_LOCAL_INDIVIDUAL': {
+      // 画面上のセル入力を、ラグゼロ（1ミリ秒）で即時にReactのStateへ反映するためのアクション
+      const { key, staffId, day, value } = action.payload;
+      const currentMonthInds = state.individualSchedules[key] || {};
+      const staffIndData = currentMonthInds[staffId] || { scheduleData: {} };
+      
+      const nextStaffIndData = {
+        ...staffIndData,
+        scheduleData: {
+          ...(staffIndData.scheduleData || {}),
+          [day]: value
+        }
+      };
+
+      return {
+        ...state,
+        individualSchedules: {
+          ...state.individualSchedules,
+          [key]: {
+            ...currentMonthInds,
+            [staffId]: nextStaffIndData
+          }
+        }
+      };
+    }
     default:
       return state;
   }
@@ -128,7 +153,7 @@ export const useShiftData = (currentYear, currentMonth) => {
 
   const { staff, summarySchedule, individualSchedules, tasks, shiftPatterns, adminConfig, isLoading, loadingMessage, saveStatus, initialDataLoaded } = state;
 
-  // 最新のStateとUserを保持
+  // 最新のStateとUserを保持して、不要な無限再レンダリングをガード
   const stateRef = useRef(state);
   const userRef = useRef({ id: null, email: "", isAdmin: false });
 
@@ -136,7 +161,7 @@ export const useShiftData = (currentYear, currentMonth) => {
     stateRef.current = state;
   }, [state]);
 
-  // 1. Oktaから現在ログイン中のユーザーを識別
+  // 1. Oktaから現在ログイン中のユーザーメールアドレスを識別
   useEffect(() => {
     const fetchUser = async () => {
       if (authState?.isAuthenticated) {
@@ -166,8 +191,14 @@ export const useShiftData = (currentYear, currentMonth) => {
   }, [currentUserEmail, staff, adminConfig]);
 
   const debouncedSaveConfig = useRef(null);
+  const debouncedSaveSchedule = useRef(null); // デバウンス自動保存タイマー用
   const isInitialLoadComplete = useRef(false);
   const pendingConfigSave = useRef(false);
+
+  // 送信中のデータを一時ロックして、巻き戻りを防ぐ超重要ガード
+  const pendingChanges = useRef({}); // ローカル下書きの変更ストック
+  const inflightChanges = useRef({}); // 現在Firestoreに送信中の変更
+  const localPendingChanges = useRef({}); // ローカルロック用
 
   const lastServerConfigRef = useRef({
     staff: initialStaffData,
@@ -255,7 +286,7 @@ export const useShiftData = (currentYear, currentMonth) => {
                     staff: serverStaff, tasks: serverTasks, shiftPatterns: serverPatterns, adminConfig: serverAdmin 
                 }});
                 lastServerConfigRef.current = {
-                   staff: serverStaff, tasks: serverTasks, shiftPatterns: serverPatterns, adminConfig: serverAdmin, updatedAt: data.updatedAt 
+                   staff: serverStaff, tasks: serverPatterns, shiftPatterns: serverPatterns, adminConfig: serverAdmin, updatedAt: data.updatedAt 
                 };
                 isFirstConfigLoad = false;
                 dispatch({ type: 'SET_INITIAL_DATA_LOADED' });
@@ -361,7 +392,27 @@ export const useShiftData = (currentYear, currentMonth) => {
             nextIndSchedules[data.staffId] = data;
           }
         });
-        dispatch({ type: 'SYNC_INDIVIDUAL_SCHEDULES', payload: { key, data: nextIndSchedules } });
+
+        // 競合ガード：通信中にFirestoreから降ってきた古いデータは、ローカルで変更中のセル情報で上書きマージする
+        const currentIndSchedules = stateRef.current.individualSchedules[key] || {};
+        const activeChanges = { 
+          ...(inflightChanges.current[key] || {}), 
+          ...(pendingChanges.current[key] || {}) 
+        };
+
+        const mergedIndSchedules = { ...nextIndSchedules };
+        Object.keys(activeChanges).forEach(staffId => {
+          if (!mergedIndSchedules[staffId]) {
+            mergedIndSchedules[staffId] = { staffId, year: currentYear, month: currentMonth, scheduleData: {} };
+          }
+          mergedIndSchedules[staffId].scheduleData = {
+            ...(mergedIndSchedules[staffId].scheduleData || {}),
+            ...activeChanges[staffId]
+          };
+        });
+
+        dispatch({ type: 'SYNC_INDIVIDUAL_SCHEDULES', payload: { key, data: mergedIndSchedules } });
+        dispatch({ type: 'SET_LOADING', payload: { isLoading: false } });
       }, (error) => {
         console.error("Admin Individual Schedules Load Error:", error);
       });
@@ -375,7 +426,25 @@ export const useShiftData = (currentYear, currentMonth) => {
           const data = docSnap.data();
           nextIndSchedules[currentUserId] = data;
         }
+
+        // 競合ガード：自分自身の変更データをマージ
+        const activeMyChanges = {
+          ...(inflightChanges.current[key]?.[currentUserId] || {}),
+          ...(pendingChanges.current[key]?.[currentUserId] || {})
+        };
+
+        if (Object.keys(activeMyChanges).length > 0) {
+          if (!nextIndSchedules[currentUserId]) {
+            nextIndSchedules[currentUserId] = { staffId: currentUserId, year: currentYear, month: currentMonth, scheduleData: {} };
+          }
+          nextIndSchedules[currentUserId].scheduleData = {
+            ...(nextIndSchedules[currentUserId].scheduleData || {}),
+            ...activeMyChanges
+          };
+        }
+
         dispatch({ type: 'SYNC_INDIVIDUAL_SCHEDULES', payload: { key, data: nextIndSchedules } });
+        dispatch({ type: 'SET_LOADING', payload: { isLoading: false } });
       }, (error) => {
         console.error("Member Individual Schedule Load Error:", error);
       });
@@ -385,11 +454,11 @@ export const useShiftData = (currentYear, currentMonth) => {
   }, [currentYear, currentMonth, initialDataLoaded, currentUserId]);
 
   // ---------------------------------------------------------------------------
-  // 4. 動的合成ロジック: UIに渡す `staff` と `schedule` を動的に組み立てる
+  // 4. 動的合成ロジック: UIに渡す `staff` と `schedule` をリアルタイムでマージ
   // ---------------------------------------------------------------------------
   const key = `${currentYear}-${currentMonth}`;
 
-  // UI用のstaffリストを合成 (提出、承認などのフラグを個別ドキュメントから結合)
+  // UI用のstaffリストを合成 (提出、承認などの個別ステータスを結合)
   const synthesizedStaff = useMemo(() => {
     const currentMonthInds = individualSchedules[key] || {};
     return staff.map(s => {
@@ -403,7 +472,7 @@ export const useShiftData = (currentYear, currentMonth) => {
     });
   }, [staff, individualSchedules, key]);
 
-  // UI用のスケジュールを合成 (サマリと下書きをマージ)
+  // UI用のスケジュールを合成 (サマリと下書きを自動結合)
   const synthesizedSchedule = useMemo(() => {
     const summaryData = summarySchedule[key] || {};
     const indData = individualSchedules[key] || {};
@@ -412,26 +481,24 @@ export const useShiftData = (currentYear, currentMonth) => {
     const finalSchedule = {};
 
     staff.forEach(s => {
-      // 1. 各スタッフのベースとして、まずは確定サマリデータを設定
+      // 1. 各スタッフのベースとして、確定サマリ（全体の完成版）データを設定
       finalSchedule[s.id] = { ...(summaryData[s.id] || {}) };
 
       const memberIndData = indData[s.id]?.scheduleData || {};
 
       if (isAdmin) {
-        // ■ 管理者の場合：
-        // 全員分の下書きデータが存在すれば、サマリより優先して表示する (承認前のシフトを調整してあげるため)
+        // ■ 管理者の場合：全員分の下書きデータが存在すれば、サマリより優先して「下書き」を表示
         if (indData[s.id]) {
           finalSchedule[s.id] = { ...finalSchedule[s.id], ...memberIndData };
         }
       } else {
-        // ■ 一般メンバーの場合：
-        // 自分自身の行だけは、自分の下書きデータを表示。他のメンバーの行は確定されたサマリデータのみを表示。
+        // ■ 一般メンバーの場合：自分の行は「自分の下書き」を表示。他人の行は「確定サマリ」のみを表示
         if (s.id === currentUserId && indData[s.id]) {
           finalSchedule[s.id] = { ...finalSchedule[s.id], ...memberIndData };
         }
       }
 
-      // 該当月のドキュメントもサマリも空なら初期スケジュールを生成する
+      // 新規作成時など、データが完全に空ならデフォルトパターンを流し込む
       if (Object.keys(finalSchedule[s.id]).length === 0) {
         const defaultSched = generateScheduleForMonth(currentYear, currentMonth, [s], shiftPatterns)[s.id] || {};
         finalSchedule[s.id] = defaultSched;
@@ -442,88 +509,139 @@ export const useShiftData = (currentYear, currentMonth) => {
   }, [staff, summarySchedule, individualSchedules, key, currentUserId, currentYear, currentMonth, shiftPatterns]);
 
   // ---------------------------------------------------------------------------
-  // 5. データ保存＆更新用関数 (UIから呼び出し)
+  // 5. デバウンス自動保存（1秒間入力が止まったらまとめてFirestoreに送信）
   // ---------------------------------------------------------------------------
-  
-  // 個別入力ドキュメントの更新用
-  const saveIndividualShiftItem = useCallback(async (staffId, year, month, day, value) => {
-    dispatch({ type: 'SET_SAVE_STATUS', payload: 'saving' });
-    const docRef = getIndividualDocRef(staffId, year, month);
-    
-    try {
-      const snap = await getDoc(docRef);
-      const existingData = snap.exists() ? snap.data() : {
-        staffId,
-        year,
-        month,
-        scheduleData: {},
-        shiftSubmitted: false,
-        shiftRemanded: false,
-        shiftApproved: false
-      };
+  const triggerScheduleSave = useCallback(() => {
+    dispatch({ type: 'SET_SAVE_STATUS', payload: 'unsaved' });
+    if (debouncedSaveSchedule.current) clearTimeout(debouncedSaveSchedule.current);
 
-      const updatedScheduleData = {
-        ...(existingData.scheduleData || {}),
-        [day]: value
-      };
+    debouncedSaveSchedule.current = setTimeout(async () => {
+      dispatch({ type: 'SET_SAVE_STATUS', payload: 'saving' });
+      
+      const changesByMonth = { ...pendingChanges.current };
+      pendingChanges.current = {}; // 送信用ストックを一度クリア
 
-      await setDoc(docRef, {
-        ...existingData,
-        scheduleData: updatedScheduleData,
-        updatedAt: new Date().toISOString()
-      }, { merge: true });
+      // 送信中フラグ（Inflight）に移動
+      inflightChanges.current = { ...inflightChanges.current };
+      for (const mKey in changesByMonth) {
+          inflightChanges.current[mKey] = { ...(inflightChanges.current[mKey] || {}), ...changesByMonth[mKey] };
+      }
 
-      dispatch({ type: 'SET_SAVE_STATUS', payload: 'saved' });
-    } catch (error) {
-      console.error("個別シフト保存失敗:", error);
-      dispatch({ type: 'SET_SAVE_STATUS', payload: 'error' });
-    }
-  }, []);
+      // 宛先ごとに個別ドキュメントに並列書き込み
+      const promises = [];
+      Object.entries(changesByMonth).forEach(([monthKey, staffUpdates]) => {
+        const [y, m] = monthKey.split('-');
+        
+        Object.entries(staffUpdates).forEach(([staffId, dayUpdates]) => {
+          const docRef = getIndividualDocRef(staffId, y, m);
+          
+          const promise = (async () => {
+            try {
+              // 既存の下書きデータを一度取得してマージしてから保存
+              const snap = await getDoc(docRef);
+              const existingData = snap.exists() ? snap.data() : {
+                staffId, year: Number(y), month: Number(m), scheduleData: {},
+                shiftSubmitted: false, shiftRemanded: false, shiftApproved: false
+              };
 
-  const updateShiftItem = useCallback((year, month, staffId, day, value) => {
-    // UIを即座に更新したいが、リアルタイム同期があるので直接保存メソッドを呼ぶ
-    saveIndividualShiftItem(staffId, year, month, day, value);
-  }, [saveIndividualShiftItem]);
+              const updatedScheduleData = {
+                ...(existingData.scheduleData || {}),
+                ...dayUpdates
+              };
 
-  const updateLocalShiftItem = useCallback((year, month, staffId, day, value) => {
-    // 保留変更中（オレンジ表示）の一時保存。ローカルステートはリアルタイム同期で即座に反映
-    saveIndividualShiftItem(staffId, year, month, day, value);
-  }, [saveIndividualShiftItem]);
+              await setDoc(docRef, {
+                ...existingData,
+                scheduleData: updatedScheduleData,
+                updatedAt: new Date().toISOString()
+              }, { merge: true });
 
-  // 一括でシフトを更新する処理 (一括休日設定等)
-  const updateShiftItems = useCallback(async (year, month, updates) => {
-    if (!updates || updates.length === 0) return;
-    dispatch({ type: 'SET_SAVE_STATUS', payload: 'saving' });
-
-    try {
-      const promises = updates.map(async ({ staffId, day, value }) => {
-        const docRef = getIndividualDocRef(staffId, year, month);
-        const snap = await getDoc(docRef);
-        const existingData = snap.exists() ? snap.data() : {
-          staffId, year, month, scheduleData: {}, shiftSubmitted: false, shiftRemanded: false, shiftApproved: false
-        };
-
-        const updatedScheduleData = {
-          ...(existingData.scheduleData || {}),
-          [day]: value
-        };
-
-        return setDoc(docRef, {
-          ...existingData,
-          scheduleData: updatedScheduleData,
-          updatedAt: new Date().toISOString()
-        }, { merge: true });
+            } catch (error) {
+              console.error(`個別シフト保存失敗 for ${staffId}:`, error);
+              dispatch({ type: 'SET_SAVE_STATUS', payload: 'error' });
+              throw error;
+            }
+          })();
+          promises.push(promise);
+        });
       });
 
-      await Promise.all(promises);
-      dispatch({ type: 'SET_SAVE_STATUS', payload: 'saved' });
-    } catch (error) {
-      console.error("一括個別シフト保存失敗:", error);
-      dispatch({ type: 'SET_SAVE_STATUS', payload: 'error' });
-    }
+      try {
+        await Promise.all(promises);
+        dispatch({ type: 'SET_SAVE_STATUS', payload: 'saved' });
+      } catch (e) {
+        dispatch({ type: 'SET_SAVE_STATUS', payload: 'error' });
+      } finally {
+        // 送信完了したデータを Inflight から消去
+        for (const mKey in changesByMonth) {
+          if (inflightChanges.current[mKey]) {
+            Object.keys(changesByMonth[mKey]).forEach(staffId => {
+              if (inflightChanges.current[mKey][staffId]) {
+                Object.keys(changesByMonth[mKey][staffId]).forEach(day => {
+                  delete inflightChanges.current[mKey][staffId][day];
+                });
+                if (Object.keys(inflightChanges.current[mKey][staffId]).length === 0) {
+                  delete inflightChanges.current[mKey][staffId];
+                }
+              }
+            });
+            if (Object.keys(inflightChanges.current[mKey]).length === 0) {
+              delete inflightChanges.current[mKey];
+            }
+          }
+        }
+      }
+    }, 1000); // 1秒間入力が途切れたら送信
   }, []);
 
-  // 個別ドキュメントのステータスを更新する関数 (提出・差戻・承認取り消しで使用)
+  // ---------------------------------------------------------------------------
+  // 6. データ更新用関数 (UIから呼び出し)
+  // ---------------------------------------------------------------------------
+  const updateShiftItem = useCallback((year, month, staffId, day, value) => {
+    const key = `${year}-${month}`;
+    const currentMonthData = synthesizedSchedule[key] || {};
+    const currentStaffData = currentMonthData[staffId] || {};
+    
+    if (JSON.stringify(currentStaffData[day]) === JSON.stringify(value)) return;
+
+    // 1. ラグゼロで即座にReactの画面を更新
+    dispatch({
+      type: 'UPDATE_LOCAL_INDIVIDUAL',
+      payload: { key, staffId, day, value }
+    });
+
+    // 2. 送信ストック（Pending）に書き込みを記録
+    if (!pendingChanges.current[key]) pendingChanges.current[key] = {};
+    if (!pendingChanges.current[key][staffId]) pendingChanges.current[key][staffId] = {};
+    pendingChanges.current[key][staffId][day] = value;
+
+    // 3. 自動デバウンス保存を実行
+    triggerScheduleSave();
+  }, [synthesizedSchedule, triggerScheduleSave]);
+
+  const updateLocalShiftItem = useCallback((year, month, staffId, day, value) => {
+    // 保留変更中（オレンジ表示等）の時もラグゼロで即時画面更新＆自動保存
+    updateShiftItem(year, month, staffId, day, value);
+  }, [updateShiftItem]);
+
+  const updateShiftItems = useCallback(async (year, month, updates) => {
+    if (!updates || updates.length === 0) return;
+    const key = `${year}-${month}`;
+
+    updates.forEach(({ staffId, day, value }) => {
+      dispatch({
+        type: 'UPDATE_LOCAL_INDIVIDUAL',
+        payload: { key, staffId, day, value }
+      });
+
+      if (!pendingChanges.current[key]) pendingChanges.current[key] = {};
+      if (!pendingChanges.current[key][staffId]) pendingChanges.current[key][staffId] = {};
+      pendingChanges.current[key][staffId][day] = value;
+    });
+
+    triggerScheduleSave();
+  }, [triggerScheduleSave]);
+
+  // 提出、差戻、承認のチェック用ステータス更新関数
   const updateIndividualStatus = useCallback(async (staffId, year, month, statusField, value) => {
     dispatch({ type: 'SET_SAVE_STATUS', payload: 'saving' });
     const docRef = getIndividualDocRef(staffId, year, month);
@@ -539,7 +657,7 @@ export const useShiftData = (currentYear, currentMonth) => {
     }
   }, []);
 
-  // ■【重要】承認時に、個別下書きからサマリオールにコピーして確定する関数
+  // 管理者が「承認」をクリックした際に、個別下書きからサマリにシフトをコピー統合する関数
   const approveMemberShift = useCallback(async (staffId, year, month) => {
     dispatch({ type: 'SET_SAVE_STATUS', payload: 'saving' });
     const indDocRef = getIndividualDocRef(staffId, year, month);
@@ -555,7 +673,7 @@ export const useShiftData = (currentYear, currentMonth) => {
       const indData = indSnap.data();
       const shifts = indData.scheduleData || {};
 
-      // 2. サマリドキュメント（2026-5等）を取得し、マージして保存
+      // 2. 確定サマリドキュメント（2026-5等）を取得し、マージ
       const summarySnap = await getDoc(summaryDocRef);
       const existingSummary = summarySnap.exists() ? summarySnap.data() : { scheduleData: {} };
 
@@ -564,12 +682,13 @@ export const useShiftData = (currentYear, currentMonth) => {
         [staffId]: shifts
       };
 
+      // 3. サマリ（全体の完成版ファイル）に書き込み
       await setDoc(summaryDocRef, {
         scheduleData: updatedSummarySchedule,
         updatedAt: new Date().toISOString()
       }, { merge: true });
 
-      // 3. 個別下書きのステータスを「承認済み（shiftApproved: true）」にする
+      // 4. 個別ドキュメントを「承認済み」ステータスに更新
       await setDoc(indDocRef, {
         shiftApproved: true,
         shiftRemanded: false,
@@ -578,14 +697,14 @@ export const useShiftData = (currentYear, currentMonth) => {
 
       dispatch({ type: 'SET_SAVE_STATUS', payload: 'saved' });
     } catch (e) {
-      console.error("承認＆コピー処理に失敗しました:", e);
+      console.error("承認＆コピー処理失敗:", e);
       dispatch({ type: 'SET_SAVE_STATUS', payload: 'error' });
       throw e;
     }
   }, []);
 
   // ---------------------------------------------------------------------------
-  // 6. 設定データの自動保存 (マスター管理用)
+  // 7. 設定データの自動保存 (マスター管理用)
   // ---------------------------------------------------------------------------
   useEffect(() => {
     if (!isInitialLoadComplete.current || !pendingConfigSave.current) return;
@@ -640,13 +759,13 @@ export const useShiftData = (currentYear, currentMonth) => {
   }, [saveStatus]);
 
   return {
-    staff: synthesizedStaff, setStaff, // 合成された提出・承認フラグ付きのstaffリスト
-    schedule: synthesizedSchedule, // 合成されたスケジュールを表示
+    staff: synthesizedStaff, setStaff, // 合成された提出・承認フラグ付きstaff
+    schedule: synthesizedSchedule, // マージされたスケジュールデータ
     updateShiftItem,
     updateLocalShiftItem,
     updateShiftItems,
-    updateIndividualStatus, // 提出・承認のステータス単体更新用
-    approveMemberShift, // 【新設】個別シフトを承認しサマリにコピーする
+    updateIndividualStatus,
+    approveMemberShift,
     tasks, setTasks,
     shiftPatterns, setShiftPatterns,
     adminConfig, setAdminConfig,
