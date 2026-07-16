@@ -25,19 +25,21 @@ const MainContent = () => {
   const [month, setMonth] = useState(new Date().getMonth() + 1);
 
   // --- 状態管理フックの呼び出し ---
+  // ★修正: useShiftData から updateIndividualStatus と approveMemberShift も取り出します
   const {
     staff, setStaff, schedule, updateShiftItem, updateShiftItems, updateLocalShiftItem,
-    updateIndividualStatus, approveMemberShift, // ★この行を追加
+    updateIndividualStatus, approveMemberShift,
     tasks, setTasks, shiftPatterns, setShiftPatterns, adminConfig, setAdminConfig,
     isLoading, loadingMessage, setLoadingMessage, setIsLoading, saveStatus, initialDataLoaded
   } = useShiftData(year, month);
 
   const { currentUser, isAdmin } = useUserStatus(staff, adminConfig, initialDataLoaded);
 
+  // ★修正: useShiftActions の引数に updateIndividualStatus と approveMemberShift を渡します
   const actions = useShiftActions({
     staff, setStaff, schedule, year, month, adminConfig, shiftPatterns,
     setIsLoading, setLoadingMessage, updateShiftItems,
-    updateIndividualStatus, approveMemberShift // ★この行を追加
+    updateIndividualStatus, approveMemberShift
   });
 
   // UI状態管理
@@ -104,7 +106,7 @@ const MainContent = () => {
     }
   };
 
-  // ★修正: 一括休日/解除設定ロジックを復元・追加
+  // 一括休日/解除設定ロジック
   const handleConfirmHoliday = () => {
     if (!holidayConfirmation) return;
     const { day, isUnlocking } = holidayConfirmation;
@@ -127,7 +129,7 @@ const MainContent = () => {
     setHolidayConfirmation(null);
   };
 
-  // ★修正: 基本パターン適用ロジックを外に切り出し
+  // 基本パターン適用ロジック
   const handleApplyStaffPattern = (sid, p, hb) => {
     const targetStaff = staff.find(s => s.id === sid);
     const oldPattern = targetStaff?.defaultShift?.pattern || Array(5).fill('シフト休');
