@@ -1,21 +1,21 @@
 import React from 'react';
 
+// ★修正: サブコンポーネントをメインコンポーネントの「外」に移動しました
+const GuideSection = ({ title, children }) => (
+  <div className="mb-8">
+    <h3 className="text-xl font-bold text-[#D9824D] mb-3 border-l-4 border-[#F4B896] pl-3">{title}</h3>
+    <div className="text-base text-slate-600 space-y-3 ml-1">{children}</div>
+  </div>
+);
+
+// ★修正: 管理者バッジも外に移動しました
+const AdminBadge = () => (
+  <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-slate-600 text-white align-middle">
+    管理者のみ
+  </span>
+);
+
 const HelpGuideModal = ({ onClose }) => {
-  // ガイド内のセクション用サブポーネント
-  const GuideSection = ({ title, children }) => (
-    <div className="mb-8">
-      <h3 className="text-xl font-bold text-[#D9824D] mb-3 border-l-4 border-[#F4B896] pl-3">{title}</h3>
-      <div className="text-base text-slate-600 space-y-3 ml-1">{children}</div>
-    </div>
-  );
-
-  // 管理者専用バッジ
-  const AdminBadge = () => (
-    <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-slate-600 text-white align-middle">
-      管理者のみ
-    </span>
-  );
-
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={onClose}>
       <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>

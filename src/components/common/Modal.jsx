@@ -2,8 +2,16 @@ import React from 'react';
 
 export const Modal = ({ children, onClose }) => {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 backdrop-blur-sm p-4">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto relative animate-fadeIn">
+    // ★修正: 背景クリックで onClose が発火するように追加
+    <div 
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 backdrop-blur-sm p-4"
+      onClick={onClose}
+    >
+      {/* ★修正: モーダルの中身をクリックした時は、背景クリック扱いにならないようイベントを止める */}
+      <div 
+        className="bg-white rounded-lg shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto relative animate-fadeIn"
+        onClick={(e) => e.stopPropagation()}
+      >
         <button 
           onClick={onClose}
           className="absolute top-3 right-3 text-gray-400 hover:text-gray-600 transition-colors"
@@ -22,6 +30,7 @@ export const Modal = ({ children, onClose }) => {
 
 export const ConfirmationModal = ({ title, message, onConfirm, onCancel, confirmText = "はい", cancelText = "いいえ", confirmColor = "bg-blue-600 hover:bg-blue-700" }) => {
   return (
+    // ※こちらは誤操作防止のため、あえて背景クリックでは閉じない仕様のままにしています
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 backdrop-blur-sm p-4">
       <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-6 animate-scaleIn">
         <h3 className="text-lg font-bold text-gray-900 mb-2">{title}</h3>

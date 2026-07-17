@@ -1,3 +1,4 @@
+// src/hooks/useShiftActions.js
 import { useState, useCallback } from 'react';
 import { chatService } from '../services/chatService';
 import { summarizePattern } from '../utils/scheduleUtils';
@@ -7,7 +8,7 @@ import { summarizePattern } from '../utils/scheduleUtils';
  */
 export const useShiftActions = ({
   staff, setStaff, schedule, year, month, adminConfig, shiftPatterns,
-  setIsLoading, setLoadingMessage, updateShiftItems
+  setIsLoading, setLoadingMessage, updateShiftItems, updateIndividualStatus, approveMemberShift
 }) => {
   const key = `${year}-${month}`;
 
@@ -28,14 +29,12 @@ export const useShiftActions = ({
   const handleToggleShiftSubmitted = useCallback((staffId) => {
     const s = staff.find(x => x.id === staffId);
     if (s?.shiftSubmitted?.[key]) {
-      setStaff(prev => prev.map(x => x.id === staffId ? { 
-        ...x, 
-        shiftSubmitted: { ...x.shiftSubmitted, [key]: false } 
-      } : x));
+      // 提出チェックを外す (ステータスを個別ドキュメントに直接反映)
+      updateIndividualStatus(staffId, year, month, 'shiftSubmitted', false);
     } else {
       setSubmissionConfirmation({ staffId, name: s.name });
     }
-  }, [staff, key, setStaff]);
+  }, [staff, key, year, month, updateIndividualStatus]);
 
   const handleConfirmSubmission = async () => {
     if (!submissionConfirmation) return;
@@ -49,17 +48,13 @@ export const useShiftActions = ({
         .join(' ');
     }
     
-    // UIを即座に更新してチェックを付ける（即時反映）
-    setStaff(prev => prev.map(x => x.id === staffId ? { 
-      ...x, 
-      shiftSubmitted: { ...x.shiftSubmitted, [key]: true } 
-    } : x));
+    // UIステータス更新 (個別ドキュメントを更新)
+    await updateIndividualStatus(staffId, year, month, 'shiftSubmitted', true);
     setSubmissionConfirmation(null);
 
     try { 
       await chatService.sendSubmission(name, year, month, mentions); 
     } catch (e) { 
-      // 【修正点】通知に失敗してもチェックは外さず、警告のみ表示する
       console.error("提出通知の送信に失敗しました:", e);
       alert(`チャットへの通知に失敗しましたが、シフトの提出は完了しました。\n(エラー詳細: ${e.message})`);
     }
@@ -71,30 +66,26 @@ export const useShiftActions = ({
   const handleToggleShiftRemanded = useCallback((staffId) => {
     const s = staff.find(x => x.id === staffId);
     if (s?.shiftRemanded?.[key]) {
-      setStaff(prev => prev.map(x => x.id === staffId ? { 
-        ...x, 
-        shiftRemanded: { ...x.shiftRemanded, [key]: false } 
-      } : x));
+      // 差戻チェックを外す (個別ドキュメントを更新)
+      updateIndividualStatus(staffId, year, month, 'shiftRemanded', false);
     } else {
       setRemandConfirmation({ staffId, name: s.name });
     }
-  }, [staff, key, setStaff]);
+  }, [staff, key, year, month, updateIndividualStatus]);
 
   const handleConfirmRemand = async () => {
     if (!remandConfirmation) return;
     const { staffId, name } = remandConfirmation;
     const s = staff.find(x => x.id === staffId);
     
-    setStaff(prev => prev.map(x => x.id === staffId ? { 
-      ...x, 
-      shiftRemanded: { ...x.shiftRemanded, [key]: true } 
-    } : x));
+    // 差戻をチェックし、提出は外す (個別ドキュメントを更新)
+    await updateIndividualStatus(staffId, year, month, 'shiftRemanded', true);
+    await updateIndividualStatus(staffId, year, month, 'shiftSubmitted', false);
     setRemandConfirmation(null);
 
     try { 
       await chatService.sendRemand(name, s.chatUserId); 
     } catch (e) { 
-      // 【修正点】通知に失敗してもチェックは外さず、警告のみ表示する
       console.error("差戻通知の送信に失敗しました:", e);
       alert(`チャットへの通知に失敗しましたが、シフトの差戻は完了しました。\n(エラー詳細: ${e.message})`);
     }
@@ -117,13 +108,11 @@ export const useShiftActions = ({
     const targetId = approvalModalStaffId;
     const s = staff.find(x => x.id === targetId);
 
-    setStaff(prev => prev.map(x => x.id === targetId ? { 
-      ...x, 
-      shiftApproved: { ...x.shiftApproved, [key]: true } 
-    } : x));
+    // ■【重要】承認と同時に、個別下書きからサマリにシフトデータをコピー！
+    await approveMemberShift(targetId, year, month);
     setApprovalModalStaffId(null);
 
-    // 【修正点】通知の成功/失敗に関わらず、承認済みのシフト変更（オレンジ色のセル）を確定させる
+    // 承認済みのシフト変更（オレンジ色のセル）をクリーンにする
     const staffSchedule = schedule[key]?.[s.id] || {};
     const updates = [];
     Object.entries(staffSchedule).forEach(([d, val]) => {
@@ -146,19 +135,17 @@ export const useShiftActions = ({
         remarks
       );
     } catch (e) { 
-      // 【修正点】通知に失敗してもチェックは外さず、警告のみ表示する
       console.error("承認通知の送信に失敗しました:", e);
       alert(`チャットへの通知に失敗しましたが、シフトの承認とデータの確定は完了しました。\n(エラー詳細: ${e.message})`);
     }
   };
 
-  const handleConfirmApprovalCancellation = () => {
+  const handleConfirmApprovalCancellation = async () => {
     if (!approvalCancellationConfirmation) return;
     const { staffId } = approvalCancellationConfirmation;
-    setStaff(prev => prev.map(x => x.id === staffId ? { 
-      ...x, 
-      shiftApproved: { ...x.shiftApproved, [key]: false } 
-    } : x));
+    
+    // 承認を外す (個別ドキュメントを更新)
+    await updateIndividualStatus(staffId, year, month, 'shiftApproved', false);
     setApprovalCancellationConfirmation(null);
   };
 
@@ -205,7 +192,6 @@ export const useShiftActions = ({
             );
         } catch (e) {
             console.warn(`通知送信エラー (${targetStaff.name}):`, e);
-            // エラーを無視してデータ保存の処理に進む
         }
         
         successfulStaffIds.push(sId);
@@ -222,10 +208,13 @@ export const useShiftActions = ({
         });
       }
 
-      setStaff(prev => prev.map(s => successfulStaffIds.includes(s.id) ? { 
-        ...s, 
-        shiftApproved: { ...s.shiftApproved, [key]: false } 
-      } : s));
+      // 承認ステータスを解除し、変更した個別シフトをサマリオール（および個別ドキュメント）に書き込み
+      const promises = successfulStaffIds.map(async (sId) => {
+        await updateIndividualStatus(sId, year, month, 'shiftApproved', false);
+        // サマリ確定コピーを再度実行 (変更がサマリにマージされます)
+        await approveMemberShift(sId, year, month);
+      });
+      await Promise.all(promises);
       
       if (updatesToSave.length > 0) {
         updateShiftItems(year, month, updatesToSave);
