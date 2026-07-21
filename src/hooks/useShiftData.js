@@ -198,7 +198,6 @@ export const useShiftData = (currentYear, currentMonth) => {
   // 送信中のデータを一時ロックして、巻き戻りを防ぐ超重要ガード
   const pendingChanges = useRef({}); // ローカル下書きの変更ストック
   const inflightChanges = useRef({}); // 現在Firestoreに送信中の変更
-  const localPendingChanges = useRef({}); // ローカルロック用
 
   const lastServerConfigRef = useRef({
     staff: initialStaffData,
@@ -286,7 +285,7 @@ export const useShiftData = (currentYear, currentMonth) => {
                     staff: serverStaff, tasks: serverTasks, shiftPatterns: serverPatterns, adminConfig: serverAdmin 
                 }});
                 lastServerConfigRef.current = {
-                   staff: serverStaff, tasks: serverPatterns, shiftPatterns: serverPatterns, adminConfig: serverAdmin, updatedAt: data.updatedAt 
+                   staff: serverStaff, tasks: serverTasks, shiftPatterns: serverPatterns, adminConfig: serverAdmin, updatedAt: data.updatedAt 
                 };
                 isFirstConfigLoad = false;
                 dispatch({ type: 'SET_INITIAL_DATA_LOADED' });
@@ -657,7 +656,7 @@ export const useShiftData = (currentYear, currentMonth) => {
     }
   }, []);
 
-  // 管理者が「承認」をクリックした際に、個別下書きからサマリにシフトをコピー統合する関数
+  // 管理者が「承認」をクリックした際や、変更を確定した際に、個別下書きからサマリにシフトをコピー統合する関数
   const approveMemberShift = useCallback(async (staffId, year, month) => {
     dispatch({ type: 'SET_SAVE_STATUS', payload: 'saving' });
     const indDocRef = getIndividualDocRef(staffId, year, month);
@@ -677,9 +676,14 @@ export const useShiftData = (currentYear, currentMonth) => {
       const summarySnap = await getDoc(summaryDocRef);
       const existingSummary = summarySnap.exists() ? summarySnap.data() : { scheduleData: {} };
 
+      // ★修正箇所：月間データを丸ごと上書きするのではなく、既存のサマリデータと日ごとに合体（マージ）させます
+      const currentStaffSummary = existingSummary.scheduleData?.[staffId] || {};
       const updatedSummarySchedule = {
         ...(existingSummary.scheduleData || {}),
-        [staffId]: shifts
+        [staffId]: {
+          ...currentStaffSummary, // 既存の他の日のシフトデータを残す
+          ...shifts               // 今回変更した日だけを上書きする
+        }
       };
 
       // 3. サマリ（全体の完成版ファイル）に書き込み
