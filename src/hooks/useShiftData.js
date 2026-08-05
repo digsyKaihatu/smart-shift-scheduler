@@ -1,9 +1,8 @@
 // src/hooks/useShiftData.js
 import { useReducer, useEffect, useRef, useCallback, useState, useMemo } from 'react';
-// ★修正: writeBatch を追加インポート
 import { doc, getDoc, setDoc, onSnapshot, collection, query, where, writeBatch } from "firebase/firestore";
 import { db } from '../config/firebase';
-import { useOktaAuth } from '@okta/okta-react'; // Oktaからユーザー情報を取得
+import { useOktaAuth } from '@okta/okta-react';
 import { initialShiftPatterns, initialStaffData, initialAdminConfig, initialTasks } from '../constants/initialData';
 import { generateScheduleForMonth } from '../utils/scheduleUtils';
 
@@ -76,8 +75,8 @@ const initialState = {
   saveStatus: 'saved',
   initialDataLoaded: false,
   staff: [],
-  summarySchedule: {}, // サマリ（確定版）データ
-  individualSchedules: {}, // 各個人の下書きデータ
+  summarySchedule: {},
+  individualSchedules: {},
   tasks: [],
   shiftPatterns: [],
   adminConfig: initialAdminConfig
@@ -114,7 +113,6 @@ function shiftReducer(state, action) {
         }
       };
     case 'UPDATE_LOCAL_INDIVIDUAL': {
-      // 画面上のセル入力を、ラグゼロ（1ミリ秒）で即時にReactのStateへ反映するためのアクション
       const { key, staffId, day, value } = action.payload;
       const currentMonthInds = state.individualSchedules[key] || {};
       const staffIndData = currentMonthInds[staffId] || { scheduleData: {} };
@@ -138,7 +136,6 @@ function shiftReducer(state, action) {
         }
       };
     }
-    // ★一括変更時に再描画を1回にまとめるための新しいReducer処理（フリーズ解消用）
     case 'UPDATE_LOCAL_INDIVIDUAL_BULK': {
       const { key, updates } = action.payload;
       const currentMonthInds = { ...(state.individualSchedules[key] || {}) };
@@ -178,7 +175,6 @@ export const useShiftData = (currentYear, currentMonth) => {
 
   const { staff, summarySchedule, individualSchedules, tasks, shiftPatterns, adminConfig, isLoading, loadingMessage, saveStatus, initialDataLoaded } = state;
 
-  // 最新のStateとUserを保持して、不要な無限再レンダリングをガード
   const stateRef = useRef(state);
   const userRef = useRef({ id: null, email: "", isAdmin: false });
 
@@ -186,7 +182,6 @@ export const useShiftData = (currentYear, currentMonth) => {
     stateRef.current = state;
   }, [state]);
 
-  // 1. Oktaから現在ログイン中のユーザーメールアドレスを識別
   useEffect(() => {
     const fetchUser = async () => {
       if (authState?.isAuthenticated) {
@@ -201,7 +196,6 @@ export const useShiftData = (currentYear, currentMonth) => {
     fetchUser();
   }, [authState, oktaAuth]);
 
-  // 2. マスタデータがロードされたら、ログインユーザーの staff ID を特定
   useEffect(() => {
     if (currentUserEmail && staff.length > 0) {
       const matched = staff.find(s => s.email === currentUserEmail);
@@ -216,13 +210,12 @@ export const useShiftData = (currentYear, currentMonth) => {
   }, [currentUserEmail, staff, adminConfig]);
 
   const debouncedSaveConfig = useRef(null);
-  const debouncedSaveSchedule = useRef(null); // デバウンス自動保存タイマー用
+  const debouncedSaveSchedule = useRef(null);
   const isInitialLoadComplete = useRef(false);
   const pendingConfigSave = useRef(false);
 
-  // 送信中のデータを一時ロックして、巻き戻りを防ぐ超重要ガード
-  const pendingChanges = useRef({}); // ローカル下書きの変更ストック
-  const inflightChanges = useRef({}); // 現在Firestoreに送信中の変更
+  const pendingChanges = useRef({}); 
+  const inflightChanges = useRef({}); 
 
   const lastServerConfigRef = useRef({
     staff: initialStaffData,
@@ -235,9 +228,6 @@ export const useShiftData = (currentYear, currentMonth) => {
   const getSummaryDocRef = (year, month) => doc(db, "schedules", `${year}-${month}`);
   const getIndividualDocRef = (staffId, year, month) => doc(db, "individual_schedules", `${staffId}_${year}-${month}`);
 
-  // ---------------------------------------------------------------------------
-  // ローカル更新用のラッパー関数 (schedules/configの更新)
-  // ---------------------------------------------------------------------------
   const setStaff = useCallback((value) => {
     pendingConfigSave.current = true;
     dispatch({ type: 'SET_SAVE_STATUS', payload: 'unsaved' });
@@ -266,9 +256,6 @@ export const useShiftData = (currentYear, currentMonth) => {
     dispatch({ type: 'UPDATE_MASTER_DATA', payload: { adminConfig: newValue } });
   }, [adminConfig]);
 
-  // ---------------------------------------------------------------------------
-  // 1. 設定データロード (リアルタイム同期)
-  // ---------------------------------------------------------------------------
   useEffect(() => {
     let unsubscribeConfig = () => {};
     let isFirstConfigLoad = true; 
@@ -368,9 +355,6 @@ export const useShiftData = (currentYear, currentMonth) => {
     return () => unsubscribeConfig();
   }, []);
 
-  // ---------------------------------------------------------------------------
-  // 2. 確定サマリデータの監視 (リアルタイム同期)
-  // ---------------------------------------------------------------------------
   useEffect(() => {
     if (!initialDataLoaded) return;
     const key = `${currentYear}-${currentMonth}`;
@@ -390,9 +374,6 @@ export const useShiftData = (currentYear, currentMonth) => {
     return () => unsubscribe();
   }, [currentYear, currentMonth, initialDataLoaded]);
 
-  // ---------------------------------------------------------------------------
-  // 3. 個別下書きデータの監視 (リアルタイム同期) - 管理者/一般メンバーで切り替え
-  // ---------------------------------------------------------------------------
   useEffect(() => {
     if (!initialDataLoaded || !currentUserId) return;
     const key = `${currentYear}-${currentMonth}`;
@@ -401,7 +382,6 @@ export const useShiftData = (currentYear, currentMonth) => {
     let unsubscribe = () => {};
 
     if (isAdmin) {
-      // ■ 管理者の場合：全メンバーの個別入力データをリアルタイムで監視する
       const q = query(
         collection(db, "individual_schedules"),
         where("year", "==", currentYear),
@@ -417,7 +397,6 @@ export const useShiftData = (currentYear, currentMonth) => {
           }
         });
 
-        // 競合ガード：通信中にFirestoreから降ってきた古いデータは、ローカルで変更中のセル情報で上書きマージする
         const currentIndSchedules = stateRef.current.individualSchedules[key] || {};
         const activeChanges = { 
           ...(inflightChanges.current[key] || {}), 
@@ -441,7 +420,6 @@ export const useShiftData = (currentYear, currentMonth) => {
         console.error("Admin Individual Schedules Load Error:", error);
       });
     } else {
-      // ■ 一般メンバーの場合：自分自身の個別入力データだけをリアルタイムで監視する
       const myDocRef = getIndividualDocRef(currentUserId, currentYear, currentMonth);
 
       unsubscribe = onSnapshot(myDocRef, (docSnap) => {
@@ -451,7 +429,6 @@ export const useShiftData = (currentYear, currentMonth) => {
           nextIndSchedules[currentUserId] = data;
         }
 
-        // 競合ガード：自分自身の変更データをマージ
         const activeMyChanges = {
           ...(inflightChanges.current[key]?.[currentUserId] || {}),
           ...(pendingChanges.current[key]?.[currentUserId] || {})
@@ -477,12 +454,8 @@ export const useShiftData = (currentYear, currentMonth) => {
     return () => unsubscribe();
   }, [currentYear, currentMonth, initialDataLoaded, currentUserId]);
 
-  // ---------------------------------------------------------------------------
-  // 4. 動的合成ロジック: UIに渡す `staff` と `schedule` をリアルタイムでマージ
-  // ---------------------------------------------------------------------------
   const key = `${currentYear}-${currentMonth}`;
 
-  // UI用のstaffリストを合成 (提出、承認などの個別ステータスを結合)
   const synthesizedStaff = useMemo(() => {
     const currentMonthInds = individualSchedules[key] || {};
     return staff.map(s => {
@@ -496,7 +469,6 @@ export const useShiftData = (currentYear, currentMonth) => {
     });
   }, [staff, individualSchedules, key]);
 
-  // UI用のスケジュールを合成 (サマリと下書きを自動結合)
   const synthesizedSchedule = useMemo(() => {
     const summaryData = summarySchedule[key] || {};
     const indData = individualSchedules[key] || {};
@@ -505,24 +477,19 @@ export const useShiftData = (currentYear, currentMonth) => {
     const finalSchedule = {};
 
     staff.forEach(s => {
-      // 1. 各スタッフのベースとして、確定サマリ（全体の完成版）データを設定
       finalSchedule[s.id] = { ...(summaryData[s.id] || {}) };
-
       const memberIndData = indData[s.id]?.scheduleData || {};
 
       if (isAdmin) {
-        // ■ 管理者の場合：全員分の下書きデータが存在すれば、サマリより優先して「下書き」を表示
         if (indData[s.id]) {
           finalSchedule[s.id] = { ...finalSchedule[s.id], ...memberIndData };
         }
       } else {
-        // ■ 一般メンバーの場合：自分の行は「自分の下書き」を表示。他人の行は「確定サマリ」のみを表示
         if (s.id === currentUserId && indData[s.id]) {
           finalSchedule[s.id] = { ...finalSchedule[s.id], ...memberIndData };
         }
       }
 
-      // 新規作成時など、データが完全に空ならデフォルトパターンを流し込む
       if (Object.keys(finalSchedule[s.id]).length === 0) {
         const defaultSched = generateScheduleForMonth(currentYear, currentMonth, [s], shiftPatterns)[s.id] || {};
         finalSchedule[s.id] = defaultSched;
@@ -532,9 +499,6 @@ export const useShiftData = (currentYear, currentMonth) => {
     return { [key]: finalSchedule };
   }, [staff, summarySchedule, individualSchedules, key, currentUserId, currentYear, currentMonth, shiftPatterns]);
 
-  // ---------------------------------------------------------------------------
-  // 5. デバウンス自動保存（1秒間入力が止まったらまとめてFirestoreに送信）
-  // ---------------------------------------------------------------------------
   const triggerScheduleSave = useCallback(() => {
     dispatch({ type: 'SET_SAVE_STATUS', payload: 'unsaved' });
     if (debouncedSaveSchedule.current) clearTimeout(debouncedSaveSchedule.current);
@@ -543,16 +507,14 @@ export const useShiftData = (currentYear, currentMonth) => {
       dispatch({ type: 'SET_SAVE_STATUS', payload: 'saving' });
       
       const changesByMonth = { ...pendingChanges.current };
-      pendingChanges.current = {}; // 送信用ストックを一度クリア
+      pendingChanges.current = {}; 
 
-      // 送信中フラグ（Inflight）に移動
       inflightChanges.current = { ...inflightChanges.current };
       for (const mKey in changesByMonth) {
           inflightChanges.current[mKey] = { ...(inflightChanges.current[mKey] || {}), ...changesByMonth[mKey] };
       }
 
       try {
-        // ★ 変更点: 通信を1回にまとめるための writeBatch の準備
         const batch = writeBatch(db);
         let commitCount = 0;
 
@@ -561,9 +523,6 @@ export const useShiftData = (currentYear, currentMonth) => {
           
           Object.entries(staffUpdates).forEach(([staffId, dayUpdates]) => {
             const docRef = getIndividualDocRef(staffId, y, m);
-            
-            // ★ 変更点: getDoc での読み込みをやめ、バッチへ書き込み予約のみを行う
-            // { merge: true } なので、scheduleData 内の特定の「day」だけが自動で安全に合体されます
             batch.set(docRef, {
               staffId,
               year: Number(y),
@@ -576,7 +535,6 @@ export const useShiftData = (currentYear, currentMonth) => {
           });
         });
 
-        // ★ 変更点: ループ終了後に、溜まった通信を1回の「commit」で高速送信
         if (commitCount > 0) {
           await batch.commit();
         }
@@ -586,7 +544,6 @@ export const useShiftData = (currentYear, currentMonth) => {
         console.error("バッチ保存失敗:", e);
         dispatch({ type: 'SET_SAVE_STATUS', payload: 'error' });
       } finally {
-        // 送信完了したデータを Inflight から消去
         for (const mKey in changesByMonth) {
           if (inflightChanges.current[mKey]) {
             Object.keys(changesByMonth[mKey]).forEach(staffId => {
@@ -605,12 +562,9 @@ export const useShiftData = (currentYear, currentMonth) => {
           }
         }
       }
-    }, 1000); // 1秒間入力が途切れたら送信
+    }, 1000); 
   }, []);
 
-  // ---------------------------------------------------------------------------
-  // 6. データ更新用関数 (UIから呼び出し)
-  // ---------------------------------------------------------------------------
   const updateShiftItem = useCallback((year, month, staffId, day, value) => {
     const key = `${year}-${month}`;
     const currentMonthData = synthesizedSchedule[key] || {};
@@ -618,49 +572,40 @@ export const useShiftData = (currentYear, currentMonth) => {
     
     if (JSON.stringify(currentStaffData[day]) === JSON.stringify(value)) return;
 
-    // 1. ラグゼロで即座にReactの画面を更新
     dispatch({
       type: 'UPDATE_LOCAL_INDIVIDUAL',
       payload: { key, staffId, day, value }
     });
 
-    // 2. 送信ストック（Pending）に書き込みを記録
     if (!pendingChanges.current[key]) pendingChanges.current[key] = {};
     if (!pendingChanges.current[key][staffId]) pendingChanges.current[key][staffId] = {};
     pendingChanges.current[key][staffId][day] = value;
 
-    // 3. 自動デバウンス保存を実行
     triggerScheduleSave();
   }, [synthesizedSchedule, triggerScheduleSave]);
 
   const updateLocalShiftItem = useCallback((year, month, staffId, day, value) => {
-    // 保留変更中（オレンジ表示等）の時もラグゼロで即時画面更新＆自動保存
     updateShiftItem(year, month, staffId, day, value);
   }, [updateShiftItem]);
 
-  // ★変更点: 一括処理時にまとめてStateを更新（再描画1回で処理してフリーズ解消）
   const updateShiftItems = useCallback(async (year, month, updates) => {
     if (!updates || updates.length === 0) return;
     const key = `${year}-${month}`;
 
-    // 1. ループで何十回も再描画するのをやめ、一括で画面に反映
     dispatch({
       type: 'UPDATE_LOCAL_INDIVIDUAL_BULK',
       payload: { key, updates }
     });
 
-    // 2. 送信ストック（Pending）に変更をまとめて記録
     if (!pendingChanges.current[key]) pendingChanges.current[key] = {};
     updates.forEach(({ staffId, day, value }) => {
       if (!pendingChanges.current[key][staffId]) pendingChanges.current[key][staffId] = {};
       pendingChanges.current[key][staffId][day] = value;
     });
 
-    // 3. 自動デバウンス保存を実行
     triggerScheduleSave();
   }, [triggerScheduleSave]);
 
-  // 提出、差戻、承認のチェック用ステータス更新関数
   const updateIndividualStatus = useCallback(async (staffId, year, month, statusField, value) => {
     dispatch({ type: 'SET_SAVE_STATUS', payload: 'saving' });
     const docRef = getIndividualDocRef(staffId, year, month);
@@ -676,14 +621,12 @@ export const useShiftData = (currentYear, currentMonth) => {
     }
   }, []);
 
-  // 管理者が「承認」をクリックした際や、変更を確定した際に、個別下書きからサマリにシフトをコピー統合する関数
   const approveMemberShift = useCallback(async (staffId, year, month) => {
     dispatch({ type: 'SET_SAVE_STATUS', payload: 'saving' });
     const indDocRef = getIndividualDocRef(staffId, year, month);
     const summaryDocRef = getSummaryDocRef(year, month);
 
     try {
-      // 1. 個別下書きドキュメントを取得
       const indSnap = await getDoc(indDocRef);
       if (!indSnap.exists()) {
         throw new Error("下書きデータが存在しません");
@@ -692,7 +635,6 @@ export const useShiftData = (currentYear, currentMonth) => {
       const indData = indSnap.data();
       const shifts = indData.scheduleData || {};
 
-      // 2. 確定サマリドキュメント（2026-5等）を取得し、マージ
       const summarySnap = await getDoc(summaryDocRef);
       const existingSummary = summarySnap.exists() ? summarySnap.data() : { scheduleData: {} };
 
@@ -700,18 +642,16 @@ export const useShiftData = (currentYear, currentMonth) => {
       const updatedSummarySchedule = {
         ...(existingSummary.scheduleData || {}),
         [staffId]: {
-          ...currentStaffSummary, // 既存の他の日のシフトデータを残す
-          ...shifts               // 今回変更した日だけを上書きする
+          ...currentStaffSummary,
+          ...shifts               
         }
       };
 
-      // 3. サマリ（全体の完成版ファイル）に書き込み
       await setDoc(summaryDocRef, {
         scheduleData: updatedSummarySchedule,
         updatedAt: new Date().toISOString()
       }, { merge: true });
 
-      // 4. 個別ドキュメントを「承認済み」ステータスに更新
       await setDoc(indDocRef, {
         shiftApproved: true,
         shiftRemanded: false,
@@ -738,19 +678,11 @@ export const useShiftData = (currentYear, currentMonth) => {
       dispatch({ type: 'SET_SAVE_STATUS', payload: 'saving' }); 
       
       try {
-        const snap = await getDoc(configDocRef);
-        const serverData = snap.exists() ? snap.data() : null;
-
+        // ★重い通信(getDoc)を完全に廃止し、ローカルデータを直に保存して超高速化
         let dataToSave = { 
           staff, tasks, shiftPatterns, adminConfig,
           updatedAt: new Date().toISOString()
         };
-
-        if (serverData) {
-            dataToSave.staff = mergeArray(staff, serverData.staff || initialStaffData, lastServerConfigRef.current.staff);
-            dataToSave.tasks = mergeArray(tasks, serverData.tasks || initialTasks, lastServerConfigRef.current.tasks);
-            dataToSave.shiftPatterns = mergeArray(shiftPatterns, serverData.shiftPatterns || initialShiftPatterns, lastServerConfigRef.current.shiftPatterns);
-        }
 
         await setDoc(configDocRef, dataToSave, { merge: true });
         
@@ -769,7 +701,6 @@ export const useShiftData = (currentYear, currentMonth) => {
     return () => clearTimeout(debouncedSaveConfig.current);
   }, [staff, tasks, shiftPatterns, adminConfig]);
 
-  // タブ閉じ防止機能
   useEffect(() => {
     const handleBeforeUnload = (e) => {
       if (saveStatus !== 'saved' || pendingConfigSave.current) {
@@ -782,8 +713,8 @@ export const useShiftData = (currentYear, currentMonth) => {
   }, [saveStatus]);
 
   return {
-    staff: synthesizedStaff, setStaff, // 合成された提出・承認フラグ付きstaff
-    schedule: synthesizedSchedule, // マージされたスケジュールデータ
+    staff: synthesizedStaff, setStaff, 
+    schedule: synthesizedSchedule, 
     updateShiftItem,
     updateLocalShiftItem,
     updateShiftItems,
