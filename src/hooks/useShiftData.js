@@ -2,7 +2,7 @@
 import { useReducer, useEffect, useRef, useCallback, useState, useMemo } from 'react';
 import { doc, getDoc, setDoc, onSnapshot, collection, query, where, writeBatch } from "firebase/firestore";
 import { db } from '../config/firebase';
-import { useOktaAuth } from '@okta/okta-react';
+import { useOktaAuth } from '@okta/okta-react'; 
 import { initialShiftPatterns, initialStaffData, initialAdminConfig, initialTasks } from '../constants/initialData';
 import { generateScheduleForMonth } from '../utils/scheduleUtils';
 
@@ -75,8 +75,8 @@ const initialState = {
   saveStatus: 'saved',
   initialDataLoaded: false,
   staff: [],
-  summarySchedule: {},
-  individualSchedules: {},
+  summarySchedule: {}, 
+  individualSchedules: {}, 
   tasks: [],
   shiftPatterns: [],
   adminConfig: initialAdminConfig
@@ -91,6 +91,7 @@ function shiftReducer(state, action) {
         loadingMessage: action.payload.message || state.loadingMessage 
       };
     case 'SET_SAVE_STATUS':
+      // console.log(`[Reducer] SAVE_STATUS -> ${action.payload}`); // 必要なら有効化
       return { ...state, saveStatus: action.payload };
     case 'SET_INITIAL_DATA_LOADED':
       return { ...state, initialDataLoaded: true };
@@ -210,7 +211,7 @@ export const useShiftData = (currentYear, currentMonth) => {
   }, [currentUserEmail, staff, adminConfig]);
 
   const debouncedSaveConfig = useRef(null);
-  const debouncedSaveSchedule = useRef(null);
+  const debouncedSaveSchedule = useRef(null); 
   const isInitialLoadComplete = useRef(false);
   const pendingConfigSave = useRef(false);
 
@@ -256,6 +257,7 @@ export const useShiftData = (currentYear, currentMonth) => {
     dispatch({ type: 'UPDATE_MASTER_DATA', payload: { adminConfig: newValue } });
   }, [adminConfig]);
 
+  // 1. 設定データロード
   useEffect(() => {
     let unsubscribeConfig = () => {};
     let isFirstConfigLoad = true; 
@@ -355,6 +357,7 @@ export const useShiftData = (currentYear, currentMonth) => {
     return () => unsubscribeConfig();
   }, []);
 
+  // 2. 確定サマリデータの監視
   useEffect(() => {
     if (!initialDataLoaded) return;
     const key = `${currentYear}-${currentMonth}`;
@@ -374,6 +377,7 @@ export const useShiftData = (currentYear, currentMonth) => {
     return () => unsubscribe();
   }, [currentYear, currentMonth, initialDataLoaded]);
 
+  // 3. 個別下書きデータの監視
   useEffect(() => {
     if (!initialDataLoaded || !currentUserId) return;
     const key = `${currentYear}-${currentMonth}`;
@@ -456,6 +460,7 @@ export const useShiftData = (currentYear, currentMonth) => {
 
   const key = `${currentYear}-${currentMonth}`;
 
+  // 4. 動的合成ロジック
   const synthesizedStaff = useMemo(() => {
     const currentMonthInds = individualSchedules[key] || {};
     return staff.map(s => {
@@ -499,11 +504,16 @@ export const useShiftData = (currentYear, currentMonth) => {
     return { [key]: finalSchedule };
   }, [staff, summarySchedule, individualSchedules, key, currentUserId, currentYear, currentMonth, shiftPatterns]);
 
+  // ---------------------------------------------------------------------------
+  // 5. デバウンス自動保存（スケジュール）
+  // ---------------------------------------------------------------------------
   const triggerScheduleSave = useCallback(() => {
+    console.log("[ScheduleSave] 保存タイマー(1秒)をセットしました");
     dispatch({ type: 'SET_SAVE_STATUS', payload: 'unsaved' });
     if (debouncedSaveSchedule.current) clearTimeout(debouncedSaveSchedule.current);
 
     debouncedSaveSchedule.current = setTimeout(async () => {
+      console.log("[ScheduleSave] 1秒経過、バッチ保存処理を開始します");
       dispatch({ type: 'SET_SAVE_STATUS', payload: 'saving' });
       
       const changesByMonth = { ...pendingChanges.current };
@@ -515,6 +525,7 @@ export const useShiftData = (currentYear, currentMonth) => {
       }
 
       try {
+        console.log("[ScheduleSave] writeBatch を初期化します");
         const batch = writeBatch(db);
         let commitCount = 0;
 
@@ -523,6 +534,7 @@ export const useShiftData = (currentYear, currentMonth) => {
           
           Object.entries(staffUpdates).forEach(([staffId, dayUpdates]) => {
             const docRef = getIndividualDocRef(staffId, y, m);
+            console.log(`[ScheduleSave] バッチに追加: StaffID=${staffId}, 年月=${y}-${m}, 更新件数=${Object.keys(dayUpdates).length}`);
             batch.set(docRef, {
               staffId,
               year: Number(y),
@@ -535,13 +547,17 @@ export const useShiftData = (currentYear, currentMonth) => {
           });
         });
 
+        console.log(`[ScheduleSave] バッチコミット直前: 合計 ${commitCount} ドキュメントへ書き込みます...`);
         if (commitCount > 0) {
           await batch.commit();
+          console.log("[ScheduleSave] バッチコミットが正常に完了しました！");
+        } else {
+          console.log("[ScheduleSave] 書き込む変更がありませんでした");
         }
 
         dispatch({ type: 'SET_SAVE_STATUS', payload: 'saved' });
       } catch (e) {
-        console.error("バッチ保存失敗:", e);
+        console.error("[ScheduleSave ERROR] バッチ保存中にエラーが発生しました:", e);
         dispatch({ type: 'SET_SAVE_STATUS', payload: 'error' });
       } finally {
         for (const mKey in changesByMonth) {
@@ -565,6 +581,9 @@ export const useShiftData = (currentYear, currentMonth) => {
     }, 1000); 
   }, []);
 
+  // ---------------------------------------------------------------------------
+  // 6. データ更新用関数 (UIから呼び出し)
+  // ---------------------------------------------------------------------------
   const updateShiftItem = useCallback((year, month, staffId, day, value) => {
     const key = `${year}-${month}`;
     const currentMonthData = synthesizedSchedule[key] || {};
@@ -674,17 +693,19 @@ export const useShiftData = (currentYear, currentMonth) => {
     if (debouncedSaveConfig.current) clearTimeout(debouncedSaveConfig.current);
 
     debouncedSaveConfig.current = setTimeout(async () => {
+      console.log("[ConfigSave] マスタデータの保存処理を開始します");
       pendingConfigSave.current = false;
       dispatch({ type: 'SET_SAVE_STATUS', payload: 'saving' }); 
       
       try {
-        // ★重い通信(getDoc)を完全に廃止し、ローカルデータを直に保存して超高速化
         let dataToSave = { 
           staff, tasks, shiftPatterns, adminConfig,
           updatedAt: new Date().toISOString()
         };
 
+        console.log("[ConfigSave] configドキュメントへ setDoc を実行します...");
         await setDoc(configDocRef, dataToSave, { merge: true });
+        console.log("[ConfigSave] マスタデータの保存が正常に完了しました！");
         
         lastServerConfigRef.current = {
             staff: dataToSave.staff, tasks: dataToSave.tasks, shiftPatterns: dataToSave.shiftPatterns,
@@ -693,7 +714,7 @@ export const useShiftData = (currentYear, currentMonth) => {
         
         dispatch({ type: 'SET_SAVE_STATUS', payload: 'saved' }); 
       } catch (error) {
-        console.error("Config save failed:", error);
+        console.error("[ConfigSave ERROR] マスタデータの保存中にエラーが発生しました:", error);
         dispatch({ type: 'SET_SAVE_STATUS', payload: 'error' }); 
       }
     }, 500);
