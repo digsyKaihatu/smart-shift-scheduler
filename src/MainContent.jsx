@@ -69,6 +69,8 @@ const MainContent = () => {
 
     const isApproved = targetStaff.shiftApproved?.[key];
 
+    // ★修正: 誤って残っていた「非管理者の編集をブロックする」処理を完全に削除しました。
+
     const currentVal = currentMonthSchedule[staffId]?.[day];
     const existingChange = actions.pendingChanges.find(c => c.staffId === staffId && c.day === day);
     const originalValue = existingChange ? existingChange.originalValue : currentVal;
@@ -136,6 +138,8 @@ const MainContent = () => {
 
     const isApproved = targetStaff.shiftApproved?.[key];
 
+    // ★修正: 誤って残っていた「非管理者の編集をブロックする」処理を完全に削除しました。
+
     // 1. スタッフマスタ（基本シフト設定）の更新
     setStaff(prev => prev.map(s => s.id === sid ? { ...s, defaultShift: { pattern: p, hasBreakArray: hb } } : s));
     
@@ -151,7 +155,6 @@ const MainContent = () => {
       const newExpectedValue = newGenerated[day] ?? '';
       const currentValue = currentMonthSchedule[sid]?.[day] ?? '';
 
-      // カレンダーの現在の値が「手動で保護すべき値」か判定
       let isProtected = false;
       if (typeof currentValue === 'object' && currentValue !== null) {
           if (currentValue.locked) isProtected = true; 
@@ -160,7 +163,6 @@ const MainContent = () => {
           if (isNaN(parseFloat(currentValue))) isProtected = true; 
       }
 
-      // 保護されていないセルであれば上書き対象
       if (!isProtected) {
           let normCurrent = currentValue;
           if (typeof currentValue === 'object' && currentValue !== null) {
