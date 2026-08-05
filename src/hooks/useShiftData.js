@@ -1,6 +1,7 @@
 // src/hooks/useShiftData.js
 import { useReducer, useEffect, useRef, useCallback, useState, useMemo } from 'react';
-import { doc, getDoc, setDoc, onSnapshot, collection, query, where } from "firebase/firestore";
+// ★修正: writeBatch を追加インポート
+import { doc, getDoc, setDoc, onSnapshot, collection, query, where, writeBatch } from "firebase/firestore";
 import { db } from '../config/firebase';
 import { useOktaAuth } from '@okta/okta-react'; // Oktaからユーザー情報を取得
 import { initialShiftPatterns, initialStaffData, initialAdminConfig, initialTasks } from '../constants/initialData';
@@ -137,7 +138,7 @@ function shiftReducer(state, action) {
         }
       };
     }
-    // ★一括変更時に再描画を1回にまとめるための新しいReducer処理
+    // ★一括変更時に再描画を1回にまとめるための新しいReducer処理（フリーズ解消用）
     case 'UPDATE_LOCAL_INDIVIDUAL_BULK': {
       const { key, updates } = action.payload;
       const currentMonthInds = { ...(state.individualSchedules[key] || {}) };
@@ -550,48 +551,39 @@ export const useShiftData = (currentYear, currentMonth) => {
           inflightChanges.current[mKey] = { ...(inflightChanges.current[mKey] || {}), ...changesByMonth[mKey] };
       }
 
-      // 宛先ごとに個別ドキュメントに並列書き込み
-      const promises = [];
-      Object.entries(changesByMonth).forEach(([monthKey, staffUpdates]) => {
-        const [y, m] = monthKey.split('-');
-        
-        Object.entries(staffUpdates).forEach(([staffId, dayUpdates]) => {
-          const docRef = getIndividualDocRef(staffId, y, m);
-          
-          const promise = (async () => {
-            try {
-              // 既存の下書きデータを一度取得してマージしてから保存
-              const snap = await getDoc(docRef);
-              const existingData = snap.exists() ? snap.data() : {
-                staffId, year: Number(y), month: Number(m), scheduleData: {},
-                shiftSubmitted: false, shiftRemanded: false, shiftApproved: false
-              };
-
-              const updatedScheduleData = {
-                ...(existingData.scheduleData || {}),
-                ...dayUpdates
-              };
-
-              await setDoc(docRef, {
-                ...existingData,
-                scheduleData: updatedScheduleData,
-                updatedAt: new Date().toISOString()
-              }, { merge: true });
-
-            } catch (error) {
-              console.error(`個別シフト保存失敗 for ${staffId}:`, error);
-              dispatch({ type: 'SET_SAVE_STATUS', payload: 'error' });
-              throw error;
-            }
-          })();
-          promises.push(promise);
-        });
-      });
-
       try {
-        await Promise.all(promises);
+        // ★ 変更点: 通信を1回にまとめるための writeBatch の準備
+        const batch = writeBatch(db);
+        let commitCount = 0;
+
+        Object.entries(changesByMonth).forEach(([monthKey, staffUpdates]) => {
+          const [y, m] = monthKey.split('-');
+          
+          Object.entries(staffUpdates).forEach(([staffId, dayUpdates]) => {
+            const docRef = getIndividualDocRef(staffId, y, m);
+            
+            // ★ 変更点: getDoc での読み込みをやめ、バッチへ書き込み予約のみを行う
+            // { merge: true } なので、scheduleData 内の特定の「day」だけが自動で安全に合体されます
+            batch.set(docRef, {
+              staffId,
+              year: Number(y),
+              month: Number(m),
+              scheduleData: dayUpdates,
+              updatedAt: new Date().toISOString()
+            }, { merge: true });
+            
+            commitCount++;
+          });
+        });
+
+        // ★ 変更点: ループ終了後に、溜まった通信を1回の「commit」で高速送信
+        if (commitCount > 0) {
+          await batch.commit();
+        }
+
         dispatch({ type: 'SET_SAVE_STATUS', payload: 'saved' });
       } catch (e) {
+        console.error("バッチ保存失敗:", e);
         dispatch({ type: 'SET_SAVE_STATUS', payload: 'error' });
       } finally {
         // 送信完了したデータを Inflight から消去
@@ -646,7 +638,7 @@ export const useShiftData = (currentYear, currentMonth) => {
     updateShiftItem(year, month, staffId, day, value);
   }, [updateShiftItem]);
 
-  // ★一括処理時にまとめてStateを更新（再描画1回で処理してフリーズ解消）
+  // ★変更点: 一括処理時にまとめてStateを更新（再描画1回で処理してフリーズ解消）
   const updateShiftItems = useCallback(async (year, month, updates) => {
     if (!updates || updates.length === 0) return;
     const key = `${year}-${month}`;
@@ -704,7 +696,6 @@ export const useShiftData = (currentYear, currentMonth) => {
       const summarySnap = await getDoc(summaryDocRef);
       const existingSummary = summarySnap.exists() ? summarySnap.data() : { scheduleData: {} };
 
-      // ★修正箇所：月間データを丸ごと上書きするのではなく、既存のサマリデータと日ごとに合体（マージ）させます
       const currentStaffSummary = existingSummary.scheduleData?.[staffId] || {};
       const updatedSummarySchedule = {
         ...(existingSummary.scheduleData || {}),
