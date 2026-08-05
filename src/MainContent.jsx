@@ -9,7 +9,8 @@ import { useTaskCounts } from './hooks/useTaskCounts.js';
 import { chatService } from './services/chatService.js';
 import { getJapaneseHolidays, formatValue } from './utils/dateUtils.js';
 import { downloadScheduleCSV } from './utils/csvExporter.js';
-import { checkPatternHasBreak } from './utils/scheduleUtils.js';
+// ★修正: generateScheduleForMonth をインポートに追加
+import { checkPatternHasBreak, generateScheduleForMonth } from './utils/scheduleUtils.js';
 
 // Components
 import LoadingScreen from './components/common/LoadingScreen.jsx';
@@ -25,7 +26,6 @@ const MainContent = () => {
   const [month, setMonth] = useState(new Date().getMonth() + 1);
 
   // --- 状態管理フックの呼び出し ---
-  // ★修正: useShiftData から updateIndividualStatus と approveMemberShift も取り出します
   const {
     staff, setStaff, schedule, updateShiftItem, updateShiftItems, updateLocalShiftItem,
     updateIndividualStatus, approveMemberShift,
@@ -35,7 +35,6 @@ const MainContent = () => {
 
   const { currentUser, isAdmin } = useUserStatus(staff, adminConfig, initialDataLoaded);
 
-  // ★修正: useShiftActions の引数に updateIndividualStatus と approveMemberShift を渡します
   const actions = useShiftActions({
     staff, setStaff, schedule, year, month, adminConfig, shiftPatterns,
     setIsLoading, setLoadingMessage, updateShiftItems,
@@ -129,71 +128,55 @@ const MainContent = () => {
     setHolidayConfirmation(null);
   };
 
-  // 基本パターン適用ロジック
+  // ★修正: 基本パターン適用ロジック (generateScheduleForMonth を利用)
   const handleApplyStaffPattern = (sid, p, hb) => {
     const targetStaff = staff.find(s => s.id === sid);
-    const oldPattern = targetStaff?.defaultShift?.pattern || Array(5).fill('シフト休');
-    const oldHbArray = targetStaff?.defaultShift?.hasBreakArray;
+    if (!targetStaff) return;
 
+    // 1. スタッフマスタ（基本シフト設定）の更新
     setStaff(prev => prev.map(s => s.id === sid ? { ...s, defaultShift: { pattern: p, hasBreakArray: hb } } : s));
     
+    // 2. generateScheduleForMonth を使って「変更前」と「変更後」のデフォルトシフトを生成し比較する
+    const oldStaffMock = { ...targetStaff };
+    const oldGenerated = generateScheduleForMonth(year, month, [oldStaffMock], shiftPatterns, currentMonthHolidays)[sid] || {};
+    
+    const newStaffMock = { ...targetStaff, defaultShift: { pattern: p, hasBreakArray: hb } };
+    const newGenerated = generateScheduleForMonth(year, month, [newStaffMock], shiftPatterns, currentMonthHolidays)[sid] || {};
+
     const updates = [];
     days.forEach(d => {
-      const date = new Date(year, month - 1, d.day);
-      const dw = date.getDay();
-      
-      let oldExpectedValue = '';
-      if (currentMonthHolidays.includes(d.day) || dw === 0 || dw === 6) {
-          oldExpectedValue = 'シフト休';
-      } else if (oldPattern[dw-1] === 'シフト休') {
-          oldExpectedValue = 'シフト休';
-      } else {
-          const oldPat = shiftPatterns.find(pat => pat.id === oldPattern[dw-1]);
-          if (oldPat) {
-              let workH = Number(oldPat.workHours) || 0;
-              const hasBreak = Array.isArray(oldHbArray) ? oldHbArray[dw-1] : checkPatternHasBreak(oldPat.id, shiftPatterns);
-              if (!hasBreak) {
-                  let breakH = Number(oldPat.breakHours) || 0;
-                  if (breakH === 0 && oldPat.breakTime && oldPat.breakTime !== '0:00' && oldPat.breakTime !== '00:00') {
-                      const [h, m] = oldPat.breakTime.split(':').map(Number);
-                      breakH = h + (m / 60);
-                  }
-                  if (breakH > 0) workH += breakH;
-              }
-              oldExpectedValue = workH;
-          }
+      const day = d.day;
+      const oldExpectedValue = oldGenerated[day] ?? '';
+      const newExpectedValue = newGenerated[day] ?? '';
+      const currentValue = currentMonthSchedule[sid]?.[day] ?? '';
+
+      // オブジェクト型（手動変更時など）から比較用の値を正確に抽出
+      let normCurrent = currentValue;
+      if (typeof currentValue === 'object' && currentValue !== null) {
+          normCurrent = currentValue.type === '稼働' && currentValue.hours !== undefined 
+              ? currentValue.hours 
+              : (currentValue.type || currentValue.hours || '');
       }
 
-      let newExpectedValue = '';
-      if (currentMonthHolidays.includes(d.day) || dw === 0 || dw === 6) {
-          newExpectedValue = 'シフト休';
-      } else if (p[dw-1] === 'シフト休') {
-          newExpectedValue = 'シフト休';
-      } else {
-          const newPat = shiftPatterns.find(pat => pat.id === p[dw-1]);
-          if (newPat) {
-              let workH = Number(newPat.workHours) || 0;
-              const hasBreak = Array.isArray(hb) ? hb[dw-1] : checkPatternHasBreak(newPat.id, shiftPatterns);
-              if (!hasBreak) {
-                  let breakH = Number(newPat.breakHours) || 0;
-                  if (breakH === 0 && newPat.breakTime && newPat.breakTime !== '0:00' && newPat.breakTime !== '00:00') {
-                      const [h, m] = newPat.breakTime.split(':').map(Number);
-                      breakH = h + (m / 60);
-                  }
-                  if (breakH > 0) workH += breakH;
-              }
-              newExpectedValue = workH;
-          }
+      let normOld = oldExpectedValue;
+      if (typeof oldExpectedValue === 'object' && oldExpectedValue !== null) {
+          normOld = oldExpectedValue.type === '稼働' && oldExpectedValue.hours !== undefined 
+              ? oldExpectedValue.hours 
+              : (oldExpectedValue.type || oldExpectedValue.hours || '');
       }
 
-      const currentValue = currentMonthSchedule[sid]?.[d.day] ?? '';
-      const normCurrent = (typeof currentValue === 'object' && currentValue !== null) ? (currentValue.type || currentValue.hours) : currentValue;
-      if (String(normCurrent) === String(oldExpectedValue) || normCurrent === '') {
-          updates.push({ staffId: sid, day: d.day, value: newExpectedValue });
+      // 現在のセルが「空」または「変更前の基本パターンの通り」であれば、手動上書きされていないとみなして更新
+      if (String(normCurrent) === String(normOld) || normCurrent === '') {
+          // 無駄な通信を省くため、本当に値が変わる時だけ updates に追加
+          if (String(normCurrent) !== String(newExpectedValue)) {
+              updates.push({ staffId: sid, day, value: newExpectedValue });
+          }
       }
     });
 
-    if (updates.length > 0) updateShiftItems(year, month, updates);
+    if (updates.length > 0) {
+        updateShiftItems(year, month, updates);
+    }
   };
 
   const executeDelete = () => {
