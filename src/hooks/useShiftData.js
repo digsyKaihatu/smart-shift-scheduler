@@ -137,6 +137,30 @@ function shiftReducer(state, action) {
         }
       };
     }
+    // ★一括変更時に再描画を1回にまとめるための新しいReducer処理
+    case 'UPDATE_LOCAL_INDIVIDUAL_BULK': {
+      const { key, updates } = action.payload;
+      const currentMonthInds = { ...(state.individualSchedules[key] || {}) };
+
+      updates.forEach(({ staffId, day, value }) => {
+        const staffIndData = currentMonthInds[staffId] || { scheduleData: {} };
+        currentMonthInds[staffId] = {
+          ...staffIndData,
+          scheduleData: {
+            ...(staffIndData.scheduleData || {}),
+            [day]: value
+          }
+        };
+      });
+
+      return {
+        ...state,
+        individualSchedules: {
+          ...state.individualSchedules,
+          [key]: currentMonthInds
+        }
+      };
+    }
     default:
       return state;
   }
@@ -622,21 +646,25 @@ export const useShiftData = (currentYear, currentMonth) => {
     updateShiftItem(year, month, staffId, day, value);
   }, [updateShiftItem]);
 
+  // ★一括処理時にまとめてStateを更新（再描画1回で処理してフリーズ解消）
   const updateShiftItems = useCallback(async (year, month, updates) => {
     if (!updates || updates.length === 0) return;
     const key = `${year}-${month}`;
 
-    updates.forEach(({ staffId, day, value }) => {
-      dispatch({
-        type: 'UPDATE_LOCAL_INDIVIDUAL',
-        payload: { key, staffId, day, value }
-      });
+    // 1. ループで何十回も再描画するのをやめ、一括で画面に反映
+    dispatch({
+      type: 'UPDATE_LOCAL_INDIVIDUAL_BULK',
+      payload: { key, updates }
+    });
 
-      if (!pendingChanges.current[key]) pendingChanges.current[key] = {};
+    // 2. 送信ストック（Pending）に変更をまとめて記録
+    if (!pendingChanges.current[key]) pendingChanges.current[key] = {};
+    updates.forEach(({ staffId, day, value }) => {
       if (!pendingChanges.current[key][staffId]) pendingChanges.current[key][staffId] = {};
       pendingChanges.current[key][staffId][day] = value;
     });
 
+    // 3. 自動デバウンス保存を実行
     triggerScheduleSave();
   }, [triggerScheduleSave]);
 
