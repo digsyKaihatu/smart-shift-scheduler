@@ -1,10 +1,6 @@
 // src/MainContent.jsx
 import React, { useState, useMemo } from 'react';
 
-// Firebase (データ移行用にインポートを追加)
-import { doc, getDoc, setDoc } from 'firebase/firestore';
-import { db } from './config/firebase.js';
-
 // Hooks & Services
 import { useShiftData } from './hooks/useShiftData.js';
 import { useUserStatus } from './hooks/useUserStatus.js';
@@ -13,7 +9,8 @@ import { useTaskCounts } from './hooks/useTaskCounts.js';
 import { chatService } from './services/chatService.js';
 import { getJapaneseHolidays, formatValue } from './utils/dateUtils.js';
 import { downloadScheduleCSV } from './utils/csvExporter.js';
-import { checkPatternHasBreak } from './utils/scheduleUtils.js';
+// ★修正: generateScheduleForMonth をインポートに追加
+import { checkPatternHasBreak, generateScheduleForMonth } from './utils/scheduleUtils.js';
 
 // Components
 import LoadingScreen from './components/common/LoadingScreen.jsx';
@@ -66,70 +63,6 @@ const MainContent = () => {
 
   // --- イベントハンドラー ---
   
-  // 過去の提出・承認データを新システムに移行するプログラム
-  const handleMigrateData = async () => {
-    if (!window.confirm("過去の提出・承認データを新しい形式に移行しますか？\n※この操作は1回だけ実行してください。")) return;
-    
-    setIsLoading(true);
-    setLoadingMessage("過去のデータを移行しています。しばらくお待ちください...");
-
-    try {
-      // 1. 古い設定ファイルからスタッフのデータを取得
-      const configSnap = await getDoc(doc(db, "schedules", "config"));
-      if (!configSnap.exists()) {
-        alert("設定ファイルが見つかりません。");
-        return;
-      }
-      
-      const configData = configSnap.data();
-      const oldStaffList = configData.staff || [];
-
-      // 2. スタッフ全員の過去データを順番に新しいファイルへ移す
-      for (const s of oldStaffList) {
-        const staffId = s.id;
-        
-        // そのスタッフが過去にチェックを入れたことのある月（年-月）をすべて集める
-        const allMonths = new Set([
-          ...Object.keys(s.shiftSubmitted || {}),
-          ...Object.keys(s.shiftApproved || {}),
-          ...Object.keys(s.shiftRemanded || {})
-        ]);
-
-        // 月ごとに新しい個別ドキュメントを作成・更新する
-        for (const monthKey of allMonths) {
-          const [y, m] = monthKey.split('-');
-          const indDocRef = doc(db, "individual_schedules", `${staffId}_${y}-${m}`);
-
-          // すでに新しいドキュメントがあればそれを取得し、なければ新規作成の準備をする
-          const indSnap = await getDoc(indDocRef);
-          const existingIndData = indSnap.exists() ? indSnap.data() : {
-            staffId: staffId, year: Number(y), month: Number(m), scheduleData: {}
-          };
-
-          // 過去のチェック状態を当てはめる
-          const isSubmitted = !!s.shiftSubmitted?.[monthKey];
-          const isApproved = !!s.shiftApproved?.[monthKey];
-          const isRemanded = !!s.shiftRemanded?.[monthKey];
-
-          // データベースに保存
-          await setDoc(indDocRef, {
-            ...existingIndData,
-            shiftSubmitted: isSubmitted,
-            shiftApproved: isApproved,
-            shiftRemanded: isRemanded,
-            updatedAt: new Date().toISOString()
-          }, { merge: true });
-        }
-      }
-      alert("データの移行が完了しました！\n過去の月のページを開いて、チェック状態が反映されているか確認してください。");
-    } catch (e) {
-      console.error("データ移行エラー:", e);
-      alert(`移行中にエラーが発生しました: ${e.message}`);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
   // 個別シフト更新
   const handleUpdateSchedule = (staffId, day, value) => {
     const currentVal = currentMonthSchedule[staffId]?.[day];
@@ -195,71 +128,55 @@ const MainContent = () => {
     setHolidayConfirmation(null);
   };
 
-  // 基本パターン適用ロジック
+  // ★修正: 基本パターン適用ロジック (generateScheduleForMonth を利用)
   const handleApplyStaffPattern = (sid, p, hb) => {
     const targetStaff = staff.find(s => s.id === sid);
-    const oldPattern = targetStaff?.defaultShift?.pattern || Array(5).fill('シフト休');
-    const oldHbArray = targetStaff?.defaultShift?.hasBreakArray;
+    if (!targetStaff) return;
 
+    // 1. スタッフマスタ（基本シフト設定）の更新
     setStaff(prev => prev.map(s => s.id === sid ? { ...s, defaultShift: { pattern: p, hasBreakArray: hb } } : s));
     
+    // 2. generateScheduleForMonth を使って「変更前」と「変更後」のデフォルトシフトを生成し比較する
+    const oldStaffMock = { ...targetStaff };
+    const oldGenerated = generateScheduleForMonth(year, month, [oldStaffMock], shiftPatterns, currentMonthHolidays)[sid] || {};
+    
+    const newStaffMock = { ...targetStaff, defaultShift: { pattern: p, hasBreakArray: hb } };
+    const newGenerated = generateScheduleForMonth(year, month, [newStaffMock], shiftPatterns, currentMonthHolidays)[sid] || {};
+
     const updates = [];
     days.forEach(d => {
-      const date = new Date(year, month - 1, d.day);
-      const dw = date.getDay();
-      
-      let oldExpectedValue = '';
-      if (currentMonthHolidays.includes(d.day) || dw === 0 || dw === 6) {
-          oldExpectedValue = 'シフト休';
-      } else if (oldPattern[dw-1] === 'シフト休') {
-          oldExpectedValue = 'シフト休';
-      } else {
-          const oldPat = shiftPatterns.find(pat => pat.id === oldPattern[dw-1]);
-          if (oldPat) {
-              let workH = Number(oldPat.workHours) || 0;
-              const hasBreak = Array.isArray(oldHbArray) ? oldHbArray[dw-1] : checkPatternHasBreak(oldPat.id, shiftPatterns);
-              if (!hasBreak) {
-                  let breakH = Number(oldPat.breakHours) || 0;
-                  if (breakH === 0 && oldPat.breakTime && oldPat.breakTime !== '0:00' && oldPat.breakTime !== '00:00') {
-                      const [h, m] = oldPat.breakTime.split(':').map(Number);
-                      breakH = h + (m / 60);
-                  }
-                  if (breakH > 0) workH += breakH;
-              }
-              oldExpectedValue = workH;
-          }
+      const day = d.day;
+      const oldExpectedValue = oldGenerated[day] ?? '';
+      const newExpectedValue = newGenerated[day] ?? '';
+      const currentValue = currentMonthSchedule[sid]?.[day] ?? '';
+
+      // オブジェクト型（手動変更時など）から比較用の値を正確に抽出
+      let normCurrent = currentValue;
+      if (typeof currentValue === 'object' && currentValue !== null) {
+          normCurrent = currentValue.type === '稼働' && currentValue.hours !== undefined 
+              ? currentValue.hours 
+              : (currentValue.type || currentValue.hours || '');
       }
 
-      let newExpectedValue = '';
-      if (currentMonthHolidays.includes(d.day) || dw === 0 || dw === 6) {
-          newExpectedValue = 'シフト休';
-      } else if (p[dw-1] === 'シフト休') {
-          newExpectedValue = 'シフト休';
-      } else {
-          const newPat = shiftPatterns.find(pat => pat.id === p[dw-1]);
-          if (newPat) {
-              let workH = Number(newPat.workHours) || 0;
-              const hasBreak = Array.isArray(hb) ? hb[dw-1] : checkPatternHasBreak(newPat.id, shiftPatterns);
-              if (!hasBreak) {
-                  let breakH = Number(newPat.breakHours) || 0;
-                  if (breakH === 0 && newPat.breakTime && newPat.breakTime !== '0:00' && newPat.breakTime !== '00:00') {
-                      const [h, m] = newPat.breakTime.split(':').map(Number);
-                      breakH = h + (m / 60);
-                  }
-                  if (breakH > 0) workH += breakH;
-              }
-              newExpectedValue = workH;
-          }
+      let normOld = oldExpectedValue;
+      if (typeof oldExpectedValue === 'object' && oldExpectedValue !== null) {
+          normOld = oldExpectedValue.type === '稼働' && oldExpectedValue.hours !== undefined 
+              ? oldExpectedValue.hours 
+              : (oldExpectedValue.type || oldExpectedValue.hours || '');
       }
 
-      const currentValue = currentMonthSchedule[sid]?.[d.day] ?? '';
-      const normCurrent = (typeof currentValue === 'object' && currentValue !== null) ? (currentValue.type || currentValue.hours) : currentValue;
-      if (String(normCurrent) === String(oldExpectedValue) || normCurrent === '') {
-          updates.push({ staffId: sid, day: d.day, value: newExpectedValue });
+      // 現在のセルが「空」または「変更前の基本パターンの通り」であれば、手動上書きされていないとみなして更新
+      if (String(normCurrent) === String(normOld) || normCurrent === '') {
+          // 無駄な通信を省くため、本当に値が変わる時だけ updates に追加
+          if (String(normCurrent) !== String(newExpectedValue)) {
+              updates.push({ staffId: sid, day, value: newExpectedValue });
+          }
       }
     });
 
-    if (updates.length > 0) updateShiftItems(year, month, updates);
+    if (updates.length > 0) {
+        updateShiftItems(year, month, updates);
+    }
   };
 
   const executeDelete = () => {
@@ -278,10 +195,6 @@ const MainContent = () => {
   const adminControls = isAdmin ? (
     <>
       <button onClick={() => setStaff(prev => [...prev, { id: `s${Date.now()}`, employeeId: 'New', name: '新規メンバー', role: 'OP', chatUserId: '', possibleTasks: [], defaultShift: { pattern: ['I','I','I','I','I'], hasBreakArray: [true, true, true, true, true] }, shiftSubmitted: {}, shiftRemanded: {}, shiftApproved: {} }])} className="px-3 py-1.5 bg-[#F4B896] text-white text-xs font-semibold rounded-md hover:bg-[#E8A680] shadow-sm whitespace-nowrap">+ メンバー</button>
-      
-      {/* 新規追加：データ移行ボタン */}
-      <button onClick={handleMigrateData} className="px-3 py-1.5 bg-red-500 text-white text-xs font-semibold rounded-md hover:bg-red-600 shadow-sm whitespace-nowrap">データ移行</button>
-      
       <button onClick={() => setTasks(prev => [...prev, { id: `t${Date.now()}`, name: '新業務', requiredPersonnel: 3 }])} className="px-3 py-1.5 bg-[#F4B896] text-white text-xs font-semibold rounded-md hover:bg-[#E8A680] shadow-sm whitespace-nowrap">+ 業務</button>
       <button onClick={() => setIsTaskEditorOpen(true)} className="px-3 py-1.5 bg-[#F4B896] text-white text-xs font-semibold rounded-md hover:bg-[#E8A680] shadow-sm whitespace-nowrap">業務担当</button>
       <button onClick={() => setIsMemberManagementOpen(true)} className="px-3 py-1.5 bg-[#F4B896] text-white text-xs font-semibold rounded-md hover:bg-[#E8A680] shadow-sm whitespace-nowrap">メンバー管理</button>
@@ -319,6 +232,7 @@ const MainContent = () => {
             onToggleShiftApproved={actions.handleToggleShiftApproved} 
             onToggleShiftRemanded={actions.handleToggleShiftRemanded}
             onSetDayAsHolidayForAll={(day) => {
+               // 既に全員がロックされているか判定して解除フラグを渡す
                const isUnlocking = staff.every(s => typeof currentMonthSchedule[s.id]?.[day] === 'object' && currentMonthSchedule[s.id]?.[day]?.locked);
                setHolidayConfirmation({ day, isUnlocking });
             }}
@@ -340,14 +254,7 @@ const MainContent = () => {
         <GlobalModals 
           flags={{ isMemberManagementOpen, isAdminSettingsOpen, isTaskEditorOpen, isHelpOpen, confirmDelete, approvalStaff: staff.find(s => s.id === actions.approvalModalStaffId), submissionConfirmation: actions.submissionConfirmation, remandConfirmation: actions.remandConfirmation, holidayConfirmation, absenceNotificationConfirmation: actions.absenceNotificationConfirmation, approvalCancellationConfirmation: actions.approvalCancellationConfirmation, showModificationConfirm: actions.showModificationConfirm }}
           data={{ staff, tasks, adminConfig, shiftPatterns, year, month, holidays: currentMonthHolidays, currentMonthSchedule }}
-          actions={{ 
-            setIsMemberManagementOpen, setIsAdminSettingsOpen, setIsTaskEditorOpen, setIsHelpOpen, 
-            handleSaveMemberManagement: (updated) => { setStaff(updated); setIsMemberManagementOpen(false); }, 
-            handleSaveAdminConfig: (cfg) => { setAdminConfig(cfg); setIsAdminSettingsOpen(false); }, 
-            handleMigrateData: handleMigrateData, // ★追加した移行関数を渡す
-            handleBulkUpdateStaffTasks: (map) => { setStaff(prev => prev.map(s => ({ ...s, possibleTasks: Object.entries(map).filter(([tid, sids]) => sids.includes(s.id)).map(([tid]) => tid) }))); setIsTaskEditorOpen(false); }, 
-            executeDelete, setConfirmDelete, handleConfirmApproval: actions.handleConfirmApproval, setApprovalModalStaffId: actions.setApprovalModalStaffId, handleConfirmSubmission: actions.handleConfirmSubmission, setSubmissionConfirmation: actions.setSubmissionConfirmation, handleConfirmRemand: actions.handleConfirmRemand, setRemandConfirmation: actions.setRemandConfirmation, handleConfirmHoliday, setHolidayConfirmation, handleAbsenceNotificationResponse: (send) => { if(send) chatService.sendAbsence(actions.absenceNotificationConfirmation.staffMember.name); actions.setAbsenceNotificationConfirmation(null); }, handleConfirmApprovalCancellation: actions.handleConfirmApprovalCancellation, setApprovalCancellationConfirmation: actions.setApprovalCancellationConfirmation, handleFinalizeModification: actions.handleFinalizeModification, setShowModificationConfirm: actions.setShowModificationConfirm 
-          }}
+          actions={{ setIsMemberManagementOpen, setIsAdminSettingsOpen, setIsTaskEditorOpen, setIsHelpOpen, handleSaveMemberManagement: (updated) => { setStaff(updated); setIsMemberManagementOpen(false); }, handleSaveAdminConfig: (cfg) => { setAdminConfig(cfg); setIsAdminSettingsOpen(false); }, handleMigrateData: () => {}, handleBulkUpdateStaffTasks: (map) => { setStaff(prev => prev.map(s => ({ ...s, possibleTasks: Object.entries(map).filter(([tid, sids]) => sids.includes(s.id)).map(([tid]) => tid) }))); setIsTaskEditorOpen(false); }, executeDelete, setConfirmDelete, handleConfirmApproval: actions.handleConfirmApproval, setApprovalModalStaffId: actions.setApprovalModalStaffId, handleConfirmSubmission: actions.handleConfirmSubmission, setSubmissionConfirmation: actions.setSubmissionConfirmation, handleConfirmRemand: actions.handleConfirmRemand, setRemandConfirmation: actions.setRemandConfirmation, handleConfirmHoliday, setHolidayConfirmation, handleAbsenceNotificationResponse: (send) => { if(send) chatService.sendAbsence(actions.absenceNotificationConfirmation.staffMember.name); actions.setAbsenceNotificationConfirmation(null); }, handleConfirmApprovalCancellation: actions.handleConfirmApprovalCancellation, setApprovalCancellationConfirmation: actions.setApprovalCancellationConfirmation, handleFinalizeModification: actions.handleFinalizeModification, setShowModificationConfirm: actions.setShowModificationConfirm }}
         />
 
         <footer className="text-center mt-6 text-sm text-slate-500 pb-8"><p>Powered by Gemini & React</p></footer>
