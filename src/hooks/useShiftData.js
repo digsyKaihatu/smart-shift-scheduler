@@ -91,6 +91,7 @@ function shiftReducer(state, action) {
         loadingMessage: action.payload.message || state.loadingMessage 
       };
     case 'SET_SAVE_STATUS':
+      // console.log(`[Reducer] SAVE_STATUS -> ${action.payload}`); // 必要なら有効化
       return { ...state, saveStatus: action.payload };
     case 'SET_INITIAL_DATA_LOADED':
       return { ...state, initialDataLoaded: true };
@@ -532,6 +533,7 @@ export const useShiftData = (currentYear, currentMonth) => {
       }
 
       try {
+        console.log("[ScheduleSave] writeBatch を初期化します");
         const batch = writeBatch(db);
         let commitCount = 0;
 
@@ -540,6 +542,7 @@ export const useShiftData = (currentYear, currentMonth) => {
           
           Object.entries(staffUpdates).forEach(([staffId, dayUpdates]) => {
             const docRef = getIndividualDocRef(staffId, y, m);
+            console.log(`[ScheduleSave] バッチに追加: StaffID=${staffId}, 年月=${y}-${m}, 更新件数=${Object.keys(dayUpdates).length}`);
             batch.set(docRef, {
               staffId,
               year: Number(y),
@@ -552,6 +555,7 @@ export const useShiftData = (currentYear, currentMonth) => {
           });
         });
 
+        console.log(`[ScheduleSave] バッチコミット直前: 合計 ${commitCount} ドキュメントへ書き込みます...`);
         if (commitCount > 0) {
           await batch.commit();
           console.log("[ScheduleSave] バッチコミットが正常に完了しました！");
@@ -705,6 +709,7 @@ export const useShiftData = (currentYear, currentMonth) => {
           updatedAt: new Date().toISOString()
         };
 
+        console.log("[ConfigSave] configドキュメントへ setDoc を実行します...");
         await setDoc(configDocRef, dataToSave, { merge: true });
         console.log("[ConfigSave] マスタデータの保存が正常に完了しました！");
         
