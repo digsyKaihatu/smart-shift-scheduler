@@ -279,6 +279,8 @@ export const useShiftData = (currentYear, currentMonth) => {
                  staff: initialStaffData, tasks: initialTasks, shiftPatterns: initialShiftPatterns, adminConfig: initialAdminConfig 
              }});
              dispatch({ type: 'SET_INITIAL_DATA_LOADED' });
+             // ★修正: フラグを確実にtrueに切り替える
+             isInitialLoadComplete.current = true;
              isFirstConfigLoad = false;
         }
 
@@ -303,6 +305,8 @@ export const useShiftData = (currentYear, currentMonth) => {
                 };
                 isFirstConfigLoad = false;
                 dispatch({ type: 'SET_INITIAL_DATA_LOADED' });
+                // ★修正: フラグを確実にtrueに切り替える
+                isInitialLoadComplete.current = true;
                 return;
             }
 
@@ -345,7 +349,11 @@ export const useShiftData = (currentYear, currentMonth) => {
                staff: serverStaff, tasks: serverTasks, shiftPatterns: serverPatterns, adminConfig: serverAdmin, updatedAt: data.updatedAt
             };
             
-            if (!isInitialLoadComplete.current) dispatch({ type: 'SET_INITIAL_DATA_LOADED' });
+            if (!isInitialLoadComplete.current) {
+                dispatch({ type: 'SET_INITIAL_DATA_LOADED' });
+                // ★修正: フラグを確実にtrueに切り替える
+                isInitialLoadComplete.current = true;
+            }
           }
         });
       } catch (error) {
@@ -551,8 +559,6 @@ export const useShiftData = (currentYear, currentMonth) => {
         if (commitCount > 0) {
           await batch.commit();
           console.log("[ScheduleSave] バッチコミットが正常に完了しました！");
-        } else {
-          console.log("[ScheduleSave] 書き込む変更がありませんでした");
         }
 
         dispatch({ type: 'SET_SAVE_STATUS', payload: 'saved' });
