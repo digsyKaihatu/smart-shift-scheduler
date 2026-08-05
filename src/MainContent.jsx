@@ -67,14 +67,7 @@ const MainContent = () => {
     const targetStaff = staff.find(s => s.id === staffId);
     if (!targetStaff) return;
 
-    const isSubmitted = targetStaff.shiftSubmitted?.[key];
     const isApproved = targetStaff.shiftApproved?.[key];
-
-    // 一般メンバーが提出・承認済みのシフトを直接編集しようとした場合はブロック
-    if (!isAdmin && (isSubmitted || isApproved)) {
-        alert("提出済み、または承認済みのシフトは編集できません。\n変更が必要な場合は管理者にご相談ください。");
-        return;
-    }
 
     const currentVal = currentMonthSchedule[staffId]?.[day];
     const existingChange = actions.pendingChanges.find(c => c.staffId === staffId && c.day === day);
@@ -141,14 +134,7 @@ const MainContent = () => {
     const targetStaff = staff.find(s => s.id === sid);
     if (!targetStaff) return;
 
-    const isSubmitted = targetStaff.shiftSubmitted?.[key];
     const isApproved = targetStaff.shiftApproved?.[key];
-
-    // 一般メンバーが提出・承認済みのシフトパターンを一括適用しようとした場合はブロック
-    if (!isAdmin && (isSubmitted || isApproved)) {
-        alert("提出済み、または承認済みのシフトは編集できません。\n変更が必要な場合は管理者にご相談ください。");
-        return;
-    }
 
     // 1. スタッフマスタ（基本シフト設定）の更新
     setStaff(prev => prev.map(s => s.id === sid ? { ...s, defaultShift: { pattern: p, hasBreakArray: hb } } : s));
