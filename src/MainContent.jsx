@@ -9,7 +9,6 @@ import { useTaskCounts } from './hooks/useTaskCounts.js';
 import { chatService } from './services/chatService.js';
 import { getJapaneseHolidays, formatValue } from './utils/dateUtils.js';
 import { downloadScheduleCSV } from './utils/csvExporter.js';
-// ★修正: generateScheduleForMonth を追加
 import { checkPatternHasBreak, generateScheduleForMonth } from './utils/scheduleUtils.js';
 
 // Components
@@ -65,6 +64,18 @@ const MainContent = () => {
   
   // 個別シフト更新
   const handleUpdateSchedule = (staffId, day, value) => {
+    const targetStaff = staff.find(s => s.id === staffId);
+    if (!targetStaff) return;
+
+    const isSubmitted = targetStaff.shiftSubmitted?.[key];
+    const isApproved = targetStaff.shiftApproved?.[key];
+
+    // 一般メンバーが提出・承認済みのシフトを直接編集しようとした場合はブロック
+    if (!isAdmin && (isSubmitted || isApproved)) {
+        alert("提出済み、または承認済みのシフトは編集できません。\n変更が必要な場合は管理者にご相談ください。");
+        return;
+    }
+
     const currentVal = currentMonthSchedule[staffId]?.[day];
     const existingChange = actions.pendingChanges.find(c => c.staffId === staffId && c.day === day);
     const originalValue = existingChange ? existingChange.originalValue : currentVal;
@@ -75,7 +86,6 @@ const MainContent = () => {
 
     if (JSON.stringify(currentVal) === JSON.stringify(value)) return;
 
-    const isApproved = staff.find(s => s.id === staffId)?.shiftApproved?.[key];
     let newValue = value;
 
     if (isApproved) {
@@ -99,7 +109,7 @@ const MainContent = () => {
         }
     } else {
         if (isAdmin && (value === '欠勤' || value === '欠')) {
-            actions.setAbsenceNotificationConfirmation({ staffMember: staff.find(s => s.id === staffId), day, value });
+            actions.setAbsenceNotificationConfirmation({ staffMember: targetStaff, day, value });
         }
         updateShiftItem(year, month, staffId, day, newValue);
     }
@@ -114,12 +124,10 @@ const MainContent = () => {
     staff.forEach(s => {
       const currentVal = currentMonthSchedule[s.id]?.[day];
       if (isUnlocking) {
-        // ロック解除: 元がロックされたシフト休ならクリアする
         if (typeof currentVal === 'object' && currentVal?.locked) {
           updates.push({ staffId: s.id, day, value: '' });
         }
       } else {
-        // 全員を休日にロックする
         updates.push({ staffId: s.id, day, value: { type: 'シフト休', locked: true } });
       }
     });
@@ -128,10 +136,19 @@ const MainContent = () => {
     setHolidayConfirmation(null);
   };
 
-  // ★修正: 基本パターン適用ロジック
+  // 基本パターン適用ロジック
   const handleApplyStaffPattern = (sid, p, hb) => {
     const targetStaff = staff.find(s => s.id === sid);
     if (!targetStaff) return;
+
+    const isSubmitted = targetStaff.shiftSubmitted?.[key];
+    const isApproved = targetStaff.shiftApproved?.[key];
+
+    // 一般メンバーが提出・承認済みのシフトパターンを一括適用しようとした場合はブロック
+    if (!isAdmin && (isSubmitted || isApproved)) {
+        alert("提出済み、または承認済みのシフトは編集できません。\n変更が必要な場合は管理者にご相談ください。");
+        return;
+    }
 
     // 1. スタッフマスタ（基本シフト設定）の更新
     setStaff(prev => prev.map(s => s.id === sid ? { ...s, defaultShift: { pattern: p, hasBreakArray: hb } } : s));
@@ -140,7 +157,6 @@ const MainContent = () => {
     const newStaffMock = { ...targetStaff, defaultShift: { pattern: p, hasBreakArray: hb } };
     const newGenerated = generateScheduleForMonth(year, month, [newStaffMock], shiftPatterns, currentMonthHolidays)[sid] || {};
 
-    const isApproved = targetStaff.shiftApproved?.[key];
     const pendingNew = [];
     const updates = [];
 
@@ -149,25 +165,22 @@ const MainContent = () => {
       const newExpectedValue = newGenerated[day] ?? '';
       const currentValue = currentMonthSchedule[sid]?.[day] ?? '';
 
-      // ★ 新ロジック：カレンダーの現在の値が「手動で保護すべき値（有休・欠勤・ロック済みなど）」か判定
+      // カレンダーの現在の値が「手動で保護すべき値」か判定
       let isProtected = false;
       if (typeof currentValue === 'object' && currentValue !== null) {
-          if (currentValue.locked) isProtected = true; // 管理者の休日ロックは保護
-          else if (currentValue.type && currentValue.type !== '稼働' && currentValue.type !== 'シフト休') isProtected = true; // 有休などの特殊オブジェクトは保護
+          if (currentValue.locked) isProtected = true; 
+          else if (currentValue.type && currentValue.type !== '稼働' && currentValue.type !== 'シフト休') isProtected = true;
       } else if (typeof currentValue === 'string' && currentValue !== '' && currentValue !== 'シフト休') {
-          if (isNaN(parseFloat(currentValue))) {
-              isProtected = true; // 文字列かつ数値ではない（例：「有休」「午後有(3.5)」など）は保護
-          }
+          if (isNaN(parseFloat(currentValue))) isProtected = true; 
       }
 
-      // 保護されていないセル（空、シフト休、通常の稼働時間）であれば上書き対象
+      // 保護されていないセルであれば上書き対象
       if (!isProtected) {
           let normCurrent = currentValue;
           if (typeof currentValue === 'object' && currentValue !== null) {
               normCurrent = currentValue.type === '稼働' ? currentValue.hours : currentValue.type;
           }
           
-          // 値が実際に変わる場合のみ更新リストに追加
           if (String(normCurrent) !== String(newExpectedValue)) {
               if (isApproved) {
                   let newValue = newExpectedValue;
@@ -188,7 +201,6 @@ const MainContent = () => {
       }
     });
 
-    // 承認済みシフトを変更した場合は保留リストに追加して確認バーを表示
     if (isApproved && pendingNew.length > 0) {
         actions.setPendingChanges(prev => {
             const filtered = prev.filter(c => !(c.staffId === sid && pendingNew.some(n => n.day === c.day)));
@@ -197,7 +209,6 @@ const MainContent = () => {
         actions.setShowModificationConfirm(true);
     }
 
-    // 実際のデータを一括更新
     if (updates.length > 0) {
         updateShiftItems(year, month, updates);
     }
@@ -256,7 +267,6 @@ const MainContent = () => {
             onToggleShiftApproved={actions.handleToggleShiftApproved} 
             onToggleShiftRemanded={actions.handleToggleShiftRemanded}
             onSetDayAsHolidayForAll={(day) => {
-               // 既に全員がロックされているか判定して解除フラグを渡す
                const isUnlocking = staff.every(s => typeof currentMonthSchedule[s.id]?.[day] === 'object' && currentMonthSchedule[s.id]?.[day]?.locked);
                setHolidayConfirmation({ day, isUnlocking });
             }}
