@@ -91,7 +91,6 @@ function shiftReducer(state, action) {
         loadingMessage: action.payload.message || state.loadingMessage 
       };
     case 'SET_SAVE_STATUS':
-      // console.log(`[Reducer] SAVE_STATUS -> ${action.payload}`); // 必要なら有効化
       return { ...state, saveStatus: action.payload };
     case 'SET_INITIAL_DATA_LOADED':
       return { ...state, initialDataLoaded: true };
@@ -279,7 +278,6 @@ export const useShiftData = (currentYear, currentMonth) => {
                  staff: initialStaffData, tasks: initialTasks, shiftPatterns: initialShiftPatterns, adminConfig: initialAdminConfig 
              }});
              dispatch({ type: 'SET_INITIAL_DATA_LOADED' });
-             // ★修正: フラグを確実にtrueに切り替える
              isInitialLoadComplete.current = true;
              isFirstConfigLoad = false;
         }
@@ -305,7 +303,6 @@ export const useShiftData = (currentYear, currentMonth) => {
                 };
                 isFirstConfigLoad = false;
                 dispatch({ type: 'SET_INITIAL_DATA_LOADED' });
-                // ★修正: フラグを確実にtrueに切り替える
                 isInitialLoadComplete.current = true;
                 return;
             }
@@ -351,7 +348,6 @@ export const useShiftData = (currentYear, currentMonth) => {
             
             if (!isInitialLoadComplete.current) {
                 dispatch({ type: 'SET_INITIAL_DATA_LOADED' });
-                // ★修正: フラグを確実にtrueに切り替える
                 isInitialLoadComplete.current = true;
             }
           }
@@ -490,9 +486,14 @@ export const useShiftData = (currentYear, currentMonth) => {
     const finalSchedule = {};
 
     staff.forEach(s => {
-      finalSchedule[s.id] = { ...(summaryData[s.id] || {}) };
+      // 1. まず「基本シフト」を生成して土台にする
+      const defaultSched = generateScheduleForMonth(currentYear, currentMonth, [s], shiftPatterns)[s.id] || {};
+      
+      // 2. 基本シフトの上に「確定済みのシフト(summaryData)」を上書きして結合
+      finalSchedule[s.id] = { ...defaultSched, ...(summaryData[s.id] || {}) };
+      
+      // 3. さらにその上に「現在入力中の未確定シフト(indData)」を上書き
       const memberIndData = indData[s.id]?.scheduleData || {};
-
       if (isAdmin) {
         if (indData[s.id]) {
           finalSchedule[s.id] = { ...finalSchedule[s.id], ...memberIndData };
@@ -501,11 +502,6 @@ export const useShiftData = (currentYear, currentMonth) => {
         if (s.id === currentUserId && indData[s.id]) {
           finalSchedule[s.id] = { ...finalSchedule[s.id], ...memberIndData };
         }
-      }
-
-      if (Object.keys(finalSchedule[s.id]).length === 0) {
-        const defaultSched = generateScheduleForMonth(currentYear, currentMonth, [s], shiftPatterns)[s.id] || {};
-        finalSchedule[s.id] = defaultSched;
       }
     });
 
@@ -668,7 +664,7 @@ export const useShiftData = (currentYear, currentMonth) => {
         ...(existingSummary.scheduleData || {}),
         [staffId]: {
           ...currentStaffSummary,
-          ...shifts               
+          ...shifts                
         }
       };
 
