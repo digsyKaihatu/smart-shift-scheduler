@@ -381,83 +381,47 @@ export const useShiftData = (currentYear, currentMonth) => {
     return () => unsubscribe();
   }, [currentYear, currentMonth, initialDataLoaded]);
 
-  // 3. 個別下書きデータの監視
+  // 3. 個別下書きデータの監視 (★修正: 管理者・一般メンバー問わず全員分のデータを監視)
   useEffect(() => {
     if (!initialDataLoaded || !currentUserId) return;
     const key = `${currentYear}-${currentMonth}`;
-    const isAdmin = userRef.current.isAdmin;
 
-    let unsubscribe = () => {};
+    const q = query(
+      collection(db, "individual_schedules"),
+      where("year", "==", currentYear),
+      where("month", "==", currentMonth)
+    );
 
-    if (isAdmin) {
-      const q = query(
-        collection(db, "individual_schedules"),
-        where("year", "==", currentYear),
-        where("month", "==", currentMonth)
-      );
-
-      unsubscribe = onSnapshot(q, (snapshot) => {
-        const nextIndSchedules = {};
-        snapshot.forEach((docSnap) => {
-          const data = docSnap.data();
-          if (data.staffId) {
-            nextIndSchedules[data.staffId] = data;
-          }
-        });
-
-        const currentIndSchedules = stateRef.current.individualSchedules[key] || {};
-        const activeChanges = { 
-          ...(inflightChanges.current[key] || {}), 
-          ...(pendingChanges.current[key] || {}) 
-        };
-
-        const mergedIndSchedules = { ...nextIndSchedules };
-        Object.keys(activeChanges).forEach(staffId => {
-          if (!mergedIndSchedules[staffId]) {
-            mergedIndSchedules[staffId] = { staffId, year: currentYear, month: currentMonth, scheduleData: {} };
-          }
-          mergedIndSchedules[staffId].scheduleData = {
-            ...(mergedIndSchedules[staffId].scheduleData || {}),
-            ...activeChanges[staffId]
-          };
-        });
-
-        dispatch({ type: 'SYNC_INDIVIDUAL_SCHEDULES', payload: { key, data: mergedIndSchedules } });
-        dispatch({ type: 'SET_LOADING', payload: { isLoading: false } });
-      }, (error) => {
-        console.error("Admin Individual Schedules Load Error:", error);
-      });
-    } else {
-      const myDocRef = getIndividualDocRef(currentUserId, currentYear, currentMonth);
-
-      unsubscribe = onSnapshot(myDocRef, (docSnap) => {
-        const nextIndSchedules = {};
-        if (docSnap.exists()) {
-          const data = docSnap.data();
-          nextIndSchedules[currentUserId] = data;
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const nextIndSchedules = {};
+      snapshot.forEach((docSnap) => {
+        const data = docSnap.data();
+        if (data.staffId) {
+          nextIndSchedules[data.staffId] = data;
         }
-
-        const activeMyChanges = {
-          ...(inflightChanges.current[key]?.[currentUserId] || {}),
-          ...(pendingChanges.current[key]?.[currentUserId] || {})
-        };
-
-        if (Object.keys(activeMyChanges).length > 0) {
-          if (!nextIndSchedules[currentUserId]) {
-            nextIndSchedules[currentUserId] = { staffId: currentUserId, year: currentYear, month: currentMonth, scheduleData: {} };
-          }
-          nextIndSchedules[currentUserId].scheduleData = {
-            ...(nextIndSchedules[currentUserId].scheduleData || {}),
-            ...activeMyChanges
-          };
-        }
-
-        dispatch({ type: 'SYNC_INDIVIDUAL_SCHEDULES', payload: { key, data: nextIndSchedules } });
-        dispatch({ type: 'SET_LOADING', payload: { isLoading: false } });
-      }, (error) => {
-        console.error("Member Individual Schedule Load Error:", error);
       });
-    }
+
+      const activeChanges = { 
+        ...(inflightChanges.current[key] || {}), 
+        ...(pendingChanges.current[key] || {}) 
+      };
+
+      const mergedIndSchedules = { ...nextIndSchedules };
+      Object.keys(activeChanges).forEach(staffId => {
+        if (!mergedIndSchedules[staffId]) {
+          mergedIndSchedules[staffId] = { staffId, year: currentYear, month: currentMonth, scheduleData: {} };
+        }
+        mergedIndSchedules[staffId].scheduleData = {
+          ...(mergedIndSchedules[staffId].scheduleData || {}),
+          ...activeChanges[staffId]
+        };
+      });
+
+      dispatch({ type: 'SYNC_INDIVIDUAL_SCHEDULES', payload: { key, data: mergedIndSchedules } });
+      dispatch({ type: 'SET_LOADING', payload: { isLoading: false } });
+    }, (error) => {
+      console.error("Individual Schedules Load Error:", error);
+    });
 
     return () => unsubscribe();
   }, [currentYear, currentMonth, initialDataLoaded, currentUserId]);
@@ -481,7 +445,6 @@ export const useShiftData = (currentYear, currentMonth) => {
   const synthesizedSchedule = useMemo(() => {
     const summaryData = summarySchedule[key] || {};
     const indData = individualSchedules[key] || {};
-    const isAdmin = userRef.current.isAdmin;
 
     const finalSchedule = {};
 
@@ -493,15 +456,10 @@ export const useShiftData = (currentYear, currentMonth) => {
       finalSchedule[s.id] = { ...defaultSched, ...(summaryData[s.id] || {}) };
       
       // 3. さらにその上に「現在入力中の未確定シフト(indData)」を上書き
+      // ★修正: 誰のデータであっても、下書きがあれば表示用のスケジュールに反映させる
       const memberIndData = indData[s.id]?.scheduleData || {};
-      if (isAdmin) {
-        if (indData[s.id]) {
-          finalSchedule[s.id] = { ...finalSchedule[s.id], ...memberIndData };
-        }
-      } else {
-        if (s.id === currentUserId && indData[s.id]) {
-          finalSchedule[s.id] = { ...finalSchedule[s.id], ...memberIndData };
-        }
+      if (indData[s.id]) {
+        finalSchedule[s.id] = { ...finalSchedule[s.id], ...memberIndData };
       }
     });
 
