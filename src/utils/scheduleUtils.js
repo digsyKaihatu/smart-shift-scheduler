@@ -23,11 +23,16 @@ export const checkPatternHasBreak = (pId, patterns) => {
 export const generateScheduleForMonth = (year, month, staff, shiftPatterns, holidays = []) => {
     const daysInMonth = new Date(year, month, 0).getDate();
     const schedule = {};
+    const monthKey = `${year}-${month}`; // ★追加: 対象の年月キーを作成
 
     staff.forEach(s => {
         schedule[s.id] = {};
-        const pattern = s.defaultShift?.pattern || Array(5).fill('シフト休');
-        const hasBreakArray = s.defaultShift?.hasBreakArray;
+        
+        // ★変更: 月ごとの専用設定があればそれを使い、なければ従来の設定を使う
+        const currentDefaultShift = s.defaultShifts?.[monthKey] || s.defaultShift || {};
+        
+        const pattern = currentDefaultShift.pattern || Array(5).fill('シフト休');
+        const hasBreakArray = currentDefaultShift.hasBreakArray;
 
         for (let day = 1; day <= daysInMonth; day++) {
             const date = new Date(year, month - 1, day);
@@ -49,8 +54,8 @@ export const generateScheduleForMonth = (year, month, staff, shiftPatterns, holi
                         let hasBreak = true;
                         if (Array.isArray(hasBreakArray) && hasBreakArray.length > dw - 1) {
                             hasBreak = hasBreakArray[dw - 1];
-                        } else if (s.defaultShift?.hasBreak !== undefined) {
-                            hasBreak = s.defaultShift.hasBreak;
+                        } else if (currentDefaultShift.hasBreak !== undefined) {
+                            hasBreak = currentDefaultShift.hasBreak;
                         } else {
                             hasBreak = checkPatternHasBreak(pId, shiftPatterns);
                         }

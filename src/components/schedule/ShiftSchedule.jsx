@@ -78,7 +78,10 @@ const ShiftTableRow = React.memo(({
     isCellSelected
 }) => {
     const isEditable = isAdmin || currentUser?.id === s.id;
-    const defaultShift = s.defaultShift || { pattern: [], hasBreakArray: [] };
+    
+    // ★変更箇所: 月ごとの設定(defaultShifts)を優先して読み込み、なければ従来の設定(defaultShift)を使う
+    const monthKey = `${year}-${month}`;
+    const defaultShift = s.defaultShifts?.[monthKey] || s.defaultShift || { pattern: [], hasBreakArray: [] };
 
     return (
         <div className="flex w-max group hover:bg-slate-50 transition-colors">

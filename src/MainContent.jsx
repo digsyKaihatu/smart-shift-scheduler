@@ -69,8 +69,6 @@ const MainContent = () => {
 
     const isApproved = targetStaff.shiftApproved?.[key];
 
-    // ★修正: 誤って残っていた「非管理者の編集をブロックする」処理を完全に削除しました。
-
     const currentVal = currentMonthSchedule[staffId]?.[day];
     const existingChange = actions.pendingChanges.find(c => c.staffId === staffId && c.day === day);
     const originalValue = existingChange ? existingChange.originalValue : currentVal;
@@ -138,10 +136,16 @@ const MainContent = () => {
 
     const isApproved = targetStaff.shiftApproved?.[key];
 
-    // ★修正: 誤って残っていた「非管理者の編集をブロックする」処理を完全に削除しました。
-
-    // 1. スタッフマスタ（基本シフト設定）の更新
-    setStaff(prev => prev.map(s => s.id === sid ? { ...s, defaultShift: { pattern: p, hasBreakArray: hb } } : s));
+    // 1. スタッフマスタ（月ごとの基本シフト設定）の更新
+    setStaff(prev => prev.map(s => {
+      if (s.id === sid) {
+        const newDefaultShifts = { ...(s.defaultShifts || {}) };
+        newDefaultShifts[key] = { pattern: p, hasBreakArray: hb };
+        // 過去の互換性のために defaultShift も更新しつつ、月ごとの defaultShifts も保存する
+        return { ...s, defaultShift: { pattern: p, hasBreakArray: hb }, defaultShifts: newDefaultShifts };
+      }
+      return s;
+    }));
     
     // 2. 新しいパターンで1ヶ月分のスケジュールを生成
     const newStaffMock = { ...targetStaff, defaultShift: { pattern: p, hasBreakArray: hb } };
@@ -217,7 +221,7 @@ const MainContent = () => {
 
   const adminControls = isAdmin ? (
     <>
-      <button onClick={() => setStaff(prev => [...prev, { id: `s${Date.now()}`, employeeId: 'New', name: '新規メンバー', role: 'OP', chatUserId: '', possibleTasks: [], defaultShift: { pattern: ['I','I','I','I','I'], hasBreakArray: [true, true, true, true, true] }, shiftSubmitted: {}, shiftRemanded: {}, shiftApproved: {} }])} className="px-3 py-1.5 bg-[#F4B896] text-white text-xs font-semibold rounded-md hover:bg-[#E8A680] shadow-sm whitespace-nowrap">+ メンバー</button>
+      <button onClick={() => setStaff(prev => [...prev, { id: `s${Date.now()}`, employeeId: 'New', name: '新規メンバー', role: 'OP', chatUserId: '', possibleTasks: [], defaultShift: { pattern: ['I','I','I','I','I'], hasBreakArray: [true, true, true, true, true] }, defaultShifts: {}, shiftSubmitted: {}, shiftRemanded: {}, shiftApproved: {} }])} className="px-3 py-1.5 bg-[#F4B896] text-white text-xs font-semibold rounded-md hover:bg-[#E8A680] shadow-sm whitespace-nowrap">+ メンバー</button>
       <button onClick={() => setTasks(prev => [...prev, { id: `t${Date.now()}`, name: '新業務', requiredPersonnel: 3 }])} className="px-3 py-1.5 bg-[#F4B896] text-white text-xs font-semibold rounded-md hover:bg-[#E8A680] shadow-sm whitespace-nowrap">+ 業務</button>
       <button onClick={() => setIsTaskEditorOpen(true)} className="px-3 py-1.5 bg-[#F4B896] text-white text-xs font-semibold rounded-md hover:bg-[#E8A680] shadow-sm whitespace-nowrap">業務担当</button>
       <button onClick={() => setIsMemberManagementOpen(true)} className="px-3 py-1.5 bg-[#F4B896] text-white text-xs font-semibold rounded-md hover:bg-[#E8A680] shadow-sm whitespace-nowrap">メンバー管理</button>
