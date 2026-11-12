@@ -449,7 +449,7 @@ export const useShiftData = (currentYear, currentMonth) => {
     const finalSchedule = {};
 
     staff.forEach(s => {
-      // 1. まず「基本シフト」を生成して土台にする
+      // 1. まず「基本シフト」を生成して土台にする (★修正: 生成時に年月を渡すように設計変更済み)
       const defaultSched = generateScheduleForMonth(currentYear, currentMonth, [s], shiftPatterns)[s.id] || {};
       
       // 2. 基本シフトの上に「確定済みのシフト(summaryData)」を上書きして結合
